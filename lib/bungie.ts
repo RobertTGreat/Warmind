@@ -17,6 +17,8 @@ bungieApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Ensure the API Key is always set, even if retrying
+  config.headers['X-API-Key'] = API_KEY;
   return config;
 });
 
