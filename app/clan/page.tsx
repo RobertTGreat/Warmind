@@ -1,0 +1,323 @@
+'use client';
+
+import { PageHeader } from "@/components/PageHeader";
+import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { bungieApi, endpoints, getBungieImage as getImg } from "@/lib/bungie";
+import useSWR from "swr";
+import { Loader2, Shield, Users, Search, Star, Calendar, Info, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useSettingsStore } from "@/store/settingsStore";
+import { cn } from "@/lib/utils";
+import { ClanMemberCard, MemberStats } from "@/components/ClanMemberCard";
+
+const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
+
+type SortOption = 'joined_desc' | 'joined_asc' | 'name_asc' | 'rank_desc' | 'online' | 'power_desc' | 'guardian_rank_desc';
+
+const ITEMS_PER_PAGE = 21;
+
+export default function ClanPage() {
+  const { membershipInfo, isLoggedIn } = useDestinyProfile();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('online');
+  const [currentPage, setCurrentPage] = useState(1);
+  const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
+  const [memberStats, setMemberStats] = useState<Record<string, MemberStats>>({});
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, showFavoritesOnly, sortBy]);
+
+  // 1. Get Clan Info for User
+  const { data: groupsData, isLoading: groupsLoading } = useSWR(
+    membershipInfo ? endpoints.getGroupsForMember(membershipInfo.membershipType, membershipInfo.membershipId) : null,
+    fetcher
+  );
+
+  const group = groupsData?.Response?.results?.[0]?.group;
+  const groupId = group?.groupId;
+
+  // 2. Get Clan Members
+  const { data: membersData, isLoading: membersLoading } = useSWR(
+    groupId ? endpoints.getMembersOfGroup(groupId) : null,
+    fetcher
+  );
+
+  const members = membersData?.Response?.results;
+
+  // Fetch stats logic
+  useEffect(() => {
+      if (!members || members.length === 0) return;
+
+      const fetchStats = async () => {
+          setIsLoadingStats(true);
+          
+          // Filter members we don't have stats for yet
+          const membersToFetch = members.filter((m: any) => !memberStats[m.destinyUserInfo.membershipId]);
+          
+          // Simple chunking to avoid rate limits (5 concurrent requests)
+          const CHUNK_SIZE = 5;
+          for (let i = 0; i < membersToFetch.length; i += CHUNK_SIZE) {
+              const chunk = membersToFetch.slice(i, i + CHUNK_SIZE);
+              
+              await Promise.all(chunk.map(async (member: any) => {
+                  try {
+                      const user = member.destinyUserInfo;
+                      const res = await bungieApi.get(
+                          endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])
+                      );
+                      const profile = res.data.Response;
+                      const characters = profile?.characters?.data;
+                      const guardianRank = profile?.profile?.data?.currentGuardianRank || 0;
+                      
+                      // Get most recently played character
+                      const lastPlayedCharacterId = characters 
+                        ? Object.keys(characters).sort((a, b) => {
+                            return new Date(characters[b].dateLastPlayed).getTime() - new Date(characters[a].dateLastPlayed).getTime();
+                        })[0]
+                        : null;
+                    
+                      const character = lastPlayedCharacterId ? characters[lastPlayedCharacterId] : null;
+                      
+                      if (character) {
+                          setMemberStats(prev => ({
+                              ...prev,
+                              [user.membershipId]: {
+                                  power: character.light,
+                                  guardianRank: guardianRank,
+                                  emblemPath: character.emblemPath
+                              }
+                          }));
+                      }
+                  } catch (e) {
+                      // Fail silently for individual member
+                  }
+              }));
+              
+              // Small delay between chunks to be nice to API
+              await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          setIsLoadingStats(false);
+      };
+
+      // Trigger fetch
+      fetchStats();
+      
+  }, [members]); // Run when members list loads
+
+  const filteredAndSortedMembers = members
+    ?.filter((member: any) => {
+      const user = member.destinyUserInfo;
+      const name = user.bungieGlobalDisplayName || user.displayName || "";
+      const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
+      const isFavorite = favoriteMembers.includes(user.membershipId);
+      
+      if (showFavoritesOnly && !isFavorite) return false;
+      return matchesSearch;
+    })
+    ?.sort((a: any, b: any) => {
+        const idA = a.destinyUserInfo.membershipId;
+        const idB = b.destinyUserInfo.membershipId;
+        const statsA = memberStats[idA];
+        const statsB = memberStats[idB];
+
+        switch (sortBy) {
+            case 'name_asc':
+                const nameA = a.destinyUserInfo.bungieGlobalDisplayName || a.destinyUserInfo.displayName;
+                const nameB = b.destinyUserInfo.bungieGlobalDisplayName || b.destinyUserInfo.displayName;
+                return nameA.localeCompare(nameB);
+            case 'rank_desc':
+                return b.memberType - a.memberType;
+            case 'joined_asc':
+                return new Date(a.joinDate).getTime() - new Date(b.joinDate).getTime();
+            case 'joined_desc':
+                return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
+            case 'power_desc':
+                return (statsB?.power || 0) - (statsA?.power || 0);
+            case 'guardian_rank_desc':
+                return (statsB?.guardianRank || 0) - (statsA?.guardianRank || 0);
+            case 'online':
+            default:
+                // Sort by online first, then by join date (newest first)
+                if (a.isOnline !== b.isOnline) return (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0);
+                return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
+        }
+    });
+
+  // Pagination Logic
+  const totalItems = filteredAndSortedMembers?.length || 0;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedMembers = filteredAndSortedMembers?.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  if (!isLoggedIn) return <div className="p-8 text-center text-slate-400">Please login to view clan.</div>;
+  if (groupsLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-destiny-gold" /></div>;
+
+  if (!group) {
+      return (
+          <div className="p-8 text-center">
+              <Shield className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+              <h2 className="text-xl text-white font-bold">No Clan Found</h2>
+              <p className="text-slate-400">You are not currently in a clan.</p>
+          </div>
+      );
+  }
+
+  return (
+    <div className="space-y-8 pb-12">
+      {/* Clan Banner / Header */}
+      <div className="relative overflow-hidden rounded-sm border border-white/10 bg-gray-800/20">
+          <div className="relative h-64 flex items-center justify-center">
+            <div className="absolute inset-0 bg-cover bg-center opacity-30" 
+                 style={{ backgroundImage: `url(${getImg(group.bannerPath)})` }} />
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-gray-900/50 to-gray-900" />
+            
+            <div className="relative z-10 text-center space-y-4 max-w-3xl px-4">
+                <div>
+                    <h1 className="text-4xl md:text-6xl font-bold text-white uppercase tracking-widest drop-shadow-xl">
+                        {group.name}
+                    </h1>
+                    <p className="text-destiny-gold font-mono text-lg tracking-wide mt-1">
+                        [{group.clanInfo?.clanCallsign}]
+                    </p>
+                </div>
+                
+                {group.motto && (
+                    <p className="text-xl italic text-slate-300 font-serif">"{group.motto}"</p>
+                )}
+            </div>
+          </div>
+
+          {/* Clan Details Footer */}
+          <div className="bg-black/40 backdrop-blur-sm p-4 border-t border-white/5 flex flex-wrap gap-6 justify-center text-sm text-slate-400">
+             <div className="flex items-center gap-2">
+                 <Users className="w-4 h-4 text-destiny-gold" />
+                 <span>{group.memberCount} Members</span>
+             </div>
+             <div className="flex items-center gap-2">
+                 <Calendar className="w-4 h-4 text-destiny-gold" />
+                 <span>Founded {new Date(group.creationDate).toLocaleDateString()}</span>
+             </div>
+             {group.about && (
+                 <div className="flex items-center gap-2 max-w-md truncate" title={group.about}>
+                     <Info className="w-4 h-4 text-destiny-gold" />
+                     <span className="truncate">{group.about}</span>
+                 </div>
+             )}
+          </div>
+      </div>
+
+      {/* Controls & Roster */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-4">
+                <PageHeader title="Roster" description="Active Guardians in your clan." className="mb-0" />
+                {isLoadingStats && (
+                    <div className="flex items-center gap-2 text-xs text-destiny-gold animate-pulse bg-destiny-gold/10 px-2 py-1 rounded">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Loading Stats...</span>
+                    </div>
+                )}
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                <div className="relative flex-1 sm:w-56 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                        type="text" 
+                        placeholder="Search guardians..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50"
+                    />
+                </div>
+
+                <div className="relative">
+                     <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                     <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as SortOption)}
+                        className="appearance-none bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:border-destiny-gold/50 cursor-pointer min-w-[180px]"
+                     >
+                         <option value="online">Online Status</option>
+                         <option value="power_desc">Power Level</option>
+                         <option value="guardian_rank_desc">Guardian Rank</option>
+                         <option value="name_asc">Name (A-Z)</option>
+                         <option value="rank_desc">Clan Rank</option>
+                         <option value="joined_desc">Newest Members</option>
+                         <option value="joined_asc">Oldest Members</option>
+                     </select>
+                </div>
+
+                <button 
+                    onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                    className={cn(
+                        "p-2 rounded-sm border border-white/10 transition-colors",
+                        showFavoritesOnly ? "bg-destiny-gold/20 border-destiny-gold/50 text-destiny-gold" : "bg-gray-900/50 text-slate-400 hover:text-white"
+                    )}
+                    title="Toggle Favorites Only"
+                >
+                    <Star className={cn("w-5 h-5", showFavoritesOnly && "fill-current")} />
+                </button>
+            </div>
+        </div>
+
+        {/* Members Grid */}
+        {membersLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="animate-spin text-destiny-gold w-8 h-8" /></div>
+        ) : filteredAndSortedMembers?.length === 0 ? (
+             <div className="text-center py-12 text-slate-500">
+                 No guardians found matching your criteria.
+             </div>
+        ) : (
+            <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {paginatedMembers?.map((member: any) => {
+                        const user = member.destinyUserInfo;
+                        // Use preloaded stats if available
+                        const stats = memberStats[user.membershipId];
+                        
+                        return (
+                            <ClanMemberCard 
+                                key={user.membershipId} 
+                                member={member} 
+                                isOnline={member.isOnline} 
+                                preloadedStats={stats}
+                            />
+                        );
+                    })}
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                    <div className="flex justify-center items-center gap-4 pt-8">
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="p-2 rounded border border-white/10 bg-gray-800/20 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronLeft className="w-5 h-5 text-white" />
+                        </button>
+                        
+                        <div className="text-sm text-slate-400">
+                            Page <span className="text-destiny-gold font-bold">{currentPage}</span> of <span className="text-white">{totalPages}</span>
+                        </div>
+
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="p-2 rounded border border-white/10 bg-gray-800/20 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronRight className="w-5 h-5 text-white" />
+                        </button>
+                    </div>
+                )}
+            </>
+        )}
+      </div>
+    </div>
+  );
+}

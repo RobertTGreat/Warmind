@@ -3,6 +3,16 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'www.bungie.net',
+        pathname: '/**',
+      },
+    ],
+    minimumCacheTTL: 31536000,
+  },
 };
 
 export default nextConfig;
