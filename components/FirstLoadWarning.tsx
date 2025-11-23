@@ -5,7 +5,13 @@ import { toast } from "sonner";
 
 export function FirstLoadWarning() {
   useEffect(() => {
-    const hasShownWarning = localStorage.getItem("warmind_first_load_warning");
+    let hasShownWarning = false;
+    try {
+        hasShownWarning = localStorage.getItem("warmind_first_load_warning") === "true";
+    } catch (e) {
+        // Storage likely disabled or full
+        console.warn("Could not read from localStorage", e);
+    }
 
     if (!hasShownWarning) {
       // Add a small delay to ensure the app is interactive/visible before showing
@@ -18,7 +24,11 @@ export function FirstLoadWarning() {
             onClick: () => {},
           },
         });
-        localStorage.setItem("warmind_first_load_warning", "true");
+        try {
+            localStorage.setItem("warmind_first_load_warning", "true");
+        } catch (e) {
+            console.warn("Could not write to localStorage", e);
+        }
       }, 1000);
 
       return () => clearTimeout(timer);
@@ -27,4 +37,3 @@ export function FirstLoadWarning() {
 
   return null;
 }
-

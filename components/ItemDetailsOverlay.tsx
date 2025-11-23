@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { getBungieImage, bungieApi, endpoints, insertSocketPlug } from '@/lib/bungie';
-import { BUCKETS } from '@/lib/destinyUtils';
+import { BUCKETS, getItemTier } from '@/lib/destinyUtils';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
@@ -12,24 +12,38 @@ import { toast } from 'sonner';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
+
 export function ItemDetailsOverlay() {
   const { detailsItem, setDetailsItem } = useUIStore();
   const { profile, membershipInfo } = useDestinyProfile();
+  const [showAll, setShowAll] = useState(false);
 
   // Fetch definition for the item
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
   const itemDef = definitions[detailsItem?.itemHash || 0];
 
-  if (!detailsItem) return null;
+  const instance = detailsItem?.itemInstanceId ? profile?.itemComponents?.instances?.data?.[detailsItem.itemInstanceId] : undefined;
+  const sockets = detailsItem?.itemInstanceId ? profile?.itemComponents?.sockets?.data?.[detailsItem.itemInstanceId]?.sockets : undefined;
+  const stats = detailsItem?.itemInstanceId ? profile?.itemComponents?.stats?.data?.[detailsItem.itemInstanceId]?.stats : undefined;
 
-  const instance = profile?.itemComponents?.instances?.data?.[detailsItem.itemInstanceId];
-  const sockets = profile?.itemComponents?.sockets?.data?.[detailsItem.itemInstanceId]?.sockets;
-  const stats = profile?.itemComponents?.stats?.data?.[detailsItem.itemInstanceId]?.stats;
+  // Fetch plug definitions for Tier calculation
+  const activePlugHashes = useMemo(() => {
+      if (!sockets) return [];
+      return sockets.map((s: any) => s.plugHash).filter((h: any) => h);
+  }, [sockets]);
+  
+  const { definitions: plugDefs } = useItemDefinitions(activePlugHashes);
+  
+  const tierNumber = useMemo(() => {
+      return getItemTier(itemDef, { sockets }, plugDefs, instance);
+  }, [itemDef, sockets, plugDefs, instance]);
+
+  if (!detailsItem) return null;
 
   const isSubclass = itemDef?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] animate-in fade-in duration-200 flex justify-center items-center p-4 md:p-12">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-100 animate-in fade-in duration-200 flex justify-center items-center p-4 md:p-12">
         <button 
             onClick={() => setDetailsItem(null)}
             className="absolute top-6 right-6 p-2 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full z-50 transition-colors"
@@ -49,8 +63,8 @@ export function ItemDetailsOverlay() {
                         alt="" 
                      />
                  )}
-                 <div className="absolute inset-0 bg-gradient-to-r from-[#1e1e1e] via-[#1e1e1e]/90 to-transparent md:via-[#1e1e1e]/80" />
-                 <div className="absolute inset-0 bg-gradient-to-t from-[#1e1e1e] via-transparent to-transparent" />
+                 <div className="absolute inset-0 bg-linear-to-r from-[#1e1e1e] via-[#1e1e1e]/90 to-transparent md:via-[#1e1e1e]/80" />
+                 <div className="absolute inset-0 bg-linear-to-t from-[#1e1e1e] via-transparent to-transparent" />
              </div>
 
              {/* Left Panel: Info & Stats */}
@@ -71,11 +85,21 @@ export function ItemDetailsOverlay() {
                       </div>
                       <div>
                           <h2 className="text-3xl font-bold text-white leading-tight">{itemDef?.displayProperties?.name}</h2>
-                          <div className="text-sm text-destiny-gold font-bold uppercase tracking-wider mt-1 flex items-center gap-2">
+                          <div className="text-sm text-destiny-gold font-bold uppercase tracking-wider mt-1 flex items-center gap-2 flex-wrap">
                               {itemDef?.itemTypeDisplayName}
                               {instance?.primaryStat && (
                                   <span className="bg-white/10 px-2 py-0.5 rounded text-white text-xs">
                                     ♦ {instance.primaryStat.value}
+                                  </span>
+                              )}
+                              {tierNumber > 1 && (
+                                  <span className={cn(
+                                      "px-2 py-0.5 rounded text-xs flex items-center gap-1 border",
+                                      tierNumber === 5 
+                                        ? "bg-destiny-gold/20 text-destiny-gold border-destiny-gold" 
+                                        : "bg-white/10 text-white border-white/10"
+                                  )}>
+                                    TIER {tierNumber} <span className="text-[10px]">✦</span>
                                   </span>
                               )}
                           </div>
@@ -98,7 +122,22 @@ export function ItemDetailsOverlay() {
              </div>
 
              {/* Right Panel: Sockets / Details */}
-             <div className="relative z-10 flex-1 p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+             <div className="relative z-10 flex-1 p-8 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:none]">
+                  <div className="flex justify-end mb-4">
+                      <button 
+                        onClick={() => setShowAll(!showAll)}
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border",
+                            showAll 
+                                ? "bg-destiny-gold/20 text-destiny-gold border-destiny-gold" 
+                                : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"
+                        )}
+                      >
+                          <span>Show All Options</span>
+                          <div className={cn("w-2 h-2 rounded-full", showAll ? "bg-destiny-gold" : "bg-slate-600")} />
+                      </button>
+                  </div>
+
                   {sockets && (
                       <SocketViewer 
                           sockets={sockets} 
@@ -107,6 +146,7 @@ export function ItemDetailsOverlay() {
                           profile={profile}
                           membershipInfo={membershipInfo}
                           isSubclass={isSubclass}
+                          showAll={showAll}
                       />
                   )}
              </div>
@@ -182,7 +222,7 @@ function SubclassStats({ stats, itemDef }: any) {
     return null; 
 }
 
-function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubclass }: any) {
+function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubclass, showAll }: any) {
     const { definitions: categoryDefs } = useSocketCategoryDefinitions(itemDef?.sockets?.socketCategories?.map((c: any) => c.socketCategoryHash) || []);
     
     // Reusable Plugs (Options)
@@ -205,28 +245,67 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
         <div className="flex flex-col gap-10 pb-20">
             {itemDef.sockets.socketCategories.map((category: any) => {
                 const categoryDef = categoryDefs[category.socketCategoryHash];
+                
+                // If category definition is not loaded yet, skip or show placeholder. 
+                // Since we rely on it for filtering ("Cosmetics"), we should probably wait or default to safe behavior.
+                if (!categoryDef) return null; 
+
                 // Sort sockets by index provided in category
                 const categorySockets = category.socketIndexes.map((idx: number) => ({
                     ...sockets[idx],
                     socketIndex: idx,
                     def: itemDef.sockets.socketEntries[idx],
-                    reusablePlugs: reusablePlugsData?.[idx] || [] 
+                    reusablePlugs: reusablePlugsData?.[idx] || sockets[idx].reusablePlugs || [] 
                 }));
 
                 if (!categorySockets.length) return null;
                 
+                // Double check if all filtered sockets in this category are null, if so hide the category
+                // We need to move the filter up or check after mapping but we are inside the map.
+                // Let's filter first.
+                const filteredSockets = categorySockets.filter((socket: any) => {
+                    const plug = plugDefs[socket.plugHash];
+                    if (!plug) return false;
+                    
+                    const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+                    const categoryIdentifier = plug.plug?.plugCategoryIdentifier || "";
+                    
+                    if (!isSubclass) {
+                         if (
+                            typeName.includes("shader") || 
+                            typeName.includes("ornament") || 
+                            categoryIdentifier.includes("skins") ||
+                            // Filter out "Weapon Cosmetics" specifically which sometimes isn't named "Cosmetics"
+                            (categoryDef?.displayProperties?.name === "Weapon Cosmetics") ||
+                            (categoryDef?.displayProperties?.name === "Cosmetics") || 
+                            (categoryDef?.displayProperties?.name === "Appearance") ||
+                            // Hash check for Weapon Cosmetics (common hash: 3508727055 for shaders/ornaments on weapons)
+                            (category.socketCategoryHash === 3508727055) ||
+                             (category.socketCategoryHash === 2048875504) // Another cosmetic hash
+                        ) return false;
+                    }
+                    // Kill Tracker / Effects often in separate socket but we want to filter them too if they are purely cosmetic/stats
+                    // Often "Kill Tracker" is a separate category or type.
+                    if (typeName.includes("tracker") || plug.displayProperties?.name?.includes("Tracker")) return false;
+
+                    if (!socket.isVisible && !plug.itemTypeDisplayName) return false;
+                    
+                    return true;
+                });
+
+                if (filteredSockets.length === 0) return null;
+
                 return (
                     <div key={category.socketCategoryHash} className="flex flex-col gap-4">
                         <h3 className="text-xl font-bold text-white/90 border-b border-white/10 pb-2 flex items-center gap-2">
                             {categoryDef?.displayProperties?.name || "Other"}
                         </h3>
                         
-                        <div className="flex flex-wrap gap-3">
-                            {categorySockets.map((socket: any, i: number) => {
+                        <div className="flex flex-wrap gap-6">
+                            {filteredSockets.map((socket: any, i: number) => {
                                 const plug = plugDefs[socket.plugHash];
+                                // We already checked existence in filter, but TS might need it
                                 if (!plug) return null; 
-
-                                if (!socket.isVisible && !plug.itemTypeDisplayName) return null; 
 
                                 return (
                                     <Socket 
@@ -237,6 +316,7 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
                                         membershipInfo={membershipInfo}
                                         profile={profile}
                                         isSubclass={isSubclass}
+                                        showAll={showAll}
                                     />
                                 );
                             })}
@@ -248,7 +328,7 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
     );
 }
 
-function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any) {
+function Socket({ socket, plug, item, membershipInfo, profile, isSubclass, showAll }: any) {
     const [isOpen, setIsOpen] = useState(false);
     
     // Calculate available options hashes
@@ -281,9 +361,15 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
 
     // We need a way to get PlugSet items if optionHashes is empty but we have a PlugSetHash
     const plugSetHash = socket.def?.reusablePlugSetHash || socket.def?.randomizedPlugSetHash;
-    const { plugItems: plugSetItems } = usePlugSetItems(plugSetHash);
+    // Only fetch plugset items if we are showing all options
+    const shouldFetchPlugSet = showAll || isSubclass; 
+    const { plugItems: plugSetItems } = usePlugSetItems(shouldFetchPlugSet ? plugSetHash : undefined);
 
     const finalOptionHashes = useMemo(() => {
+        if (!showAll && !isSubclass && socket.plugHash) {
+            return [socket.plugHash];
+        }
+
         let hashes = [...optionHashes];
         if (plugSetItems.length > 0) {
             // Merge plug set items
@@ -294,12 +380,40 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
             hashes.unshift(socket.plugHash);
         }
         return Array.from(new Set(hashes));
-    }, [optionHashes, plugSetItems, socket.plugHash]);
+    }, [optionHashes, plugSetItems, socket.plugHash, showAll, isSubclass]);
 
     // Always fetch definitions for these options so we can display them inline
     // For subclasses, only fetch if isOpen or if !isSubclass (weapons)
     const shouldFetchOptions = !isSubclass || isOpen;
     const { definitions: optionDefs } = useItemDefinitions(shouldFetchOptions ? finalOptionHashes : []);
+
+    // Filter Options (Enhanced/Base logic, Masterwork logic)
+    const visibleOptions = useMemo(() => {
+        const options = finalOptionHashes.map(h => ({ hash: h, def: optionDefs[h] })).filter(o => o.def);
+        
+        if (!showAll) return options;
+
+        return options.filter(o => {
+             const name = o.def.displayProperties?.name || "";
+             
+             // Filter Base if Enhanced exists
+             const isEnhanced = name.includes("Enhanced");
+             if (!isEnhanced) {
+                 const potentialEnhanced = [`Enhanced ${name}`, `${name} Enhanced`];
+                 if (options.some(other => potentialEnhanced.includes(other.def.displayProperties?.name))) {
+                     return false;
+                 }
+             }
+             
+             // Filter Masterwork Levels (Hide non-equipped tiers to prevent separation/clutter)
+             if (name.includes("Masterwork") && name.includes("Tier")) {
+                 if (o.hash === socket.plugHash) return true;
+                 return false; 
+             }
+
+             return true;
+        });
+    }, [finalOptionHashes, optionDefs, showAll, socket.plugHash]);
 
     const handleSelectPlug = async (plugItemHash: number, plugName: string) => {
         // ... same as before ...
@@ -363,7 +477,7 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
 
                 {/* Full Screen / Modal Selection Menu for Subclass Options */}
                 {isOpen && (
-                    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-100 p-4">
+                    <div className="fixed inset-0 z-150 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-100 p-4">
                          <div className="w-full max-w-4xl max-h-[80vh] bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl flex flex-col overflow-hidden">
                              {/* Header */}
                              <div className="flex justify-between items-center p-6 border-b border-white/10 bg-[#1a1a1a]">
@@ -378,10 +492,7 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
 
                              {/* Grid of Options */}
                              <div className="p-6 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 scrollbar-thin scrollbar-thumb-white/20">
-                                 {finalOptionHashes.map((hash) => {
-                                     const def = optionDefs[hash];
-                                     if (!def) return <div key={hash} className="aspect-square bg-white/5 animate-pulse rounded-sm" />;
-                                     
+                                 {visibleOptions.map(({ hash, def }: any) => {
                                      const isEquipped = hash === socket.plugHash;
 
                                      return (
@@ -424,12 +535,19 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
 
     // --- Weapon/Armor View: Column or Single ---
     // If no options (or just 1 which is equipped), show single icon
-        if (finalOptionHashes.length <= 1) {
+    // Actually visibleOptions might have length 1 even if others exist but are hidden.
+    // If !showAll, we definitely just show the single one unless isSubclass.
+        if (visibleOptions.length <= 1) {
+            const single = visibleOptions[0];
+            // If empty, fallback to equipped plug data (passed as prop 'plug')
+            const displayPlug = single ? single.def : plug;
+            if (!displayPlug) return null;
+
          return (
-            <div className="w-16 h-16 md:w-20 md:h-20 border border-white/10 bg-black/40 rounded-sm overflow-hidden flex items-center justify-center relative group/socket" title={plug.displayProperties?.name}>
-                {plug.displayProperties?.icon && (
+            <div className="w-16 h-16 md:w-20 md:h-20 border border-white/10 bg-black/40 rounded-sm overflow-hidden flex items-center justify-center relative group/socket" title={displayPlug.displayProperties?.name}>
+                {displayPlug.displayProperties?.icon && (
                     <Image 
-                        src={getBungieImage(plug.displayProperties.icon)} 
+                        src={getBungieImage(displayPlug.displayProperties.icon)} 
                         fill 
                         sizes="80px"
                         className="object-cover opacity-80 group-hover/socket:opacity-100 transition-opacity" 
@@ -438,7 +556,7 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
                 )}
                  {/* Hover Info */}
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/socket:opacity-100 transition-opacity flex items-center justify-center text-center p-1 pointer-events-none">
-                    <span className="text-[10px] font-bold text-white line-clamp-2">{plug.displayProperties?.name}</span>
+                    <span className="text-[10px] font-bold text-white line-clamp-2">{displayPlug.displayProperties?.name}</span>
                 </div>
             </div>
          );
@@ -447,10 +565,7 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass }: any
     // Show Column of Options
     return (
         <div className="flex flex-col gap-2">
-            {finalOptionHashes.map((hash) => {
-                const def = optionDefs[hash];
-                if (!def) return <div key={hash} className="w-16 h-16 md:w-20 md:h-20 bg-white/5 animate-pulse rounded-sm" />;
-                
+            {visibleOptions.map(({ hash, def }: any) => {
                 const isEquipped = hash === socket.plugHash;
 
                 return (

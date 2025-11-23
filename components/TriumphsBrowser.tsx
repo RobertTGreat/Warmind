@@ -6,6 +6,7 @@ import { getBungieImage, bungieApi, endpoints } from '@/lib/bungie';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
+import { ScrollingText } from '@/components/ScrollingText';
 
 interface TriumphsBrowserProps {
     rootHash: number;
@@ -17,6 +18,8 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+
+    const [showCompleted, setShowCompleted] = useState(true);
 
     const { node, isLoading, isError } = usePresentationNode(currentHash);
     const { profile } = useDestinyProfile();
@@ -132,30 +135,43 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
 
     return (
         <div className="space-y-6">
-             {/* Header & Search */}
-             <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
-                <div className="flex-1 w-full">
-                    <form onSubmit={performSearch} className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input 
-                            type="text"
-                            placeholder="Search triumphs..."
-                            className="w-full bg-black/20 border border-white/10 py-2 pl-10 pr-10 text-white placeholder:text-slate-500 focus:outline-none focus:border-destiny-gold transition-colors rounded-none"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                        {searchQuery && (
-                            <button 
-                                type="button"
-                                onClick={clearSearch}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                        )}
-                    </form>
-                </div>
-             </div>
+            {/* Header & Search */}
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
+               <div className="flex-1 w-full">
+                   <form onSubmit={performSearch} className="relative">
+                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                       <input 
+                           type="text"
+                           placeholder="Search triumphs..."
+                           className="w-full bg-black/20 border border-white/10 py-2 pl-10 pr-10 text-white placeholder:text-slate-500 focus:outline-none focus:border-destiny-gold transition-colors rounded-none"
+                           value={searchQuery}
+                           onChange={(e) => setSearchQuery(e.target.value)}
+                       />
+                       {searchQuery && (
+                           <button 
+                               type="button"
+                               onClick={clearSearch}
+                               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                           >
+                               <X className="w-4 h-4" />
+                           </button>
+                       )}
+                   </form>
+               </div>
+               
+               <button
+                   onClick={() => setShowCompleted(!showCompleted)}
+                   className={cn(
+                       "flex items-center gap-2 px-4 py-2 border transition-all rounded-none min-w-[160px] justify-center",
+                       showCompleted ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold" : "bg-black/20 border-white/10 text-slate-500 hover:text-slate-300"
+                   )}
+               >
+                   <div className={cn("w-2 h-2 rounded-full", showCompleted ? "bg-destiny-gold" : "bg-slate-600")} />
+                   <span className="text-sm font-bold uppercase tracking-wider">
+                       {showCompleted ? "All Triumphs" : "Incomplete Only"}
+                   </span>
+               </button>
+            </div>
 
             {/* Search Results Mode */}
             {searchQuery ? (
@@ -166,11 +182,12 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
                     ) : searchResults.length > 0 ? (
                         <div className="grid grid-cols-1 gap-2">
                              {searchResults.map((result) => (
-                                 <RecordItem 
-                                     key={result.hash} 
-                                     hash={result.hash} 
-                                     profile={profile} 
-                                 />
+                                <RecordItem 
+                                    key={result.hash} 
+                                    hash={result.hash} 
+                                    profile={profile} 
+                                    showCompleted={showCompleted}
+                                />
                              ))}
                         </div>
                     ) : (
@@ -197,9 +214,9 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
                              {history.length > 0 && (
                                  <>
                                      <ChevronRight className="w-4 h-4 text-slate-600" />
-                                     <span className="text-destiny-gold font-bold truncate max-w-[200px]">
-                                         {node?.displayProperties?.name}
-                                     </span>
+                                     <div className="text-destiny-gold font-bold max-w-[200px] overflow-hidden">
+                                        <ScrollingText>{node?.displayProperties?.name}</ScrollingText>
+                                     </div>
                                  </>
                              )}
                          </div>
@@ -247,6 +264,7 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
                                     key={child.recordHash} 
                                     hash={child.recordHash} 
                                     profile={profile}
+                                    showCompleted={showCompleted}
                                 />
                             ))}
                         </div>
@@ -321,7 +339,7 @@ function PresentationNodeCard({ hash, onClick, profile }: { hash: number, onClic
             className="group relative flex items-center gap-4 p-4 bg-gray-800/40 border border-white/10 hover:bg-gray-700/60 hover:border-destiny-gold/30 transition-all cursor-pointer rounded-none"
         >
             {node.displayProperties?.hasIcon && (
-                <div className="w-14 h-14 flex-shrink-0 bg-black/30 p-1 border border-white/5 rounded-none overflow-hidden relative">
+                <div className="w-14 h-14 shrink-0 bg-black/30 p-1 border border-white/5 rounded-none overflow-hidden relative">
                     <Image 
                         src={getBungieImage(node.displayProperties.icon)} 
                         fill 
@@ -332,9 +350,9 @@ function PresentationNodeCard({ hash, onClick, profile }: { hash: number, onClic
                 </div>
             )}
             <div className="overflow-hidden flex-1">
-                <h3 className="font-bold text-lg text-white truncate group-hover:text-destiny-gold transition-colors">
+                <ScrollingText className="font-bold text-lg text-white group-hover:text-destiny-gold transition-colors">
                     {node.displayProperties?.name}
-                </h3>
+                </ScrollingText>
                 {completion > 0 && (
                     <div className="mt-2">
                          <div className="flex justify-between text-xs text-slate-400 mb-1">
@@ -352,7 +370,7 @@ function PresentationNodeCard({ hash, onClick, profile }: { hash: number, onClic
     );
 }
 
-function RecordItem({ hash, profile }: { hash: number, profile: any }) {
+function RecordItem({ hash, profile, showCompleted }: { hash: number, profile: any, showCompleted: boolean }) {
     const { record, isLoading } = useRecord(hash);
 
     if (isLoading) return <div className="h-20 bg-white/5 animate-pulse rounded-none" />;
@@ -385,6 +403,7 @@ function RecordItem({ hash, profile }: { hash: number, profile: any }) {
     const isEntitled = (state & 2) === 2; // Can redeem
 
     if (isInvisible) return null;
+    if (isCompleted && !showCompleted) return null;
 
     const objectives = recordComponent?.objectives || [];
     const score = record.completionInfo?.ScoreValue || 0;
@@ -393,11 +412,10 @@ function RecordItem({ hash, profile }: { hash: number, profile: any }) {
     return (
         <div className={cn(
             "relative flex flex-col sm:flex-row gap-4 p-4 border transition-all rounded-none",
-            isCompleted ? "bg-gray-800/60 border-destiny-gold/20" : "bg-gray-800/20 border-white/5",
-            isEntitled && "animate-pulse border-destiny-gold" // Highlight claimable
+            isCompleted ? "bg-gray-800/60 border-destiny-gold/20" : "bg-gray-800/20 border-white/5"
         )}>
             {/* Icon */}
-            <div className="flex-shrink-0 w-12 h-12 bg-slate-900 border border-white/10 flex items-center justify-center rounded-none self-start">
+            <div className="shrink-0 w-12 h-12 bg-slate-900 border border-white/10 flex items-center justify-center rounded-none self-start">
                 {record.displayProperties?.hasIcon ? (
                     <Image 
                         src={getBungieImage(record.displayProperties.icon)} 
@@ -412,11 +430,11 @@ function RecordItem({ hash, profile }: { hash: number, profile: any }) {
             </div>
 
             <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h4 className={cn("font-bold text-white truncate", isCompleted && "text-destiny-gold")}>
+                <div className="flex items-start justify-between gap-4 overflow-hidden">
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                        <ScrollingText className={cn("font-bold text-white", isCompleted && "text-destiny-gold")}>
                             {isObscured ? "Secret Triumph" : record.displayProperties?.name}
-                        </h4>
+                        </ScrollingText>
                         <p className="text-sm text-slate-400 line-clamp-2 mt-1">
                              {isObscured ? "???" : record.displayProperties?.description}
                         </p>
@@ -430,11 +448,6 @@ function RecordItem({ hash, profile }: { hash: number, profile: any }) {
                         {score > 0 && (
                             <div className="text-xs font-bold text-destiny-gold bg-black/40 px-2 py-1 rounded-none border border-white/5 whitespace-nowrap">
                                 {score} pts
-                            </div>
-                        )}
-                         {isEntitled && !isRedeemed && (
-                            <div className="text-[10px] uppercase font-bold text-black bg-destiny-gold px-2 py-0.5 rounded-sm animate-pulse">
-                                Claim In-Game
                             </div>
                         )}
                     </div>

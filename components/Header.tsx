@@ -7,7 +7,8 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Shield, Book, Swords, User, Scroll, Activity, Trophy, UserCircle, LogOut, Globe } from 'lucide-react';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
-import { logout } from '@/lib/bungie';
+import { logout, getBungieImage } from '@/lib/bungie';
+import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 
 const navItems = [
   { name: 'Clan', href: '/clan', icon: Shield },
@@ -16,6 +17,7 @@ const navItems = [
   { name: 'Portal', href: '/portal', icon: Globe },
   { name: 'Character', href: '/character', icon: User },
   { name: 'Quests', href: '/quests', icon: Scroll },
+  { name: 'Activity', href: '/activity', icon: Activity },
 ];
 
 import { useEffect, useState } from 'react';
@@ -24,6 +26,20 @@ export function Header() {
   const pathname = usePathname();
   const { stats, displayName, isLoggedIn } = useDestinyProfile();
   const [mounted, setMounted] = useState(false);
+
+  // Fetch emblem definition to get secondaryOverlay
+  const emblemHash = stats?.emblemHash;
+  // Use useItemDefinitions to fetch the emblem definition
+  const { definitions: emblemDefs } = useItemDefinitions(emblemHash ? [emblemHash] : []);
+  const emblemDef = emblemHash ? emblemDefs[emblemHash] : null;
+
+  // Prefer secondaryOverlay, fallback to secondarySpecial, secondaryIcon, then stats.emblemPath
+  // secondaryOverlay is usually the transparent "character menu" version of the emblem
+  const emblemImage = 
+      (emblemDef?.secondaryOverlay && getBungieImage(emblemDef.secondaryOverlay)) ||
+      (emblemDef?.secondarySpecial && getBungieImage(emblemDef.secondarySpecial)) ||
+      (emblemDef?.secondaryIcon && getBungieImage(emblemDef.secondaryIcon)) ||
+      stats?.emblemPath;
 
   useEffect(() => {
     setMounted(true);
@@ -42,14 +58,16 @@ export function Header() {
            {isLoggedIn && stats ? (
                <div className="flex items-center gap-3 animate-in fade-in duration-500">
                    {/* Emblem Icon */}
-                   <div className="absolute top-0 left-0 w-24 h-24 rounded-sm overflow-hidden border border-white/10 shadow-xl z-10">
-                       <Image 
-                        src={stats.emblemPath} 
-                        alt="Emblem" 
-                        fill 
-                        sizes="96px"
-                        className="object-cover" 
-                       />
+                   <div className="absolute top-0 left-0 w-24 h-24 rounded-sm overflow-hidden shadow-xl z-10">
+                       {emblemImage && (
+                           <Image 
+                            src={emblemImage} 
+                            alt="Emblem" 
+                            fill 
+                            sizes="96px"
+                            className="object-cover" 
+                           />
+                       )}
                    </div>
                    
                    {/* Text Stats */}

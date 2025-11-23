@@ -68,15 +68,30 @@ interface ItemTooltipProps {
   seasonBadge?: string;
   elementIcon?: string;
   stats?: Record<string, { value: number, maximum: number }>;
-  itemHash?: number;
-  perks?: any[];
-  mods?: any[];
-  enhancementTier?: number | null;
-  tier?: string | null;
-  initialPosition?: { x: number, y: number };
-  objectives?: any[]; // Instance objectives
-  itemDef?: any; // Full item definition
+    itemHash?: number;
+    perks?: any[];
+    mods?: any[];
+    shaders?: any[];
+    ornaments?: any[];
+    killEffects?: any[];
+    killTrackers?: any[];
+    enhancementTier?: number | null;
+    tier?: string | null;
+    initialPosition?: { x: number, y: number };
+    objectives?: any[]; // Instance objectives
+    itemDef?: any; // Full item definition
+    fixedPosition?: boolean; // If true, tooltip won't follow mouse
+    detailedPerks?: { // New structure for detailed perk grid
+        socketIndex: number;
+        activePlug: any;
+        options: any[]; // Array of plug definitions
+    }[]; 
+    isShiny?: boolean;
+    onPlugClick?: (socketIndex: number, plugHash: number) => void;
+    containerRef?: React.RefObject<HTMLDivElement | null>;
 }
+
+import { ScrollingText } from "@/components/ScrollingText";
 
 export function ItemTooltip({ 
     name, 
@@ -85,21 +100,30 @@ export function ItemTooltip({
     icon, 
     power, 
     screenshot, 
-    flavorText,
-    seasonBadge,
+    flavorText, 
+    seasonBadge, 
     elementIcon,
     stats,
     perks = [],
     mods = [],
+    shaders = [],
+    ornaments = [],
+    killEffects = [],
+    killTrackers = [],
     enhancementTier,
     tier,
     initialPosition,
     objectives,
     itemDef,
-    itemHash: itemTooltipItemHash
+    itemHash: itemTooltipItemHash,
+    fixedPosition = false,
+    detailedPerks,
+    isShiny,
+    onPlugClick,
+    containerRef
 }: ItemTooltipProps) {
   const [position, setPosition] = useState<{x: number, y: number} | null>(initialPosition || null);
-  
+
   // Calculate Hashes for Data Fetching
   const objectiveHashes = useMemo(() => objectives?.map((o: any) => o.objectiveHash) || [], [objectives]);
   const stepHashes = useMemo(() => itemDef?.setData?.itemList?.map((i: any) => i.itemHash) || [], [itemDef]);
@@ -109,6 +133,11 @@ export function ItemTooltip({
   const { definitions: stepDefs } = useItemDefinitions(stepHashes);
 
   useEffect(() => {
+    if (fixedPosition) {
+        if (initialPosition) setPosition(initialPosition);
+        return;
+    }
+
     const handleMouseMove = (e: MouseEvent) => {
       // Offset tooltip slightly from cursor
       // Ensure it stays within viewport
@@ -135,7 +164,7 @@ export function ItemTooltip({
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  }, [fixedPosition, initialPosition]);
 
   const rarityColors = {
       'Exotic': { text: 'text-yellow-400', bg: 'bg-yellow-500', border: 'border-yellow-500' },
@@ -162,7 +191,11 @@ export function ItemTooltip({
 
   return createPortal(
     <div 
-        className="fixed z-100 pointer-events-none w-[350px] flex flex-col shadow-2xl overflow-hidden font-sans backdrop-blur-xl"
+        ref={containerRef}
+        className={cn(
+            "fixed z-100 w-[350px] flex flex-col shadow-2xl font-sans backdrop-blur-xl",
+            fixedPosition ? "pointer-events-auto" : "pointer-events-none"
+        )}
         style={{ 
             left: position.x, 
             top: position.y,
@@ -172,19 +205,24 @@ export function ItemTooltip({
     >
         {/* Header */}
         <div className={cn("relative h-14 flex items-center px-4 gap-3 overflow-hidden", rarityColors.bg)}>
-            {/* Header Pattern Overlay */}
-            <div className="absolute inset-0 opacity-20 mix-blend-overlay">
-                 <Image 
-                    src="https://www.bungie.net/img/theme/destiny/bgs/header_pattern.png" 
-                    alt="Header Pattern" 
-                    fill 
-                    sizes="350px"
-                    className="object-cover"
-                 />
-            </div>
+            {/* Header Pattern Overlay (CSS Pattern) */}
+            <div 
+                className="absolute inset-0 opacity-20 mix-blend-overlay" 
+                style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E")`,
+                    backgroundSize: '20px 20px'
+                }}
+            />
+
+            {/* Moving Perlin Noise (Holofoil Effect) - Only for Shiny Items */}
+            {isShiny && (
+                <div className="absolute inset-0 opacity-30 mix-blend-overlay pointer-events-none bg-noise-animated z-0" />
+            )}
             
-            <div className="relative z-10 flex-1 min-w-0">
-                <h2 className="font-bold text-white uppercase tracking-widest text-xl truncate drop-shadow-md">{name}</h2>
+            <div className="relative z-10 flex-1 min-w-0 overflow-hidden">
+                <ScrollingText className="font-bold text-white uppercase tracking-widest text-xl drop-shadow-md">
+                    {name}
+                </ScrollingText>
                 <p className="text-[10px] text-white/90 uppercase tracking-wider font-bold truncate">{rarity} / {itemType}</p>
             </div>
 
@@ -193,22 +231,24 @@ export function ItemTooltip({
                 {/* Tier Box (New) */}
                 {tier && (
                     <div className={cn(
-                        "flex flex-col items-center justify-center px-1.5 py-0.5 rounded-sm border",
-                        tier === "Tier 5" ? "bg-destiny-gold/20 border-destiny-gold" : "bg-slate-800/80 border-white/20"
+                        "flex flex-col items-center justify-center px-1.5 py-0.5"
                     )}>
                          <span className={cn(
                              "text-[8px] uppercase font-bold leading-none tracking-widest",
                              tier === "Tier 5" ? "text-destiny-gold" : "text-slate-400"
                          )}>Tier</span>
                          <span className={cn(
-                             "text-sm font-bold leading-none",
+                             "text-sm font-bold leading-none flex items-center gap-1",
                              tier === "Tier 5" ? "text-destiny-gold" : "text-white"
-                         )}>{tier.replace("Tier ", "")}</span>
+                         )}>
+                             {tier.replace("Tier ", "")} 
+                             <span className="text-[10px]">✦</span>
+                         </span>
                     </div>
                 )}
 
                 {enhancementTier !== undefined && enhancementTier !== null && !tier && (
-                    <div className="flex flex-col items-center justify-center bg-black/40 border border-destiny-gold/50 px-1.5 py-0.5 rounded-sm">
+                    <div className="flex flex-col items-center justify-center bg-black/40 px-1.5 py-0.5 rounded-sm">
                         <span className="text-[8px] text-destiny-gold uppercase font-bold leading-none tracking-widest">Tier</span>
                         <span className="text-sm font-bold text-destiny-gold leading-none">{enhancementTier}</span>
                     </div>
@@ -390,8 +430,105 @@ export function ItemTooltip({
                     </div>
                 )}
 
-                {/* Perks / Traits */}
-                {perks.length > 0 && (
+                {/* Perks / Traits - Detailed Grid View & Cosmetics */}
+                {(detailedPerks && detailedPerks.length > 0) || (mods.length + shaders.length + ornaments.length + killEffects.length + killTrackers.length > 0) ? (
+                    <div className="mt-2 border-t border-white/10 pt-2 space-y-2">
+                        <h4 className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Perks & Traits</h4>
+                        <div className="flex items-start gap-4">
+                            {/* Perks Scroll Area */}
+                            {detailedPerks && detailedPerks.length > 0 && (
+                                <div className="flex-1 flex flex-row gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:none]">
+                                    {detailedPerks.map((socket, idx) => (
+                                         <div key={idx} className="flex flex-col gap-2 shrink-0">
+                                            {/* Intrinsic / Active Plug usually first */}
+                                            {socket.options.length > 0 ? (
+                                                socket.options.map((plug: any, i: number) => {
+                                                   const isSelected = plug.hash === socket.activePlug?.hash;
+                                                   const uniqueKey = `${plug.hash}-${i}`; // Ensure unique key
+                                                   return (
+                                                       <div 
+                                                            key={uniqueKey} 
+                                                            className={cn(
+                                                                "relative group/perkicon z-0 hover:z-50",
+                                                                onPlugClick ? "cursor-pointer" : ""
+                                                            )}
+                                                            onClick={() => {
+                                                                if (onPlugClick) {
+                                                                    onPlugClick(socket.socketIndex, plug.hash);
+                                                                }
+                                                            }}
+                                                        >
+                                                             <div className={cn(
+                                                                 "w-8 h-8 rounded-full overflow-hidden relative transition-all",
+                                                                 isSelected 
+                                                                    ? "opacity-100 shadow-[0_0_16px_#eebc22] bg-transparent" 
+                                                                    : "border border-white/10 opacity-40 hover:opacity-100 hover:border-white/40 bg-black/20"
+                                                             )}>
+                                                                 <Image 
+                                                                     src={getBungieImage(plug.displayProperties?.icon)} 
+                                                                     width={32}
+                                                                     height={32}
+                                                                     className="object-cover" 
+                                                                     alt="" 
+                                                                 />
+                                                             </div>
+                                                             
+                                                             {/* Hover Tooltip for Icon */}
+                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-[#0f0f0f] border border-white/20 p-3 rounded shadow-2xl pointer-events-none opacity-0 group-hover/perkicon:opacity-100 transition-opacity z-50 backdrop-blur-md">
+                                                                 <p className="text-sm font-bold text-destiny-gold mb-0.5 leading-tight">{plug.displayProperties?.name}</p>
+                                                                 <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">{plug.itemTypeDisplayName}</p>
+                                                                 <p className="text-xs text-slate-300 leading-relaxed">{plug.displayProperties?.description}</p>
+                                                             </div>
+                                                        </div>
+                                                    );
+                                                 })
+                                             ) : (
+                                                 // Fallback if no options but we have active
+                                                 socket.activePlug && (
+                                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10">
+                                                        <Image 
+                                                            src={getBungieImage(socket.activePlug.displayProperties?.icon)} 
+                                                            width={32}
+                                                            height={32}
+                                                            className="object-cover" 
+                                                            alt="" 
+                                                        />
+                                                    </div>
+                                                 )
+                                             )}
+                                         </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Cosmetics Grid (Right Side) */}
+                            {(mods.length > 0 || shaders.length > 0 || ornaments.length > 0 || killEffects.length > 0 || killTrackers.length > 0) && (
+                                <div className="grid grid-cols-2 gap-1.5 shrink-0 pt-0.5 border-l border-white/10 pl-3">
+                                    {[...mods, ...shaders, ...ornaments, ...killEffects, ...killTrackers].map((plug, i) => (
+                                        <div key={i} className="group/cosmetic relative">
+                                            <div className="w-8 h-8 border border-white/20 bg-black/40 overflow-hidden shadow-sm hover:border-white/60 transition-colors">
+                                                <Image 
+                                                    src={getBungieImage(plug.displayProperties?.icon)} 
+                                                    width={32}
+                                                    height={32}
+                                                    className="object-cover"
+                                                    alt="" 
+                                                />
+                                            </div>
+                                            {/* Cosmetic Tooltip */}
+                                            <div className="absolute right-full mr-2 top-0 w-48 bg-[#0f0f0f] border border-white/20 p-2 rounded shadow-xl pointer-events-none opacity-0 group-hover/cosmetic:opacity-100 transition-opacity z-100 backdrop-blur-md">
+                                                <p className="text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
+                                                <p className="text-[9px] text-slate-400 uppercase">{plug.itemTypeDisplayName}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    /* Standard Perks List (Legacy/Hover Behavior) */
+                    perks.length > 0 && (
                     <div className="mt-2 border-t border-white/10 divide-y divide-white/10">
                         {perks.map((plug: any, i) => (
                             <div key={i} className="flex items-start gap-3 group/perk py-3">
@@ -427,30 +564,8 @@ export function ItemTooltip({
                             </div>
                         ))}
                     </div>
-                )}
+                ))}
 
-                {/* Mods */}
-                {mods.length > 0 && (
-                    <div className="pt-2 mt-2 border-t border-white/10">
-                        <h4 className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Mods</h4>
-                        <div className="flex flex-wrap gap-2">
-                            {mods.map((plug: any, i) => (
-                                <div key={i} className="flex items-center gap-2 bg-slate-800/50 p-1 pr-2 rounded-full border border-white/10">
-                                    <div className="w-6 h-6 bg-slate-900 rounded-full overflow-hidden relative">
-                                        <Image 
-                                            src={getBungieImage(plug.displayProperties?.icon)} 
-                                            width={24}
-                                            height={24}
-                                            className="object-cover" 
-                                            alt="" 
-                                        />
-                                    </div>
-                                    <span className="text-[10px] font-bold text-slate-300">{plug.displayProperties?.name}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     </div>,

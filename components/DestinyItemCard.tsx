@@ -27,6 +27,8 @@ interface DestinyItemCardProps {
     hideBorder?: boolean;
     minimal?: boolean;
     showClassSymbolOnMismatch?: boolean;
+    size?: 'small' | 'medium' | 'large';
+    reusablePlugs?: any[]; // Passed from profile.itemComponents.reusablePlugs
 }
 
 // Element Icons (Updated with transparent PNGs where possible)
@@ -62,7 +64,9 @@ export function DestinyItemCard({
     hidePower,
     hideBorder,
     minimal,
-    showClassSymbolOnMismatch
+    showClassSymbolOnMismatch,
+    size = 'medium',
+    reusablePlugs
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
   const { data: defResponse, error } = useSWR(
     !definition && itemHash ? endpoints.getItemDefinition(itemHash) : null,
@@ -85,23 +89,146 @@ export function DestinyItemCard({
   const [initialTooltipPos, setInitialTooltipPos] = useState<{x: number, y: number} | undefined>(undefined);
     
   // Calculate plug hashes to fetch
-  // UPDATED: Fetch ALL active plugs immediately to ensure Tier detection works without hover
+  // Fetch ALL active plugs AND reusable plugs (options)
   const hashesToFetch = useMemo(() => {
-      const allHashes = socketsData?.sockets
-          ?.filter((s: any) => s.isEnabled && s.isVisible && s.plugHash)
-          .map((s: any) => s.plugHash) || [];
-          
-      const intrinsic = socketsData?.sockets?.[0]?.plugHash;
+      const allHashes: number[] = [];
       
-      // Ensure intrinsic is in the list
-      if (intrinsic && !allHashes.includes(intrinsic)) {
-          allHashes.push(intrinsic);
+      if (socketsData?.sockets) {
+          socketsData.sockets.forEach((s: any, index: number) => {
+              // Active plug
+              if (s.plugHash) allHashes.push(s.plugHash);
+              // Reusable plugs (options) - Check prop or socket
+              const options = reusablePlugs?.[index] || s.reusablePlugs;
+              if (options) {
+                  options.forEach((rp: any) => allHashes.push(rp.plugItemHash));
+              }
+          });
       }
       
-      return Array.from(new Set(allHashes)) as number[];
-  }, [socketsData]);
+      const intrinsic = socketsData?.sockets?.[0]?.plugHash;
+      if (intrinsic) allHashes.push(intrinsic);
+      
+      return Array.from(new Set(allHashes));
+  }, [socketsData, reusablePlugs]);
 
   const { definitions: plugDefs } = useItemDefinitions(hashesToFetch);
+
+  // Create a resolved list of relevant sockets for the Context Menu Tooltip
+  const resolvedSockets = useMemo(() => {
+      if (!socketsData?.sockets || !plugDefs) return [];
+      
+      return socketsData.sockets
+          .map((s: any) => {
+              if (!s.plugHash) return null;
+              const def = plugDefs[s.plugHash];
+              if (!def) return null;
+              
+              const typeName = def.itemTypeDisplayName?.toLowerCase() || "";
+              const category = def.plug?.plugCategoryIdentifier || "";
+              
+              // Filter out cosmetics and empty sockets
+              if (typeName.includes("shader") || typeName.includes("ornament")) return null;
+              if (typeName.includes("masterwork") && !category.includes("masterwork")) return null; // Keep actual masterworks, filter weird ones if any
+              
+              // We want: Perks, Barrels, Mags, Mods
+              // This is a broad filter to include most functional items
+              return { socket: s, def };
+          })
+          .filter((item: { socket: any, def: any } | null): item is { socket: any, def: any } => !!item);
+  }, [socketsData, plugDefs]);
+
+  // Determine Shiny Status (Heuristic: Legendary Weapon + Double Perks in both Trait Columns)
+  // Or check for specific ornament if we had a list.
+  // Using Multi-Perk Logic:
+  const isShiny = useMemo(() => {
+      // 1. Check API property first if available (Bungie added isHolofoil in later updates for BRAVE weapons)
+      if (def?.isHolofoil) return true;
+
+      // 2. Fallback Heuristic Logic
+      if (!def || def.itemType !== 3 || def.inventory?.tierTypeName !== 'Legendary') return false;
+      if (!socketsData?.sockets || !plugDefs) return false;
+
+      let multiPerkColumns = 0;
+      socketsData.sockets.forEach((socket: any) => {
+          if (!socket.plugHash) return;
+          const plug = plugDefs[socket.plugHash];
+          if (!plug) return;
+          
+          const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+          // Check for gameplay sockets (traits, barrels, mags)
+           const isGameplaySocket = 
+                typeName.includes("trait") || 
+                typeName.includes("magazine") || 
+                typeName.includes("barrel") ||
+                typeName.includes("sight");
+
+           const options = reusablePlugs?.[socketsData.sockets.indexOf(socket)] || socket.reusablePlugs;
+           if (isGameplaySocket && options?.length > 1) {
+               multiPerkColumns++;
+           }
+      });
+
+      // BRAVE Shiny weapons have double perks in at least 2 columns (usually 3 and 4)
+      return multiPerkColumns >= 2;
+  }, [def, socketsData, plugDefs, reusablePlugs]);
+
+  // Calculate detailed perks for tooltip
+  const detailedPerks = useMemo(() => {
+    if (!socketsData?.sockets || !plugDefs) return undefined;
+    
+    const perksList: any[] = [];
+    
+    socketsData.sockets.forEach((s: any, idx: number) => {
+        if (!s.plugHash) return;
+        const activePlug = plugDefs[s.plugHash];
+        if (!activePlug) return;
+
+        const typeName = activePlug.itemTypeDisplayName?.toLowerCase() || "";
+        const category = activePlug.plug?.plugCategoryIdentifier || "";
+        const name = activePlug.displayProperties?.name?.toLowerCase() || "";
+
+        // Filter for perks/traits/barrels/mags/sights/scopes
+        const isPerk = typeName.includes("trait") || 
+                       typeName.includes("perk") || 
+                       category.includes("trait") || 
+                       category.includes("frames") ||
+                       typeName.includes("barrel") ||
+                       typeName.includes("magazine") ||
+                       typeName.includes("sight") || 
+                       typeName.includes("scope");
+
+        // Exclude mods, shaders, ornaments, masterworks, trackers
+        if (typeName.includes("mod") || 
+            typeName.includes("shader") || 
+            typeName.includes("ornament") || 
+            typeName.includes("masterwork") ||
+            typeName.includes("tracker") ||
+            name.includes("kill tracker")) return;
+        
+        if (isPerk) {
+             // Gather options
+             let options: any[] = [];
+             const socketOptions = reusablePlugs?.[idx] || s.reusablePlugs;
+             
+             if (socketOptions) {
+                 options = socketOptions.map((rp: any) => plugDefs[rp.plugItemHash]).filter(Boolean);
+             } else {
+                 options = [activePlug];
+             }
+             
+             // Only add if we have valid options
+             if (options.length > 0) {
+                perksList.push({
+                    socketIndex: idx,
+                    activePlug,
+                    options
+                });
+             }
+        }
+    });
+    
+    return perksList.length > 0 ? perksList : undefined;
+  }, [socketsData, plugDefs, reusablePlugs]);
 
   useEffect(() => {
       if (def && onDefinitionLoaded) {
@@ -161,14 +288,92 @@ export function DestinyItemCard({
   const damageTypeHash = instanceData?.damageTypeHash || def.defaultDamageTypeHash;
   const elementIcon = ELEMENT_ICONS[damageTypeHash];
 
+  // Filter Plugs and Find Masterwork Status
+  const perks: any[] = [];
+  const mods: any[] = [];
+  const shaders: any[] = [];
+  const ornaments: any[] = [];
+  const killEffects: any[] = []; // Transmat / Kill Effects
+  const killTrackers: any[] = []; // Kill Trackers
+  let enhancementTier: number | null = null;
+
+  if (socketsData?.sockets && plugDefs) {
+      socketsData.sockets.forEach((socket: any) => {
+          if (!socket.plugHash) return;
+          const plug = plugDefs[socket.plugHash];
+          if (!plug) return;
+
+          const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+          const category = plug.plug?.plugCategoryIdentifier || "";
+          const name = plug.displayProperties?.name?.toLowerCase() || "";
+          
+          // Check for Masterwork / Enhancement Tier
+          // We check this, but we don't return immediately because some plugs might be multi-purpose or we might want to categorize them
+          if (typeName.includes("masterwork") || category.includes("masterwork")) {
+             const tierMatch = plug.displayProperties?.name?.match(/Tier (\d+)/);
+             if (tierMatch) {
+                 enhancementTier = parseInt(tierMatch[1], 10);
+             }
+             // If it's just a masterwork, we usually don't show it in the grid, 
+             // but let's continue to check if it falls into other categories (unlikely but safe)
+          }
+
+          let isCosmetic = false;
+
+          if (typeName.includes("shader")) {
+              shaders.push(plug);
+              isCosmetic = true;
+          } 
+          
+          if (typeName.includes("ornament") || category.includes("skins")) {
+              ornaments.push(plug);
+              isCosmetic = true;
+          } 
+          
+          if (name.includes("kill tracker") || typeName.includes("tracker")) {
+              killTrackers.push(plug);
+              isCosmetic = true;
+          } 
+          
+          if (typeName.includes("transmat")) {
+              killEffects.push(plug);
+              isCosmetic = true;
+          }
+          
+          if (!isCosmetic) {
+              // Mods Logic - Check strictly for "mod" in type
+              if (typeName.includes("mod")) {
+                  // Filter out Empty sockets
+                  if (!name.includes("empty") && !name.includes("socket")) {
+                      mods.push(plug);
+                  }
+              }
+              // Perks Logic - Catch-all for remaining traits/perks
+              else if (typeName.includes("trait") || typeName.includes("perk") || category.includes("trait") || category.includes("frames")) {
+                  perks.push(plug);
+              }
+          }
+      });
+  }
+
   // Rarity Colors (Border)
-  const rarityBorder = hideBorder ? 'border-transparent' : ({
+  // Check bit 2 (value 4) for Masterwork state in instanceData, OR if Tier is 10
+  const isMasterwork = (instanceData ? (instanceData.state & 4) === 4 : false) || (enhancementTier === 10);
+
+  // Ensure enhancement tier reflects masterwork state if not found via plugs
+  if (isMasterwork && (!enhancementTier || enhancementTier < 10)) {
+      enhancementTier = 10;
+  }
+
+  const rarityBorder = hideBorder ? 'border-transparent' : (
+      isMasterwork ? 'border-destiny-gold shadow-[0_0_4px_rgba(227,206,98,0.5)]' :
+      ({
       'Exotic': 'border-yellow-500',
       'Legendary': 'border-purple-500',
       'Rare': 'border-blue-500',
       'Common': 'border-green-500',
       'Basic': 'border-white/20'
-  }[rarity as string] || 'border-white/20');
+  }[rarity as string] || 'border-white/20'));
 
   // Merge Stats (Prefer Instance over Definition)
   const stats = { ...(def.stats?.stats || {}) };
@@ -177,44 +382,10 @@ export function DestinyItemCard({
           stats[hash] = { ...stats[hash], value: stat.value };
       });
   }
-
-  // Filter Plugs into Perks and Mods
-  const perks: any[] = [];
-  const mods: any[] = [];
   
-  // Enhancement Tier
-  let enhancementTier: number | null = null;
-
-  // Calculate Tier
-  const tierNumber = getItemTier(def, socketsData, plugDefs);
+  // Calculate Tier (Custom Logic)
+  const tierNumber = getItemTier(def, socketsData, plugDefs, instanceData);
   const tier = tierNumber > 1 ? `Tier ${tierNumber}` : null;
-
-  if (socketsData && plugDefs) {
-      Object.entries(plugDefs).forEach(([hash, plug]: [string, any]) => {
-          if (!plug) return;
-          const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
-          const category = plug.plug?.plugCategoryIdentifier || "";
-          const plugName = plug.displayProperties?.name || "";
-
-          // Check for Masterwork / Enhancement Tier
-          if (typeName.includes("masterwork") || category.includes("masterwork")) {
-             const tierMatch = plug.displayProperties?.name?.match(/Tier (\d+)/);
-             if (tierMatch) {
-                 enhancementTier = parseInt(tierMatch[1], 10);
-             }
-             return;
-          }
-
-          if (typeName.includes("shader") || typeName.includes("ornament")) return;
-          
-          if (typeName.includes("trait") || typeName.includes("perk") || category.includes("trait") || category.includes("frames")) {
-              perks.push(plug);
-          } 
-          else if (typeName.includes("mod")) {
-              mods.push(plug);
-          }
-      });
-  }
 
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -258,6 +429,13 @@ export function DestinyItemCard({
         }
     };
 
+    // Size-based styles
+    const starConfig = {
+        small: { text: 'text-[9px]', top: 'top-3.5', left: 'left-[0.3rem]', gap: 'gap-0' },
+        medium: { text: 'text-[11px]', top: 'top-4.5', left: 'left-[0.38rem]', gap: 'gap-0' },
+        large: { text: 'text-[13px]', top: 'top-5.5', left: 'left-[0.45rem]', gap: 'gap-0' }
+    }[size];
+
     return (
     <>
         <div 
@@ -283,6 +461,7 @@ export function DestinyItemCard({
                   <Image 
                     src={icon} 
                     alt={name || "Item Icon"} 
+                    title=""
                     fill
                     sizes="(max-width: 768px) 15vw, 10vw"
                     className="object-cover"
@@ -309,14 +488,22 @@ export function DestinyItemCard({
                     </div>
                 )}
 
-                {/* Tier Indicator Overlay (Diamonds) */}
+                {/* Tier Indicator Overlay (Stars) */}
                 {tierNumber > 1 && (
-                    <div className="absolute top-8 left-1 z-20 flex flex-col gap-0.5">
+                    <div className={cn(
+                        "absolute z-20 flex flex-col leading-none",
+                        starConfig.top,
+                        starConfig.left,
+                        starConfig.gap
+                    )}>
                          {Array.from({ length: tierNumber }).map((_, i) => (
-                             <div key={i} className={cn(
-                                 "w-1.5 h-1.5 rotate-45 shadow-sm border-[0.5px] border-black/50",
-                                 tierNumber === 5 ? "bg-destiny-gold" : "bg-white"
-                             )} />
+                             <span key={i} className={cn(
+                                 "drop-shadow-md",
+                                 starConfig.text,
+                                 tierNumber === 5 ? "text-destiny-gold" : "text-white"
+                             )}>
+                                ✦
+                             </span>
                          ))}
                     </div>
                 )}
@@ -408,11 +595,17 @@ export function DestinyItemCard({
                 itemHash={itemHash}
                 perks={perks}
                 mods={mods}
+                shaders={shaders}
+                ornaments={ornaments}
+                killEffects={killEffects}
+                killTrackers={killTrackers}
                 enhancementTier={enhancementTier}
                 tier={tier}
                 initialPosition={initialTooltipPos}
                 objectives={objectives}
                 itemDef={def}
+                isShiny={isShiny}
+                detailedPerks={detailedPerks}
             />
         )}
 
@@ -426,6 +619,10 @@ export function DestinyItemCard({
                 itemInstanceId={itemInstanceId}
                 ownerId={ownerId}
                 isLocked={isLocked}
+                itemDef={def}
+                sockets={resolvedSockets}
+                instanceData={instanceData}
+                detailedPerks={detailedPerks}
             />
         )}
     </>

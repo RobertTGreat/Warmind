@@ -89,6 +89,7 @@ export function QuestItemCard({
                     <Image 
                         src={icon} 
                         alt={name} 
+                        title=""
                         fill 
                         sizes="96px"
                         className="object-cover" 

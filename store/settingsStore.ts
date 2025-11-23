@@ -4,12 +4,19 @@ import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 export type IconSize = 'small' | 'medium' | 'large';
 export type SortMethod = 'power' | 'name' | 'rarity' | 'newest';
 
+export interface VaultGroupingOptions {
+    byClass: boolean;
+    byRarity: boolean;
+}
+
 interface SettingsStore {
     iconSize: IconSize;
     sortMethod: SortMethod;
+    vaultGrouping: VaultGroupingOptions;
     favoriteMembers: string[];
     setIconSize: (size: IconSize) => void;
     setSortMethod: (method: SortMethod) => void;
+    setVaultGrouping: (grouping: Partial<VaultGroupingOptions>) => void;
     toggleFavoriteMember: (memberId: string) => void;
 }
 
@@ -44,9 +51,13 @@ export const useSettingsStore = create<SettingsStore>()(
         (set) => ({
             iconSize: 'medium',
             sortMethod: 'power',
+            vaultGrouping: { byClass: false, byRarity: false },
             favoriteMembers: [],
             setIconSize: (size) => set({ iconSize: size }),
             setSortMethod: (method) => set({ sortMethod: method }),
+            setVaultGrouping: (grouping) => set((state) => ({ 
+                vaultGrouping: { ...state.vaultGrouping, ...grouping } 
+            })),
             toggleFavoriteMember: (memberId) => set((state) => {
                 const isFav = state.favoriteMembers.includes(memberId);
                 return {

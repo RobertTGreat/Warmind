@@ -5,6 +5,8 @@
   --foreground: #e2e8f0;
   --accent-gold: #e3ce62; /* D2 Gold */
   --card-bg: rgba(30, 41, 59, 0.7);
+  --font-sans: "helvetica-neue-lt-pro", sans-serif;
+  --font-condensed: "helvetica-neue-lt-pro-cond", sans-serif;
 }
 
 @theme inline {
@@ -12,8 +14,34 @@
   --color-foreground: var(--foreground);
   --color-destiny-gold: var(--accent-gold);
   --color-destiny-dark: #181a21;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-condensed: var(--font-condensed);
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 20s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Moving Perlin Noise Effect */
+@keyframes noise-move {
+  0% { background-position: 0 0; }
+  100% { background-position: 100% 100%; }
+}
+
+.bg-noise-animated {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E");
+  background-size: 150px 150px;
+  animation: noise-move 30s linear infinite;
 }
 
 body {
@@ -39,4 +67,19 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #475569; 
+}
+
+/* 3D Card Flip Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
 }

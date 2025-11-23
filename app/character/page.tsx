@@ -17,6 +17,7 @@ import { bungieApi, endpoints } from '@/lib/bungie';
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { Search, Settings } from "lucide-react";
 import { ItemDetailsOverlay } from "@/components/ItemDetailsOverlay";
+import { LoadoutButton } from "@/components/LoadoutButton";
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -39,6 +40,11 @@ const findMaterialQuantity = (profile: any, characterId: string, hash: number) =
     });
 
     return quantity;
+};
+const CLASS_ICONS: Record<number, string> = {
+    0: '/class-titan.svg',
+    1: '/class-hunter.svg',
+    2: '/class-warlock.svg',
 };
 
 function PowerListItemInternal({ itemHash, power, diff, isMax }: { itemHash: number, power: number, diff: number, isMax: boolean }) {
@@ -76,6 +82,52 @@ function PowerListItem({ itemHash, power, diff, isMax }: { itemHash: number, pow
      );
 }
 
+// Wrapper to handle common item props - Moved outside component
+function ItemCardWrapper({ item, profile, basePower, classFilter, characterId, ownerId }: any) {
+    const instance = profile.itemComponents?.instances?.data?.[item.itemInstanceId];
+    const { iconSize } = useSettingsStore();
+    
+    const diff = undefined; 
+
+    return (
+        <DestinyItemCard
+            itemHash={item.itemHash}
+            itemInstanceId={item.itemInstanceId}
+            instanceData={instance}
+            socketsData={profile.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+            reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
+            className="w-full h-full"
+            powerDiff={diff}
+            classFilter={classFilter}
+            ownerId={ownerId || characterId}
+            showClassSymbolOnMismatch
+            size={iconSize}
+        />
+    );
+}
+
+function CurrencyRow({ name, value, icon }: { name: string, value: number, icon?: string }) {
+    return (
+        <div className="flex justify-between items-center text-sm">
+            <div className="flex items-center gap-2 text-slate-400">
+                {icon ? (
+                    <Image 
+                        src={getBungieImage(icon)} 
+                        width={20} 
+                        height={20} 
+                        className="object-contain opacity-90" 
+                        alt={name} 
+                    />
+                ) : (
+                    <div className="w-5 h-5 bg-slate-800 rounded-full animate-pulse" />
+                )}
+                <span>{name}</span>
+            </div>
+            <span className="font-medium text-slate-200">{value.toLocaleString()}</span>
+        </div>
+    );
+}
+
 export default function CharacterPage() {
     const { profile, stats, isLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
@@ -86,8 +138,14 @@ export default function CharacterPage() {
     // Settings & Filter State
     const [searchQuery, setSearchQuery] = useState("");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const { iconSize, sortMethod, setIconSize, setSortMethod } = useSettingsStore();
+    const { iconSize, sortMethod, vaultGrouping, setIconSize, setSortMethod, setVaultGrouping } = useSettingsStore();
     const settingsRef = useRef<HTMLDivElement>(null);
+
+    const sizeConfig = useMemo(() => ({
+        small: { class: 'w-16 h-16', containerWidth: 'w-[208px]' },
+        medium: { class: 'w-20 h-20', containerWidth: 'w-[256px]' },
+        large: { class: 'w-24 h-24', containerWidth: 'w-[304px]' }
+    }[iconSize] || { class: 'w-20 h-20', containerWidth: 'w-[256px]' }), [iconSize]);
 
     useEffect(() => {
         setMounted(true);
@@ -111,8 +169,13 @@ export default function CharacterPage() {
     // Default to active character from stats
     const activeCharacterId = selectedCharacterId || stats?.characterId;
     const characters = profile?.characters?.data ? Object.values(profile.characters.data) : [];
-    const activeCharacter = characters.find((c: any) => c.characterId === activeCharacterId);
-    const activeClassType = (activeCharacter as any)?.classType ?? stats?.classType;
+    // const activeCharacter = characters.find((c: any) => c.characterId === activeCharacterId);
+    // Active class type calculation moved inside useMemo to prevent hook conditional changes if needed, 
+    // but here it's just value derivation.
+    const activeClassType = useMemo(() => {
+        const char = characters.find((c: any) => c.characterId === activeCharacterId);
+        return (char as any)?.classType ?? stats?.classType;
+    }, [characters, activeCharacterId, stats]);
 
     // Calculate Base Power Level & Best Items
     const { basePowerLevel, bestItems } = useMemo(() => {
@@ -194,80 +257,38 @@ export default function CharacterPage() {
         e.dataTransfer.dropEffect = "move";
     };
 
-    const handleEquipSubclass = async (item: any) => {
-        if (!membershipInfo || !activeCharacterId) return;
-        try {
-            toast.loading("Equipping subclass...");
-            await equipItem(item.itemInstanceId, activeCharacterId, membershipInfo.membershipType);
-            toast.success("Subclass equipped");
-        } catch (err) {
-            toast.error("Failed to equip subclass");
-            console.error(err);
-        }
-    };
+    // Currencies & Materials Calculation
+    const glimmer = findCurrency(profile, CURRENCIES.GLIMMER);
+    const brightDust = findCurrency(profile, CURRENCIES.BRIGHT_DUST);
+    const cores = findMaterialQuantity(profile, activeCharacterId || "", MATERIALS.ENHANCEMENT_CORE);
+    const prisms = findMaterialQuantity(profile, activeCharacterId || "", MATERIALS.ENHANCEMENT_PRISM);
+    const shards = findMaterialQuantity(profile, activeCharacterId || "", MATERIALS.ASCENDANT_SHARD);
+    const alloys = findMaterialQuantity(profile, activeCharacterId || "", MATERIALS.ASCENDANT_ALLOY);
+    const strangeCoins = findMaterialQuantity(profile, activeCharacterId || "", MATERIALS.STRANGE_COIN);
 
-    const handleEquipLoadout = async (index: number) => {
-        if (!membershipInfo || !activeCharacterId) return;
-        try {
-            toast.loading(`Equipping Loadout ${index + 1}...`);
-            await equipLoadout(index, activeCharacterId, membershipInfo.membershipType);
-            toast.success(`Loadout ${index + 1} equipped`);
-        } catch (err) {
-            toast.error("Failed to equip loadout");
-            console.error(err);
-        }
-    };
-
-    // Filter & Sort Logic
-    const processVaultItems = (items: any[]) => {
-        let filtered = items;
-        
-        // Filter
-        if (searchQuery) {
-            const term = searchQuery.toLowerCase();
-            filtered = filtered.filter(item => {
-                const def = vaultDefs[item.itemHash];
-                const name = def?.displayProperties?.name?.toLowerCase() || "";
-                const type = def?.itemTypeDisplayName?.toLowerCase() || "";
-                return name.includes(term) || type.includes(term);
-            });
-        }
-
-        // Sort
-        return filtered.sort((a, b) => {
-            const defA = vaultDefs[a.itemHash];
-            const defB = vaultDefs[b.itemHash];
-            const instanceA = profile?.itemComponents?.instances?.data?.[a.itemInstanceId];
-            const instanceB = profile?.itemComponents?.instances?.data?.[b.itemInstanceId];
-
-            switch (sortMethod) {
-                case 'power':
-                    return (instanceB?.primaryStat?.value || 0) - (instanceA?.primaryStat?.value || 0);
-                case 'name':
-                    return (defA?.displayProperties?.name || "").localeCompare(defB?.displayProperties?.name || "");
-                case 'rarity':
-                    return (defB?.inventory?.tierType || 0) - (defA?.inventory?.tierType || 0);
-                default:
-                    return 0;
-            }
-        });
-    };
-
-
-    if (!mounted) return null; 
-    if (isLoading) return <div className="p-8 text-center">Loading Character Data...</div>;
-    if (!isLoggedIn) return <div className="p-8 text-center">Please log in to view character data.</div>;
-    if (!profile || !activeCharacterId) return <div className="p-8 text-center">No character data found.</div>;
-
-    const characterInventory = profile.characterInventories?.data?.[activeCharacterId]?.items || [];
-    const characterEquipment = profile.characterEquipment?.data?.[activeCharacterId]?.items || [];
-    const profileInventory = profile.profileInventory?.data?.items || []; // Vault
+    // Fetch Currency Definitions for Icons
+    const currencyHashes = useMemo(() => [
+        CURRENCIES.GLIMMER,
+        CURRENCIES.BRIGHT_DUST,
+        MATERIALS.ENHANCEMENT_CORE,
+        MATERIALS.ENHANCEMENT_PRISM,
+        MATERIALS.ASCENDANT_SHARD,
+        MATERIALS.ASCENDANT_ALLOY,
+        MATERIALS.STRANGE_COIN
+    ], []);
     
-    // Loadouts
-    const loadouts = profile.characterLoadouts?.data?.[activeCharacterId]?.loadouts || [];
+    const { definitions: currencyDefs } = useItemDefinitions(currencyHashes);
 
     // Helper to get items for a specific bucket with optimistic updates
+    // We memoize this or just define it. Since it depends on many changing props, careful with memo.
+    // But defining it as a function inside render is fine as long as we don't use it in hooks deps unwisely.
     const getSectionItems = (bucketHash: number) => {
+        if (!activeCharacterId || !profile) return { equipped: undefined, inventory: [], vault: [] };
+
+        const characterInventory = profile.characterInventories?.data?.[activeCharacterId]?.items || [];
+        const characterEquipment = profile.characterEquipment?.data?.[activeCharacterId]?.items || [];
+        const profileInventory = profile.profileInventory?.data?.items || []; // Vault
+
         const equipped = characterEquipment.find((i: any) => i.bucketHash === bucketHash);
         let inventory = characterInventory.filter((i: any) => i.bucketHash === bucketHash);
         
@@ -296,11 +317,43 @@ export default function CharacterPage() {
         vault = [...vault, ...pendingToVault];
         vault = vault.filter((i: any) => !pendingOperations.some(op => op.itemInstanceId === i.itemInstanceId && op.fromOwnerId === 'VAULT'));
 
-        // Apply Sort/Filter to Vault
-        vault = processVaultItems(vault);
+        // Filter Vault Items based on Search
+        if (searchQuery) {
+            const term = searchQuery.toLowerCase();
+            vault = vault.filter((item: any) => {
+                const def = vaultDefs[item.itemHash];
+                const name = def?.displayProperties?.name?.toLowerCase() || "";
+                const type = def?.itemTypeDisplayName?.toLowerCase() || "";
+                return name.includes(term) || type.includes(term);
+            });
+        }
+
+        // Sort Vault Items
+        vault = vault.sort((a: any, b: any) => {
+            const defA = vaultDefs[a.itemHash];
+            const defB = vaultDefs[b.itemHash];
+            const instanceA = profile?.itemComponents?.instances?.data?.[a.itemInstanceId];
+            const instanceB = profile?.itemComponents?.instances?.data?.[b.itemInstanceId];
+
+            switch (sortMethod) {
+                case 'power':
+                    return (instanceB?.primaryStat?.value || 0) - (instanceA?.primaryStat?.value || 0);
+                case 'name':
+                    return (defA?.displayProperties?.name || "").localeCompare(defB?.displayProperties?.name || "");
+                case 'rarity':
+                    return (defB?.inventory?.tierType || 0) - (defA?.inventory?.tierType || 0);
+                default:
+                    return 0;
+            }
+        });
 
         return { equipped, inventory, vault };
     };
+
+    if (!mounted) return null; 
+    if (isLoading) return <div className="p-8 text-center">Loading Character Data...</div>;
+    if (!isLoggedIn) return <div className="p-8 text-center">Please log in to view character data.</div>;
+    if (!profile || !activeCharacterId) return <div className="p-8 text-center">No character data found.</div>;
 
     const sections = [
         { name: "Kinetic Weapons", bucket: BUCKETS.KINETIC_WEAPON },
@@ -313,19 +366,18 @@ export default function CharacterPage() {
         { name: "Class Item", bucket: BUCKETS.CLASS_ARMOR },
     ];
 
+    const characterInventory = profile.characterInventories?.data?.[activeCharacterId]?.items || [];
+    const profileInventory = profile.profileInventory?.data?.items || []; // Vault
+    
     const engrams = [...characterInventory, ...profileInventory].filter((i: any) => i.bucketHash === BUCKETS.ENGRAMS);
     
+    // Subclasses
+    const characterEquipment = profile.characterEquipment?.data?.[activeCharacterId]?.items || [];
     const subclassEquipped = characterEquipment.filter((i: any) => i.bucketHash === BUCKETS.SUBCLASS); 
     const subclassInv = characterInventory.filter((i: any) => i.bucketHash === BUCKETS.SUBCLASS);
     const allSubclasses = [...subclassEquipped, ...subclassInv];
-
-    // Currencies
-    const glimmer = findCurrency(profile, CURRENCIES.GLIMMER);
-    const brightDust = findCurrency(profile, CURRENCIES.BRIGHT_DUST);
-    const cores = findMaterialQuantity(profile, activeCharacterId, MATERIALS.ENHANCEMENT_CORE);
-    const prisms = findMaterialQuantity(profile, activeCharacterId, MATERIALS.ENHANCEMENT_PRISM);
-    const shards = findMaterialQuantity(profile, activeCharacterId, MATERIALS.ASCENDANT_SHARD);
-    const alloys = findMaterialQuantity(profile, activeCharacterId, MATERIALS.ASCENDANT_ALLOY);
+    
+    const loadouts = profile.characterLoadouts?.data?.[activeCharacterId]?.loadouts || [];
 
     return (
         <div className="min-h-screen text-white font-sans flex overflow-hidden">
@@ -349,15 +401,28 @@ export default function CharacterPage() {
                                             : "border-white/20 opacity-50 hover:opacity-100 grayscale hover:grayscale-0"
                                     )}
                                     title={`Switch to ${char.classType === 0 ? 'Titan' : char.classType === 1 ? 'Hunter' : 'Warlock'}`}
-                                 >
-                                     <Image 
-                                        src={getBungieImage(char.emblemPath)} 
-                                        alt="Character"
-                                        width={40}
-                                        height={40}
-                                        className="object-cover w-full h-full" 
-                                    />
-                                 </button>
+                                >
+                                    <div className="relative w-full h-full">
+                                        {/* Background */}
+                                        <Image 
+                                            src={getBungieImage(char.emblemBackgroundPath)} 
+                                            alt="Character"
+                                            fill
+                                            sizes="40px"
+                                            className="object-cover opacity-80 hover:opacity-100 transition-opacity" 
+                                        />
+                                        {/* Class Icon */}
+                                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                                            <Image 
+                                                src={CLASS_ICONS[char.classType]} 
+                                                width={24} 
+                                                height={24} 
+                                                className="object-contain drop-shadow-md" 
+                                                alt="" 
+                                            />
+                                        </div>
+                                    </div>
+                                </button>
                              ))}
                          </div>
 
@@ -366,7 +431,7 @@ export default function CharacterPage() {
                             {allSubclasses.map((item: any) => (
                                  <div 
                                     key={item.itemInstanceId} 
-                                    className="w-14 h-14 cursor-pointer transition-transform hover:scale-105 hover:brightness-110"
+                                    className={cn(sizeConfig.class, "cursor-pointer transition-transform hover:scale-105 hover:brightness-110")}
                                     onClick={() => setDetailsItem(item)}
                                     title="Click to Inspect"
                                  >
@@ -375,10 +440,12 @@ export default function CharacterPage() {
                                         itemInstanceId={item.itemInstanceId}
                                         instanceData={profile.itemComponents?.instances?.data?.[item.itemInstanceId]}
                                         socketsData={profile.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+                                        reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                         className="w-full h-full"
                                         hideBorder={true}
                                         hidePower={true}
                                         ownerId={activeCharacterId}
+                                        size={iconSize}
                                     />
                                 </div>
                             ))}
@@ -449,6 +516,35 @@ export default function CharacterPage() {
                                          ))}
                                      </div>
                                  </div>
+                                 
+                                 {/* Vault Grouping */}
+                                 <div>
+                                     <h3 className="text-xs uppercase font-bold text-slate-500 tracking-widest mb-2">Group Vault By</h3>
+                                     <div className="flex gap-2">
+                                         <button
+                                             onClick={() => setVaultGrouping({ byRarity: !vaultGrouping.byRarity })}
+                                             className={cn(
+                                                 "px-3 py-1.5 text-xs uppercase font-bold border transition-colors flex-1",
+                                                 vaultGrouping.byRarity 
+                                                    ? "bg-destiny-gold text-black border-destiny-gold" 
+                                                    : "bg-black/40 text-slate-400 border-white/10 hover:border-white/30"
+                                             )}
+                                         >
+                                             Rarity
+                                         </button>
+                                         <button
+                                             onClick={() => setVaultGrouping({ byClass: !vaultGrouping.byClass })}
+                                             className={cn(
+                                                 "px-3 py-1.5 text-xs uppercase font-bold border transition-colors flex-1",
+                                                 vaultGrouping.byClass
+                                                    ? "bg-destiny-gold text-black border-destiny-gold" 
+                                                    : "bg-black/40 text-slate-400 border-white/10 hover:border-white/30"
+                                             )}
+                                         >
+                                             Class
+                                         </button>
+                                     </div>
+                                 </div>
                              </div>
                          )}
                      </div>
@@ -480,7 +576,7 @@ export default function CharacterPage() {
                                     {/* Equipped & Inventory Block */}
                                     <div className="flex gap-2 shrink-0">
                                         {/* Equipped Item */}
-                                        <div className="w-14 h-14 border border-slate-800">
+                                        <div className={cn(sizeConfig.class, "border border-slate-800")}>
                                             {equipped && (
                                                 <ItemCardWrapper 
                                                     item={equipped} 
@@ -495,16 +591,17 @@ export default function CharacterPage() {
                                         {/* Inventory Grid (3x3) Drop Zone */}
                                         <div 
                                             className={cn(
-                                                "grid grid-cols-3 gap-2 gap-y-6 w-[184px] p-1 -m-1 border border-transparent rounded-sm transition-colors content-start",
+                                                "grid grid-cols-3 gap-2 gap-y-12 p-1 -m-1 border border-transparent rounded-sm transition-colors content-start",
+                                                sizeConfig.containerWidth,
                                                 "hover:bg-white/5 hover:border-white/5"
                                             )}
                                             onDragOver={handleDragOver}
-                                            onDrop={(e) => handleDrop(e, activeCharacterId, section.bucket)}
+                                            onDrop={(e) => handleDrop(e, activeCharacterId!, section.bucket)}
                                         >
                                             {inventorySlots.map((_, i) => {
                                                 const item = inventory[i];
                                                 return (
-                                                    <div key={i} className="w-14 h-14 border border-slate-800/50 bg-slate-900/20 shrink-0">
+                                                    <div key={i} className={cn(sizeConfig.class, "border border-slate-800/50 bg-slate-900/20 shrink-0")}>
                                                         {item && (
                                                             <ItemCardWrapper 
                                                                 item={item} 
@@ -533,24 +630,165 @@ export default function CharacterPage() {
                                         onDrop={(e) => handleDrop(e, "VAULT", section.bucket)}
                                     >
                                          <h3 className="text-xs text-slate-500 uppercase font-bold mb-2">{section.name}</h3>
-                                        <div className="flex flex-wrap gap-2 gap-y-0 content-start">
-                                            {vault.map((item: any) => (
-                                                <div key={item.itemInstanceId} className="w-14 min-h-14 border border-slate-800/50">
-                                                    <ItemCardWrapper 
-                                                        item={item} 
-                                                        profile={profile} 
-                                                        basePower={basePowerLevel} 
-                                                        classFilter={activeClassType}
-                                                        ownerId="VAULT"
-                                                    />
-                                                </div>
-                                            ))}
-                                            {vault.length === 0 && (
-                                                <div className="w-full text-xs text-slate-600 italic p-2">
-                                                    Vault empty
-                                                </div>
-                                            )}
-                                        </div>
+                                         
+                                         {/* Rendering Logic based on toggles */}
+                                         {(() => {
+                                             // 1. No grouping
+                                             if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                                 return (
+                                                     <div className="flex flex-wrap gap-2 gap-y-8 content-start">
+                                                         {vault.map((item: any) => (
+                                                             <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
+                                                                 <ItemCardWrapper 
+                                                                     item={item} 
+                                                                     profile={profile} 
+                                                                     basePower={basePowerLevel} 
+                                                                     classFilter={activeClassType}
+                                                                     ownerId="VAULT"
+                                                                 />
+                                                             </div>
+                                                         ))}
+                                                         {vault.length === 0 && (
+                                                            <div className="w-full text-xs text-slate-600 italic p-2">
+                                                                Vault empty
+                                                            </div>
+                                                         )}
+                                                     </div>
+                                                 );
+                                             }
+
+                                             // 2. Group by Rarity ONLY
+                                             if (vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                                 return (
+                                                    <div className="flex flex-col gap-8">
+                                                        {[6, 5, 4, 3, 2].map(tier => {
+                                                            const tierItems = vault.filter((item: any) => (vaultDefs[item.itemHash]?.inventory?.tierType || 0) === tier);
+                                                            if (tierItems.length === 0) return null;
+                                                            const tierNames: any = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
+                                                            return (
+                                                                <div key={tier}>
+                                                                    <h4 className={cn("text-[10px] uppercase font-bold mb-2", 
+                                                                        tier === 6 ? "text-yellow-400" : 
+                                                                        tier === 5 ? "text-purple-400" : 
+                                                                        tier === 4 ? "text-blue-400" : "text-slate-500"
+                                                                    )}>
+                                                                        {tierNames[tier]}
+                                                                    </h4>
+                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
+                                                                        {tierItems.map((item: any) => (
+                                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
+                                                                                <ItemCardWrapper 
+                                                                                    item={item} 
+                                                                                    profile={profile} 
+                                                                                    basePower={basePowerLevel} 
+                                                                                    classFilter={activeClassType}
+                                                                                    ownerId="VAULT"
+                                                                                />
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {vault.length === 0 && <div className="text-xs text-slate-600 italic">Vault empty</div>}
+                                                    </div>
+                                                 );
+                                             }
+
+                                             // 3. Group by Class ONLY
+                                             if (!vaultGrouping.byRarity && vaultGrouping.byClass) {
+                                                 return (
+                                                    <div className="flex flex-col gap-4">
+                                                        {[0, 1, 2, 3].map(cls => {
+                                                            const clsItems = vault.filter((item: any) => {
+                                                                const def = vaultDefs[item.itemHash];
+                                                                return (def?.classType ?? 3) === cls;
+                                                            });
+                                                            if (clsItems.length === 0) return null;
+                                                            return (
+                                                                <div key={cls}>
+                                                                    <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-2">
+                                                                        {cls === 0 ? 'Titan' : cls === 1 ? 'Hunter' : cls === 2 ? 'Warlock' : 'General'}
+                                                                    </h4>
+                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
+                                                                        {clsItems.map((item: any) => (
+                                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
+                                                                                <ItemCardWrapper 
+                                                                                    item={item} 
+                                                                                    profile={profile} 
+                                                                                    basePower={basePowerLevel} 
+                                                                                    classFilter={activeClassType}
+                                                                                    ownerId="VAULT"
+                                                                                />
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {vault.length === 0 && <div className="text-xs text-slate-600 italic">Vault empty</div>}
+                                                    </div>
+                                                 );
+                                             }
+
+                                             // 4. Group by BOTH (Class -> Rarity)
+                                             if (vaultGrouping.byRarity && vaultGrouping.byClass) {
+                                                 return (
+                                                    <div className="flex flex-col gap-8">
+                                                        {[0, 1, 2, 3].map(cls => {
+                                                            const clsItems = vault.filter((item: any) => {
+                                                                const def = vaultDefs[item.itemHash];
+                                                                return (def?.classType ?? 3) === cls;
+                                                            });
+                                                            
+                                                            if (clsItems.length === 0) return null;
+
+                                                            return (
+                                                                <div key={cls} className="pl-2 border-l border-white/5">
+                                                                    <h4 className="text-[10px] uppercase font-bold text-slate-300 mb-3">
+                                                                        {cls === 0 ? 'Titan' : cls === 1 ? 'Hunter' : cls === 2 ? 'Warlock' : 'General'}
+                                                                    </h4>
+                                                                    
+                                                                    <div className="flex flex-col gap-6">
+                                                                        {[6, 5, 4, 3, 2].map(tier => {
+                                                                            const tierItems = clsItems.filter((item: any) => (vaultDefs[item.itemHash]?.inventory?.tierType || 0) === tier);
+                                                                            if (tierItems.length === 0) return null;
+                                                                            const tierNames: any = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
+                                                                            
+                                                                            return (
+                                                                                <div key={tier}>
+                                                                                    <h5 className={cn("text-[9px] uppercase font-bold mb-2 opacity-70", 
+                                                                                        tier === 6 ? "text-yellow-400" : 
+                                                                                        tier === 5 ? "text-purple-400" : 
+                                                                                        tier === 4 ? "text-blue-400" : "text-slate-500"
+                                                                                    )}>
+                                                                                        {tierNames[tier]}
+                                                                                    </h5>
+                                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
+                                                                                        {tierItems.map((item: any) => (
+                                                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
+                                                                                                <ItemCardWrapper 
+                                                                                                    item={item} 
+                                                                                                    profile={profile} 
+                                                                                                    basePower={basePowerLevel} 
+                                                                                                    classFilter={activeClassType}
+                                                                                                    ownerId="VAULT"
+                                                                                                />
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {vault.length === 0 && <div className="text-xs text-slate-600 italic">Vault empty</div>}
+                                                    </div>
+                                                 );
+                                             }
+                                         })()}
                                     </div>
                                 </div>
                             </div>
@@ -580,7 +818,9 @@ export default function CharacterPage() {
                                                 itemHash={item.itemHash}
                                                 itemInstanceId={item.itemInstanceId}
                                                 instanceData={profile.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                 className="w-full h-full"
+                                                size={iconSize}
                                             />
                                         )}
                                     </div>
@@ -636,13 +876,14 @@ export default function CharacterPage() {
                          </span>
                     </div>
                     <div className="flex-1 space-y-2">
-                        <CurrencyRow name="Glimmer" value={glimmer} icon="/common/destiny2_content/icons/609f5a4e8145828084e6401269a41367.png" />
-                        <CurrencyRow name="Bright Dust" value={brightDust} icon="/common/destiny2_content/icons/430697cb39667c0a04e42a1b6f6d10e4.png" />
+                        <CurrencyRow name="Glimmer" value={glimmer} icon={currencyDefs[CURRENCIES.GLIMMER]?.displayProperties?.icon} />
+                        <CurrencyRow name="Bright Dust" value={brightDust} icon={currencyDefs[CURRENCIES.BRIGHT_DUST]?.displayProperties?.icon} />
                         <div className="h-px bg-slate-800 my-2" />
-                        <CurrencyRow name="Enhancement Core" value={cores} icon="/common/destiny2_content/icons/40391936300c074a325d4df95d117b33.png" />
-                        <CurrencyRow name="Enhancement Prism" value={prisms} icon="/common/destiny2_content/icons/d7083b74b3c61a3e3e0a066f50213716.png" />
-                        <CurrencyRow name="Ascendant Shard" value={shards} icon="/common/destiny2_content/icons/6522830243649038464d07638709c444.png" />
-                        <CurrencyRow name="Ascendant Alloy" value={alloys} icon="/common/destiny2_content/icons/b4722000d9862b4df668e32a4e98d0f0.png" />
+                        <CurrencyRow name="Enhancement Core" value={cores} icon={currencyDefs[MATERIALS.ENHANCEMENT_CORE]?.displayProperties?.icon} />
+                        <CurrencyRow name="Enhancement Prism" value={prisms} icon={currencyDefs[MATERIALS.ENHANCEMENT_PRISM]?.displayProperties?.icon} />
+                        <CurrencyRow name="Ascendant Shard" value={shards} icon={currencyDefs[MATERIALS.ASCENDANT_SHARD]?.displayProperties?.icon} />
+                        <CurrencyRow name="Ascendant Alloy" value={alloys} icon={currencyDefs[MATERIALS.ASCENDANT_ALLOY]?.displayProperties?.icon} />
+                        <CurrencyRow name="Strange Coin" value={strangeCoins} icon={currencyDefs[MATERIALS.STRANGE_COIN]?.displayProperties?.icon} />
                     </div>
                 </div>
 
@@ -657,16 +898,14 @@ export default function CharacterPage() {
                         <div className="flex flex-wrap gap-2">
                              {loadouts.length > 0 ? (
                                  loadouts.map((loadout: any, i: number) => (
-                                     <div 
-                                        key={i} 
-                                        onClick={() => handleEquipLoadout(i)}
-                                        className="w-12 h-12 bg-slate-900/50 border border-slate-800 flex items-center justify-center text-xs text-slate-500 hover:bg-slate-800 hover:text-white cursor-pointer transition-colors"
-                                        title={`Equip Loadout ${i + 1}`}
-                                     >
-                                         {/* If we have an icon path, use it. Bungie loadouts often have an icon hash. */}
-                                         {/* For now, just text L# */}
-                                         L{i + 1}
-                                     </div>
+                                     <LoadoutButton
+                                         key={i}
+                                         loadout={loadout}
+                                         index={i}
+                                         activeCharacterId={activeCharacterId}
+                                         membershipInfo={membershipInfo}
+                                         profile={profile}
+                                     />
                                  ))
                              ) : (
                                  <div className="text-sm text-slate-600 italic py-2">No loadouts</div>
@@ -677,50 +916,6 @@ export default function CharacterPage() {
 
             </div>
             <ItemDetailsOverlay />
-        </div>
-    );
-}
-
-// Wrapper to handle common item props
-function ItemCardWrapper({ item, profile, basePower, classFilter, characterId, ownerId }: any) {
-    const instance = profile.itemComponents?.instances?.data?.[item.itemInstanceId];
-    
-    // DISABLED Power Difference on Main Gear as per request
-    const diff = undefined; 
-    // const power = instance?.primaryStat?.value || 0;
-    // const diff = power > 0 && basePower > 0 ? power - basePower : 0;
-
-    return (
-        <DestinyItemCard
-            itemHash={item.itemHash}
-            itemInstanceId={item.itemInstanceId}
-            instanceData={instance}
-            socketsData={profile.itemComponents?.sockets?.data?.[item.itemInstanceId]}
-            className="w-full h-full"
-            powerDiff={diff}
-            classFilter={classFilter}
-            ownerId={ownerId || characterId}
-            showClassSymbolOnMismatch
-        />
-    );
-}
-
-function CurrencyRow({ name, value, icon }: { name: string, value: number, icon?: string }) {
-    return (
-        <div className="flex justify-between items-center text-sm">
-            <div className="flex items-center gap-2 text-slate-400">
-                {icon && (
-                    <Image 
-                        src={`https://www.bungie.net${icon}`} 
-                        width={20} 
-                        height={20} 
-                        className="object-contain opacity-90" 
-                        alt="" 
-                    />
-                )}
-                <span>{name}</span>
-            </div>
-            <span className="font-medium text-slate-200">{value.toLocaleString()}</span>
         </div>
     );
 }

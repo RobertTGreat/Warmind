@@ -70,7 +70,7 @@ export const endpoints = {
   getProfile: (membershipType: number, destinyMembershipId: string, components?: number[]) => {
     const componentList = components 
       ? components.join(',') 
-      : '100,102,103,104,200,201,202,205,206,300,301,302,304,305,307,308,700,701,800,900,901';
+      : '100,102,103,104,200,201,202,204,205,206,300,301,302,304,305,306,307,308,310,700,701,800,900,901,1100';
     return `/Destiny2/${membershipType}/Profile/${destinyMembershipId}/?components=${componentList}`;
   },
   getClan: (groupId: string) => `/GroupV2/${groupId}/`,
@@ -103,12 +103,35 @@ export const endpoints = {
     `/Destiny2/Manifest/DestinyProgressionDefinition/${hash}/`,
   searchDestinyEntities: (type: string, searchTerm: string, page: number = 0) =>
     `/Destiny2/Armory/Search/${type}/${searchTerm}/?page=${page}`,
+  getPublicMilestones: () => '/Destiny2/Milestones/',
+  getMilestoneDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyMilestoneDefinition/${hash}/`,
+  getEventCardDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyEventCardDefinition/${hash}/`,
+  getActivityDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyActivityDefinition/${hash}/`,
+  getActivityModeDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyActivityModeDefinition/${hash}/`,
+  getInventoryItemDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyInventoryItemDefinition/${hash}/`,
   // Actions
   equipItem: () => `/Destiny2/Actions/Items/EquipItem/`,
   transferItem: () => `/Destiny2/Actions/Items/TransferItem/`,
   setLockState: () => `/Destiny2/Actions/Items/SetLockState/`,
   equipLoadout: () => `/Destiny2/Actions/Loadouts/EquipLoadout/`,
   insertSocketPlug: () => `/Destiny2/Actions/Items/InsertSocketPlug/`,
+  
+  // Activity History & Stats
+  getActivityHistory: (membershipType: number, destinyMembershipId: string, characterId: string) => 
+    `/Destiny2/${membershipType}/Account/${destinyMembershipId}/Character/${characterId}/Stats/Activities/`,
+  getPostGameCarnageReport: (activityId: string) =>
+    `/Destiny2/Stats/PostGameCarnageReport/${activityId}/`,
+  getLoadoutIconDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyLoadoutIconDefinition/${hash}/`,
+  getLoadoutNameDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyLoadoutNameDefinition/${hash}/`,
+  getLoadoutColorDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyLoadoutColorDefinition/${hash}/`,
 };
 
 
@@ -216,4 +239,19 @@ export const logout = () => {
 export const getBungieImage = (path: string) => {
   if (!path) return '';
   return `https://www.bungie.net${path}`;
+};
+
+export const getActivityHistory = async (membershipType: number, destinyMembershipId: string, characterId: string, mode: number, count: number = 250, page: number = 0) => {
+  // mode: 4 for Raid, 82 for Dungeon
+  return bungieApi.get(endpoints.getActivityHistory(membershipType, destinyMembershipId, characterId), {
+    params: {
+      mode,
+      count,
+      page
+    }
+  });
+};
+
+export const getPostGameCarnageReport = async (activityId: string) => {
+  return bungieApi.get(endpoints.getPostGameCarnageReport(activityId));
 };

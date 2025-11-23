@@ -80,22 +80,9 @@ export default function InventoryPage() {
 
   // CSS Classes
   const iconSizeClass = {
-      'small': 'w-10 h-10',
-      'medium': 'w-12 h-12',
-      'large': 'w-16 h-16'
-  }[iconSize];
-
-  // Matching the grid/flex logic from Vault
-  // Vault uses: w-10/12/16. Let's stick to that for consistency if user wants "settings added to it".
-  // Actually, in Vault page:
-  // small: w-10
-  // medium: w-12
-  // large: w-16
-  // Let's match exactly.
-  const sizeClasses = {
-      'small': 'w-10 h-10',
-      'medium': 'w-12 h-12',
-      'large': 'w-16 h-16'
+      'small': 'w-16 h-16',
+      'medium': 'w-20 h-20',
+      'large': 'w-24 h-24'
   }[iconSize];
 
   if (!mounted) return null;
@@ -118,7 +105,7 @@ export default function InventoryPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] space-y-4">
         {/* Header / Controls */}
-        <div className="flex items-center justify-between gap-4 p-4 border-b border-white/5 backdrop-blur-md shrink-0 sticky top-16 z-20">
+        <div className="flex items-center justify-between gap-4 p-4 border-b border-white/5 backdrop-blur-md shrink-0 sticky top-16 z-50">
              <div className="flex items-center gap-6">
                  {/* Title matched to Gear Manager size/style */}
                  <h1 className="text-xl font-bold text-white uppercase tracking-wide">Inventory</h1>
@@ -212,11 +199,12 @@ export default function InventoryPage() {
                                     key={`cons-${item.itemHash}-${idx}`} 
                                     itemHash={item.itemHash}
                                     instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                    className={sizeClasses}
+                                    className={iconSizeClass}
                                     itemInstanceId={item.itemInstanceId}
                                     quantity={item.quantity}
                                     isHighlighted={true} // Search handled by filter
                                     ownerId="PROFILE"
+                                    size={iconSize}
                                 />
                             ))}
                         </div>
@@ -235,11 +223,12 @@ export default function InventoryPage() {
                                     key={`mod-${item.itemHash}-${idx}`} 
                                     itemHash={item.itemHash}
                                     instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                    className={sizeClasses}
+                                    className={iconSizeClass}
                                     itemInstanceId={item.itemInstanceId}
                                     quantity={item.quantity}
                                     isHighlighted={true}
                                     ownerId="PROFILE"
+                                    size={iconSize}
                                 />
                             ))}
                         </div>

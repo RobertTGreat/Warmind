@@ -10,6 +10,7 @@ export interface DestinyStats {
   classType: number; // 0: Titan, 1: Hunter, 2: Warlock
   light: number; // Power Level
   guardianRank: number;
+  emblemHash: number;
   emblemPath: string;
   emblemBackgroundPath: string;
   title: string; // Title if equipped
@@ -82,6 +83,18 @@ export function useDestinyProfile() {
   const recordSealsRootNodeHash = profile?.profileRecords?.data?.recordSealsRootNodeHash;
   const currentSeasonHash = profile?.profile?.data?.currentSeasonHash;
 
+  const { data: seasonDefData } = useSWR(
+      currentSeasonHash ? endpoints.getSeasonDefinition(currentSeasonHash) : null,
+      fetcher
+  );
+  const seasonDef = seasonDefData?.Response;
+
+  const { data: seasonPassDefData } = useSWR(
+      seasonDef?.seasonPassHash ? endpoints.getSeasonPassDefinition(seasonDef.seasonPassHash) : null,
+      fetcher
+  );
+  const seasonPassDef = seasonPassDefData?.Response;
+
   if (profile) {
     const characters = profile.characters?.data;
     const characterIds = profile.profile?.data?.characterIds || [];
@@ -103,16 +116,30 @@ export function useDestinyProfile() {
     if (activeChar) {
         // Guardian Rank is in profile data usually
         const guardianRank = profile.profile?.data?.currentGuardianRank || 0;
+
+        let seasonRank: number | undefined = undefined;
+        if (activeProgressions && seasonPassDef) {
+            const progressionHash = seasonPassDef.rewardProgressionHash;
+            const prestigeProgressionHash = seasonPassDef.prestigeRewardProgressionHash;
+            
+            const userProgression = activeProgressions[progressionHash];
+            const userPrestigeProgression = activeProgressions[prestigeProgressionHash];
+            
+            const level = userProgression?.level || 0;
+            const prestigeLevel = userPrestigeProgression?.level || 0;
+            seasonRank = level + prestigeLevel;
+        }
         
         stats = {
             characterId: activeCharacterId,
             classType: activeChar.classType,
             light: activeChar.light,
             guardianRank,
+            emblemHash: activeChar.emblemHash,
             emblemPath: getBungieImage(activeChar.emblemPath),
             emblemBackgroundPath: getBungieImage(activeChar.emblemBackgroundPath),
             title: "", // Title logic is complex (requires record hashes), skipping for now
-            seasonRank: undefined, // Will be populated by SeasonPassTrack
+            seasonRank, 
             characterProgressions: activeProgressions,
             currentSeasonHash
         };

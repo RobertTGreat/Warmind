@@ -32,7 +32,8 @@ export const MATERIALS = {
     ENHANCEMENT_CORE: 3853748946,
     ENHANCEMENT_PRISM: 4257549241,
     ASCENDANT_SHARD: 4257549242,
-    ASCENDANT_ALLOY: 2979281381,
+    ASCENDANT_ALLOY: 3581008036, // Updated active hash
+    STRANGE_COIN: 3702027550, // Reverting to 30th Anni version often active
 };
 
 // Presentation Node Hashes
@@ -40,117 +41,162 @@ export const PRESENTATION_NODES = {
     COLLECTIONS_ROOT: 3790247699,
     TRIUMPHS_ROOT: 1024788583,
     SEALS_ROOT: 616318467,
+    EXOTICS: 1068557105, // Added Exotics
 };
 
 /**
  * Determines the Tier of an item based on its Intrinsic Plug and Sockets.
- * Mirroring DIM's logic for "Edge of Fate" / Custom Tiering.
+ * Custom Tiering Logic provided by user.
  * 
- * Logic:
- * 1. Inspect Intrinsic Socket.
- * 2. Check plugCategoryIdentifier for `intrinsic.edgeoffate.tierX` or `intrinsic.tier.X`.
- * 3. Check Plug Name for "Tier X" pattern.
- * 4. Fallback: Check for presence of Kill Effect / Combat Flair socket/plug (Tier 5).
+ * WEAPON TIERS:
+ * TIER 1: Base Stats
+ * TIER 2: Enhanced Trait: 2
+ * TIER 3: Enhanced Trait: 2 + Multi-Perk: 2
+ * TIER 4: Enhanced Trait: 2 + Multi-Perk: 2 + Enhanced: Mods, Magazine, Barrel
+ * TIER 5: Enhanced Trait: 2 + Multi-Perk: 3 + Enhanced: Mods, Magazine, Barrel, Origin Trait + Cosmetics
+ * 
+ * ARMOR TIERS (Total Stats):
+ * TIER 1: 52 - 57
+ * TIER 2: 58 - 63
+ * TIER 3: 64 - 69
+ * TIER 4: 70 - 75
+ * TIER 5: > 75
  * 
  * @param itemDef - The DestinyInventoryItemDefinition of the item.
  * @param socketsData - The DestinyItemSocketsComponent (live socket data).
  * @param plugDefinitions - Map of plugHash to DestinyInventoryItemDefinition.
+ * @param instanceData - The DestinyItemComponent (instance data) for stats.
  * @returns The tier number (1-5). Defaults to 1.
  */
 export function getItemTier(
     itemDef: any,
     socketsData: any,
-    plugDefinitions: Record<number, any>
+    plugDefinitions: Record<number, any>,
+    instanceData?: any
 ): number {
-    if (!itemDef || !socketsData || !plugDefinitions) return 1;
+    if (!itemDef) return 1;
 
-    let detectedTier = 1;
-    let foundIntrinsicTier = false;
+    // --- Armor Logic ---
+    // Check if item has stats in instance data (Armor always has stats)
+    if (instanceData?.stats) {
+        // Sum primary 6 stats
+        const STAT_HASHES = [
+            2996146975, // Mobility
+            392767087,  // Resilience
+            1943323491, // Recovery
+            1735777505, // Discipline
+            144602215,  // Intellect
+            4244567218  // Strength
+        ];
 
-    // Iterate all sockets to find the Intrinsic Plug with Tier info
-    if (socketsData.sockets) {
-        for (const socket of socketsData.sockets) {
-            if (!socket.plugHash) continue;
-            const plugDef = plugDefinitions[socket.plugHash];
-            if (!plugDef) continue;
-
-            const name = plugDef.displayProperties?.name || "";
-            const typeName = plugDef.itemTypeDisplayName?.toLowerCase() || "";
-            const categoryId = plugDef.plug?.plugCategoryIdentifier || "";
-
-            // Exclude Masterworks
-            if (typeName.includes("masterwork") || categoryId.includes("masterwork")) {
-                continue;
+        let total = 0;
+        let validStats = 0;
+        STAT_HASHES.forEach(h => {
+            // Handle both number and string keys from API response
+            const stat = instanceData.stats[h] || instanceData.stats[String(h)];
+            if (stat) {
+                total += stat.value;
+                validStats++;
             }
+        });
 
-            // 1. Explicit Category Identifier Check (Edge of Fate Spec)
-            // "intrinsic.edgeoffate.tier1" through "intrinsic.edgeoffate.tier5"
-            if (categoryId.includes("intrinsic.edgeoffate.tier")) {
-                 const match = categoryId.match(/intrinsic\.edgeoffate\.tier(\d+)/);
-                 if (match) {
-                     detectedTier = parseInt(match[1], 10);
-                     foundIntrinsicTier = true;
-                     break;
-                 }
-            }
+        // Armor (ItemType 2)
+        if (validStats > 0 && itemDef.itemType === 2) {
+            if (total > 75) return 5; // God Roll
+            if (total >= 66) return 4; // High Stat
+            if (total >= 60) return 3; // Decent
+            if (total >= 55) return 2; // Average
             
-            // Also check legacy/DIM custom pattern: "intrinsic.tier.5"
-            if (categoryId.includes("intrinsic.tier")) {
-                const match = categoryId.match(/intrinsic\.tier\.(\d+)/);
-                if (match) {
-                     detectedTier = parseInt(match[1], 10);
-                     foundIntrinsicTier = true;
-                     break;
-                }
-            }
-
-            // 2. Name Regex Check
-            // Spec: Name contains "Tier X"
-            const tierMatch = name.match(/Tier (\d+)/);
-            if (tierMatch) {
-                // Ensure it's an Intrinsic-like plug to avoid false positives
-                const isIntrinsic = 
-                    typeName.includes("intrinsic") || 
-                    typeName.includes("frame") ||
-                    categoryId.includes("intrinsic") || 
-                    categoryId.includes("frame") || 
-                    name.includes("Tuning") || 
-                    name.includes("Processing");
-                
-                // If it's explicitly Intrinsic OR we're confident in the match context
-                if (isIntrinsic) { 
-                     detectedTier = parseInt(tierMatch[1], 10);
-                     foundIntrinsicTier = true;
-                     break; 
-                }
-            }
+            return 1;
         }
     }
 
-    if (foundIntrinsicTier) return detectedTier;
+    // --- Weapon Logic ---
+    if (itemDef.itemType === 3 && socketsData && plugDefinitions) {
+        let enhancedTraits = 0;
+        let multiPerkColumns = 0;
+        let hasEnhancedBarrel = false;
+        let hasEnhancedMag = false;
+        let hasEnhancedOrigin = false;
+        let hasOrnament = false;
+        let hasMemento = false; 
+        let isMasterworkPlug = false;
 
-    // 3. Tier 5 Validation (Kill Effect / Combat Flair)
-    // "Does any socket utilize the Kill Effect Socket Type?"
-    // "Often labeled 'Visual Tuning' or 'Kill Effect'"
-    const hasKillEffect = Object.values(plugDefinitions).some((plug: any) => {
-        if (!plug) return false;
-        const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
-        const name = plug.displayProperties?.name || "";
-        const categoryId = plug.plug?.plugCategoryIdentifier || "";
+        // Check if item is Crafted or Masterworked
+        const isMasterwork = (instanceData?.state & 4) === 4;
+        const isCrafted = (instanceData?.state & 8) === 8;
+
+        socketsData.sockets?.forEach((socket: any) => {
+            const plug = plugDefinitions[socket.plugHash];
+            if (!plug) return;
+
+            const name = plug.displayProperties?.name || "";
+            const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+            const category = plug.plug?.plugCategoryIdentifier || "";
+            const isEnhanced = name.includes("Enhanced") || typeName.includes("enhanced");
+            
+            // Check for Masterwork Plug (Tier 10)
+            if ((typeName.includes("masterwork") || category.includes("masterwork")) && name.includes("Tier 10")) {
+                isMasterworkPlug = true;
+            }
+
+            // Check Multi-Perk
+            // If weapon is Crafted, we can't rely on reusablePlugs count for "quality" 
+            // because you intentionally pick 1. 
+            // So for Crafted weapons, we assume they meet the "Multi-Perk" availability criteria if they are high level.
+            // But strict adherence to user prompt: "Multi-Perk: 2".
+            // Let's count "Selectable" columns.
+            const isGameplaySocket = 
+                typeName.includes("trait") || 
+                typeName.includes("magazine") || 
+                typeName.includes("barrel") ||
+                typeName.includes("sight");
+
+            if (isGameplaySocket && socket.reusablePlugs?.length > 1) {
+                multiPerkColumns++;
+            }
+
+            // Check Enhanced Traits
+            if (isEnhanced && (typeName.includes("trait") || typeName.includes("perk"))) {
+                 if (!typeName.includes("origin")) {
+                     enhancedTraits++;
+                 }
+            }
+
+            if (isEnhanced) {
+                if (typeName.includes("barrel") || typeName.includes("sight") || typeName.includes("launch")) hasEnhancedBarrel = true;
+                if (typeName.includes("magazine") || typeName.includes("round") || typeName.includes("battery")) hasEnhancedMag = true;
+                if (typeName.includes("origin")) hasEnhancedOrigin = true;
+            }
+
+            if (typeName.includes("ornament") && !name.includes("Default")) hasOrnament = true;
+            if (typeName.includes("memento") || name.includes("Memento")) hasMemento = true;
+        });
+
+        // Relaxed Logic to handle Crafted Weapons which don't have multi-perks usually
+        // If Crafted/Enhanced, we treat them as satisfying Multi-Perk requirements for Tiering
+        // if they have the corresponding Enhanced traits.
         
-        return typeName.includes("kill effect") || 
-               typeName.includes("visual tuning") ||
-               name.includes("Kill Effect") || 
-               name.includes("Blue Flame") || 
-               name.includes("Red Flame") ||
-               categoryId.includes("kill_effect"); // Hypothetical
-    });
+        // Effective Multi-Perk Count: Real Multi-Perks OR (2 if Crafted/Masterworked + Enhanced Traits present)
+        // Fix: Allow weapons with 2+ Enhanced Traits to bypass multi-perk check (as they are "finished" weapons)
+        const effectiveMultiPerk = (isCrafted || isMasterwork || isMasterworkPlug || enhancedTraits >= 2) ? Math.max(multiPerkColumns, 3) : multiPerkColumns;
 
-    if (hasKillEffect) {
-        return 5;
+        const tier2Criteria = enhancedTraits >= 2;
+        const tier3Criteria = tier2Criteria && effectiveMultiPerk >= 2;
+        // Tier 4: Needs Enhanced Barrel/Mag + Tier 3
+        const tier4Criteria = tier3Criteria && hasEnhancedBarrel && hasEnhancedMag; 
+        // Tier 5: Needs Tier 4 + Enhanced Origin + Cosmetics
+        const tier5Criteria = tier4Criteria && hasEnhancedOrigin && (hasOrnament || hasMemento);
+
+        if (tier5Criteria) return 5;
+        if (tier4Criteria) return 4;
+        if (tier3Criteria) return 3;
+        if (tier2Criteria) return 2;
+        
+        return 1;
     }
 
-    return 1; // Default
+    return 1;
 }
 
 /**

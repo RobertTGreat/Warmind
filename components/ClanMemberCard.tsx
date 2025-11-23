@@ -5,6 +5,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { cn } from "@/lib/utils";
 import { Star } from "lucide-react";
 import useSWR from "swr";
+import { ScrollingText } from "@/components/ScrollingText";
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -14,9 +15,23 @@ export interface MemberStats {
     emblemPath: string;
 }
 
+const SPECIAL_TAGS: Record<string, { label: string, className: string }[]> = {
+    "RobertTheGreat#437": [
+        { label: "Murder Cave", className: "bg-red-900/40 text-red-200 border-red-500/50" },
+        { label: "Dev", className: "bg-destiny-gold/20 text-destiny-gold border-destiny-gold/50" }],
+    "Cavez#4930": [
+        { label: "Murder Cave", className: "bg-red-900/40 text-red-200 border-red-500/50" },
+        { label: "Saltagreppo Glazer", className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/50" }
+    ]
+};
+
 export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: any, isOnline: boolean, preloadedStats?: MemberStats }) {
     const user = member.destinyUserInfo;
     const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
+    
+    const fullBungieName = `${user.bungieGlobalDisplayName}#${user.bungieGlobalDisplayNameCode}`;
+    const specialTags = SPECIAL_TAGS[fullBungieName];
+
     const isFavorite = favoriteMembers.includes(user.membershipId);
     
     // Fetch minimal profile data (100 = Profile, 200 = Characters)
@@ -58,8 +73,18 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
 
     return (
         <FrostedCard className="group relative flex items-center gap-0 p-0 hover:bg-gray-800/40 transition-colors overflow-hidden h-20" hover>
+            {/* Hover Ambient Glow */}
+            <div className="absolute inset-0 z-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none">
+                 <Image 
+                    src={displayIcon} 
+                    alt="" 
+                    fill 
+                    className="object-cover blur-3xl scale-[2] opacity-50" 
+                />
+            </div>
+
             {/* Emblem / Icon Section */}
-            <div className="w-20 h-20 relative flex-shrink-0 bg-black">
+            <div className="w-20 h-20 relative flex-shrink-0 bg-black z-10">
                 {isLoading ? (
                     <div className="w-full h-full bg-slate-800 animate-pulse" />
                 ) : (
@@ -68,7 +93,10 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
                         alt="Icon" 
                         fill 
                         sizes="80px"
-                        className="object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
+                        className={cn(
+                            "object-cover transition-all duration-300",
+                            isOnline ? "opacity-100" : "opacity-50 grayscale group-hover:opacity-100 group-hover:grayscale-0"
+                        )} 
                     />
                 )}
                 {isOnline && <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 border-2 border-black rounded-full shadow-[0_0_8px_rgba(34,197,94,0.8)]" />}
@@ -76,11 +104,19 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
 
             {/* Info Section */}
             <div className="flex-1 px-4 py-2 flex flex-col justify-center relative z-10 overflow-hidden">
-                <div className="flex items-baseline gap-2">
-                    <h3 className="font-bold text-white text-base truncate">{user.bungieGlobalDisplayName || user.displayName}</h3>
+                <div className="flex items-baseline gap-2 overflow-hidden">
+                    <ScrollingText className="font-bold text-white text-base">
+                        {user.bungieGlobalDisplayName || user.displayName}
+                    </ScrollingText>
                     {user.bungieGlobalDisplayNameCode && (
                         <span className="text-xs text-destiny-gold opacity-70">#{user.bungieGlobalDisplayNameCode}</span>
                     )}
+                    
+                    {specialTags && specialTags.map((tag) => (
+                        <span key={tag.label} className={cn("ml-2 text-[10px] px-1.5 py-0.5 rounded border font-bold tracking-wide uppercase whitespace-nowrap", tag.className)}>
+                            {tag.label}
+                        </span>
+                    ))}
                 </div>
                 
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
@@ -110,7 +146,7 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
             </div>
 
             {/* Actions */}
-            <div className="pr-4 pl-2 flex flex-col items-end justify-center gap-1">
+            <div className="pr-4 pl-2 flex flex-col items-end justify-center gap-1 relative z-10">
                 <button 
                     onClick={(e) => {
                         e.stopPropagation();
@@ -126,7 +162,7 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
             </div>
             
             {/* Decorative Background Gradient */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent pointer-events-none z-0" />
         </FrostedCard>
     );
 }

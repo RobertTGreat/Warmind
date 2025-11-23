@@ -4,6 +4,7 @@ import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { Loader2, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FrostedCard } from './FrostedCard';
+import { RewardItem } from './RewardItem';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -74,42 +75,47 @@ function ChallengeRecord({ recordHash, profile }: { recordHash: number, profile:
     );
     const recordDef = recordDefData?.Response;
 
-    if (!recordDef) return <div className="h-10 bg-white/5 animate-pulse rounded-sm" />;
+    if (!recordDef) return <div className="h-16 bg-white/5 animate-pulse rounded-sm" />;
 
     // Check completion status
-    // Records can be in profileRecords or characterRecords. Seasonal challenges are usually profile-wide.
     const recordState = profile?.profileRecords?.data?.records?.[recordHash] || 
                         profile?.characterRecords?.data?.[Object.keys(profile?.characterRecords?.data || {})[0]]?.records?.[recordHash];
     
-    // State 1 = Completed (RecordState.RecordRedeemed is 4)
-    // Actually bitmask. 1 = CanEquipTitle, 2 = ObjectiveNotCompleted, 4 = Redeemed, etc.
-    // We care if objectives are completed.
-    // If ! (state & 4) and ! (state & 1) ...
-    // Simplest check: Check objectives progress.
-
     const isCompleted = recordState ? !recordState.objectives?.some((obj: any) => !obj.complete) : false;
+    const rewardItems = recordDef.rewardItems || [];
 
     return (
         <div className="flex items-center gap-3 p-2 bg-white/5 rounded-sm border border-white/5 relative overflow-hidden group hover:bg-white/10 transition-colors">
-            <div className="w-8 h-8 bg-slate-800 rounded flex-shrink-0 border border-white/10 overflow-hidden">
+            <div className="w-10 h-10 bg-slate-800 rounded flex-shrink-0 border border-white/10 overflow-hidden">
                 <img src={getBungieImage(recordDef.displayProperties.icon)} alt="" className="w-full h-full object-cover opacity-80" />
             </div>
             <div className="space-y-1 min-w-0 flex-1 z-10">
-                <div className="flex justify-between">
+                <div className="flex justify-between items-start">
                     <span className={cn("text-sm font-medium truncate", isCompleted ? "text-green-400" : "text-slate-200")}>
                         {recordDef.displayProperties.name}
                     </span>
+                    
+                    {isCompleted ? (
+                        <Star className="w-4 h-4 text-destiny-gold fill-current shrink-0" />
+                    ) : (
+                        <div className="flex -space-x-2 shrink-0">
+                            {rewardItems.map((reward: any, i: number) => (
+                                <div key={i} className="scale-75 origin-right">
+                                    <RewardItem 
+                                        itemHash={reward.itemHash} 
+                                        quantity={reward.quantity} 
+                                        showLabel={false} 
+                                        isUnlocked={true} // Always show unlocked so we can see what it is
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                <div className="text-xs text-slate-500 truncate">
+                <div className="text-xs text-slate-500 truncate pr-8">
                     {recordDef.displayProperties.description}
                 </div>
             </div>
-            {isCompleted && (
-                <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                    <Star className="w-4 h-4 text-destiny-gold fill-current" />
-                </div>
-            )}
         </div>
     );
 }
-

@@ -42,6 +42,12 @@ const getClassName = (classType: number) => {
     }
 };
 
+const CLASS_ICONS: Record<number, string> = {
+    0: '/class-titan.svg',
+    1: '/class-hunter.svg',
+    2: '/class-warlock.svg',
+};
+
 import { loginWithBungie } from "@/lib/bungie";
 import { useTransferStore } from "@/store/transferStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -54,7 +60,7 @@ export default function VaultPage() {
 
   // --- Settings State ---
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const { iconSize, sortMethod, setIconSize, setSortMethod } = useSettingsStore();
+  const { iconSize, sortMethod, vaultGrouping, setIconSize, setSortMethod, setVaultGrouping } = useSettingsStore();
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,24 +137,31 @@ export default function VaultPage() {
 
   // Determine CSS class for Icon Size
   const iconSizeClass = {
-      'small': 'w-10 h-10',
-      'medium': 'w-12 h-12',
-      'large': 'w-16 h-16'
+      'small': 'w-16 h-16',
+      'medium': 'w-20 h-20',
+      'large': 'w-24 h-24'
   }[iconSize];
 
   // Equipped is usually larger, but maybe we scale it too?
   // Let's keep Equipped distinguishable (slightly larger than chosen size or fixed large)
   // For now, let's make equipped 1 step larger than inventory if possible, or fixed 'w-16 h-16' / 'w-20 h-20'
   const equippedSizeClass = {
-      'small': 'w-14 h-14',
-      'medium': 'w-20 h-20', // Original default
-      'large': 'w-24 h-24'
+      'small': 'w-20 h-20',
+      'medium': 'w-24 h-24', // Original default
+      'large': 'w-32 h-32'
   }[iconSize];
 
   const columnWidthClass = {
-      'small': 'w-56',
-      'medium': 'w-72',
-      'large': 'w-80'
+      'small': 'w-64',
+      'medium': 'w-80',
+      'large': 'w-96'
+  }[iconSize];
+
+  // Size-based styles for grid gaps
+  const gapClass = {
+      'small': 'gap-y-8',
+      'medium': 'gap-y-10',
+      'large': 'gap-y-12'
   }[iconSize];
 
   // --- Drag and Drop Handlers ---
@@ -262,7 +275,7 @@ export default function VaultPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] space-y-4">
         {/* Controls */}
-        <div className="flex items-center justify-between gap-4 p-4 border-b border-white/5 backdrop-blur-md shrink-0 sticky top-16 z-20">
+        <div className="flex items-center justify-between gap-4 p-4 border-b border-white/5 backdrop-blur-md shrink-0 sticky top-16 z-50">
              <div className="flex items-center gap-6">
                  <h1 className="text-xl font-bold text-white uppercase tracking-wide">Gear Manager</h1>
                  
@@ -285,13 +298,24 @@ export default function VaultPage() {
                             title={`Toggle ${getClassName(char.classType)}`}
                          >
                              <div className="relative w-full h-full">
+                                {/* Background */}
                                 <Image 
-                                    src={getBungieImage(char.emblemPath)} 
+                                    src={getBungieImage(char.emblemBackgroundPath)} 
                                     fill 
                                     sizes="32px"
-                                    className="object-cover" 
+                                    className="object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
                                     alt="" 
                                 />
+                                {/* Class Icon */}
+                                <div className="absolute inset-0 flex items-center justify-center z-10">
+                                     <Image 
+                                        src={CLASS_ICONS[char.classType]} 
+                                        width={20} 
+                                        height={20} 
+                                        className="object-contain drop-shadow-md" 
+                                        alt={getClassName(char.classType)} 
+                                     />
+                                </div>
                              </div>
                          </button>
                      ))}
@@ -353,6 +377,35 @@ export default function VaultPage() {
                                              {method}
                                          </button>
                                      ))}
+                                 </div>
+                             </div>
+
+                             {/* Vault Grouping */}
+                             <div>
+                                 <h3 className="text-xs uppercase font-bold text-slate-500 tracking-widest mb-2">Group Vault By</h3>
+                                 <div className="flex gap-2">
+                                     <button
+                                         onClick={() => setVaultGrouping({ byRarity: !vaultGrouping.byRarity })}
+                                         className={cn(
+                                             "px-3 py-1.5 text-xs uppercase font-bold border transition-colors flex-1",
+                                             vaultGrouping.byRarity 
+                                                ? "bg-destiny-gold text-black border-destiny-gold" 
+                                                : "bg-black/40 text-slate-400 border-white/10 hover:border-white/30"
+                                         )}
+                                     >
+                                         Rarity
+                                     </button>
+                                     <button
+                                         onClick={() => setVaultGrouping({ byClass: !vaultGrouping.byClass })}
+                                         className={cn(
+                                             "px-3 py-1.5 text-xs uppercase font-bold border transition-colors flex-1",
+                                             vaultGrouping.byClass
+                                                ? "bg-destiny-gold text-black border-destiny-gold" 
+                                                : "bg-black/40 text-slate-400 border-white/10 hover:border-white/30"
+                                         )}
+                                     >
+                                         Class
+                                     </button>
                                  </div>
                              </div>
 
@@ -458,10 +511,12 @@ export default function VaultPage() {
                                                        itemHash={equipped.itemHash}
                                                        instanceData={profile?.itemComponents?.instances?.data?.[equipped.itemInstanceId]}
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[equipped.itemInstanceId]}
+                                                       reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[equipped.itemInstanceId]?.plugs}
                                                        className={equippedSizeClass}
                                                        isHighlighted={filterItem(equipped)}
                                                        itemInstanceId={equipped.itemInstanceId}
                                                        ownerId={char.characterId}
+                                                       size={iconSize}
                                                     />
                                                 ) : (
                                                     <div className={cn("bg-black/20 border border-white/5", equippedSizeClass)} />
@@ -470,17 +525,19 @@ export default function VaultPage() {
                                             </div>
                                             
                                             {/* Inventory (Grid) */}
-                                            <div className="grid grid-cols-3 gap-1 content-start flex-1 min-h-[60px]">
+                                            <div className={cn("grid grid-cols-3 gap-1 content-start flex-1 min-h-[60px]", gapClass)}>
                                                 {sortedInventory.map((item: any, idx: number) => (
                                                     <DestinyItemCard 
                                                        key={`${item.itemHash}-${idx}`}
                                                        itemHash={item.itemHash}
                                                        instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+                                                       reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                        className={iconSizeClass}
                                                        isHighlighted={filterItem(item)}
                                                        itemInstanceId={item.itemInstanceId}
                                                        ownerId={char.characterId}
+                                                       size={iconSize}
                                                     />
                                                 ))}
                                                 {/* Fill empty slots visual (optional) */}
@@ -499,20 +556,171 @@ export default function VaultPage() {
                                     onDrop={(e) => handleDrop(e, "VAULT", bucketHash)}
                                  >
                                     <div className="text-xs text-slate-500 uppercase mb-2 font-bold">{bucketName} (Vault)</div>
-                                     <div className="flex flex-wrap gap-1 min-h-[60px]">
-                                         {sortedVItems.map((item: any, idx: number) => (
-                                            <DestinyItemCard 
-                                               key={`${item.itemHash}-${idx}`}
-                                               itemHash={item.itemHash}
-                                               instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                               socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
-                                                className={iconSizeClass}
-                                               isHighlighted={filterItem(item)}
-                                               itemInstanceId={item.itemInstanceId}
-                                               ownerId="VAULT"
-                                            />
-                                        ))}
-                                    </div>
+                                     
+                                     {/* Rendering Logic based on toggles */}
+                                     {(() => {
+                                         // 1. No grouping
+                                         if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                             return (
+                                                <div className={cn("flex flex-wrap gap-1 min-h-[60px]", gapClass)}>
+                                                    {sortedVItems.map((item: any, idx: number) => (
+                                                       <DestinyItemCard 
+                                                          key={`${item.itemHash}-${idx}`}
+                                                          itemHash={item.itemHash}
+                                                          instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                          socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+                                                          reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
+                                                          className={iconSizeClass}
+                                                          isHighlighted={filterItem(item)}
+                                                          itemInstanceId={item.itemInstanceId}
+                                                          ownerId="VAULT"
+                                                          size={iconSize}
+                                                       />
+                                                   ))}
+                                               </div>
+                                             );
+                                         }
+
+                                         // 2. Group by Rarity ONLY
+                                         if (vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                             return (
+                                                <div className="flex flex-col gap-8 min-h-[60px]">
+                                                    {[6, 5, 4, 3, 2].map(tier => {
+                                                        const tierItems = sortedVItems.filter((item: any) => (definitions[item.itemHash]?.inventory?.tierType || 0) === tier);
+                                                        if (tierItems.length === 0) return null;
+                                                        const tierNames: any = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
+                                                        return (
+                                                            <div key={tier}>
+                                                                <h4 className={cn("text-[10px] uppercase font-bold mb-2", 
+                                                                    tier === 6 ? "text-yellow-400" : 
+                                                                    tier === 5 ? "text-purple-400" : 
+                                                                    tier === 4 ? "text-blue-400" : "text-slate-500"
+                                                                )}>
+                                                                    {tierNames[tier]}
+                                                                </h4>
+                                                                <div className={cn("flex flex-wrap gap-1", gapClass)}>
+                                                                    {tierItems.map((item: any, idx: number) => (
+                                                                        <DestinyItemCard 
+                                                                           key={`${item.itemHash}-${idx}`}
+                                                                           itemHash={item.itemHash}
+                                                                           instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                                           socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+                                                                           reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
+                                                                           className={iconSizeClass}
+                                                                           isHighlighted={filterItem(item)}
+                                                                           itemInstanceId={item.itemInstanceId}
+                                                                           ownerId="VAULT"
+                                                                           size={iconSize}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                             );
+                                         }
+
+                                         // 3. Group by Class ONLY
+                                         if (!vaultGrouping.byRarity && vaultGrouping.byClass) {
+                                             return (
+                                                <div className="flex flex-col gap-4 min-h-[60px]">
+                                                    {[0, 1, 2, 3].map(cls => {
+                                                        const clsItems = sortedVItems.filter((item: any) => {
+                                                            const def = definitions[item.itemHash];
+                                                            return (def?.classType ?? 3) === cls;
+                                                        });
+                                                        if (clsItems.length === 0) return null;
+                                                        return (
+                                                            <div key={cls}>
+                                                                <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-1">
+                                                                    {cls === 0 ? 'Titan' : cls === 1 ? 'Hunter' : cls === 2 ? 'Warlock' : 'General'}
+                                                                </h4>
+                                                                <div className={cn("flex flex-wrap gap-1", gapClass)}>
+                                                                    {clsItems.map((item: any, idx: number) => (
+                                                                        <DestinyItemCard 
+                                                                           key={`${item.itemHash}-${idx}`}
+                                                                           itemHash={item.itemHash}
+                                                                           instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                                           socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+                                                                           reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
+                                                                           className={iconSizeClass}
+                                                                           isHighlighted={filterItem(item)}
+                                                                           itemInstanceId={item.itemInstanceId}
+                                                                           ownerId="VAULT"
+                                                                           size={iconSize}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                             );
+                                         }
+
+                                         // 4. Group by BOTH (Class -> Rarity)
+                                         if (vaultGrouping.byRarity && vaultGrouping.byClass) {
+                                             return (
+                                                <div className="flex flex-col gap-8 min-h-[60px]">
+                                                    {[0, 1, 2, 3].map(cls => {
+                                                        // First filter by Class
+                                                        const clsItems = sortedVItems.filter((item: any) => {
+                                                            const def = definitions[item.itemHash];
+                                                            return (def?.classType ?? 3) === cls;
+                                                        });
+                                                        
+                                                        if (clsItems.length === 0) return null;
+
+                                                        return (
+                                                            <div key={cls} className="pl-2 border-l border-white/5">
+                                                                <h4 className="text-[10px] uppercase font-bold text-slate-300 mb-2">
+                                                                    {cls === 0 ? 'Titan' : cls === 1 ? 'Hunter' : cls === 2 ? 'Warlock' : 'General'}
+                                                                </h4>
+                                                                
+                                                                {/* Then group by Rarity inside Class */}
+                                                                <div className="flex flex-col gap-6">
+                                                                    {[6, 5, 4, 3, 2].map(tier => {
+                                                                        const tierItems = clsItems.filter((item: any) => (definitions[item.itemHash]?.inventory?.tierType || 0) === tier);
+                                                                        if (tierItems.length === 0) return null;
+                                                                        const tierNames: any = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
+                                                                        
+                                                                        return (
+                                                                            <div key={tier}>
+                                                                                <h5 className={cn("text-[9px] uppercase font-bold mb-2 opacity-70", 
+                                                                                    tier === 6 ? "text-yellow-400" : 
+                                                                                    tier === 5 ? "text-purple-400" : 
+                                                                                    tier === 4 ? "text-blue-400" : "text-slate-500"
+                                                                                )}>
+                                                                                    {tierNames[tier]}
+                                                                                </h5>
+                                                                                <div className={cn("flex flex-wrap gap-1", gapClass)}>
+                                                                                    {tierItems.map((item: any, idx: number) => (
+                                                                                        <DestinyItemCard 
+                                                                                           key={`${item.itemHash}-${idx}`}
+                                                                                           itemHash={item.itemHash}
+                                                                                           instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                                                           socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
+                                                                                           reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
+                                                                                           className={iconSizeClass}
+                                                                                           isHighlighted={filterItem(item)}
+                                                                                           itemInstanceId={item.itemInstanceId}
+                                                                                           ownerId="VAULT"
+                                                                                           size={iconSize}
+                                                                                        />
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                             );
+                                         }
+                                     })()}
                                 </div>
                              </div>
                          );
