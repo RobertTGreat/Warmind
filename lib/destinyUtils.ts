@@ -33,7 +33,8 @@ export const MATERIALS = {
     ENHANCEMENT_PRISM: 4257549241,
     ASCENDANT_SHARD: 4257549242,
     ASCENDANT_ALLOY: 3581008036, // Updated active hash
-    STRANGE_COIN: 3702027550, // Reverting to 30th Anni version often active
+    STRANGE_COIN: 3702027550, // 30th Anni
+    STRANGE_COIN_XUR: 2949235560, // Final Shape Rework
 };
 
 // Presentation Node Hashes
@@ -43,6 +44,82 @@ export const PRESENTATION_NODES = {
     SEALS_ROOT: 616318467,
     EXOTICS: 1068557105, // Added Exotics
 };
+
+export const STAT_HASHES = {
+    MOBILITY: 2996146975,
+    RESILIENCE: 392767087,
+    RECOVERY: 1943323491,
+    DISCIPLINE: 144602215,
+    INTELLECT: 1735777505,
+    STRENGTH: 4244567218
+};
+
+/**
+ * Calculates the Base Stats for armor by removing Masterwork and Mod bonuses.
+ * 
+ * @param currentStats - The live stats from the item instance.
+ * @param activePlugs - Array of active plug definitions (mods, perks).
+ * @param isMasterworked - Whether the item is Masterworked (Tier 10).
+ * @returns Record of statHash -> baseValue
+ */
+export function getArmorBaseStats(
+    currentStats: Record<string, { value: number }>,
+    activePlugs: any[],
+    isMasterworked: boolean
+): Record<number, number> {
+    const ARMOR_STATS = Object.values(STAT_HASHES);
+    const baseStats: Record<number, number> = {};
+
+    // Initialize with current stats
+    ARMOR_STATS.forEach(hash => {
+        // Handle string/number keys
+        const val = currentStats[hash]?.value ?? currentStats[String(hash)]?.value ?? 0;
+        baseStats[hash] = val;
+    });
+
+    // 1. Remove Masterwork Bonus (+2 to all stats if MW)
+    // Note: In current D2, MW gives +2 to all stats.
+    if (isMasterworked) {
+        ARMOR_STATS.forEach(hash => {
+            baseStats[hash] = Math.max(0, baseStats[hash] - 2);
+        });
+    }
+
+    // 2. Remove Mod Bonuses
+    // Look for General Armor Mods (e.g. "Major Recovery Mod" +10, "Minor Mobility Mod" +5)
+    // And Artifice Mods (+3)
+    if (activePlugs) {
+        activePlugs.forEach(plug => {
+            if (!plug || !plug.investmentStats) return;
+
+            // Filter for Stat Mods
+            // Heuristic: Check plugCategoryIdentifier for "armor_mods" or "enhancements"
+            // And ensure it's not an intrinsic (which are usually permanent)
+            // Or just check if it has investmentStats and is in a mod socket.
+            // Assuming `activePlugs` passed here are from "Mod" sockets mostly.
+            
+            // Check categories
+            const category = plug.plug?.plugCategoryIdentifier || "";
+            const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+            
+            const isStatMod = 
+                category.includes("armor_mods") || 
+                category.includes("enhancements.v2.general") ||
+                typeName.includes("general armor mod") ||
+                (typeName.includes("artifice") && typeName.includes("mod"));
+
+            if (isStatMod) {
+                plug.investmentStats.forEach((stat: any) => {
+                    if (ARMOR_STATS.includes(stat.statTypeHash)) {
+                        baseStats[stat.statTypeHash] = Math.max(0, baseStats[stat.statTypeHash] - stat.value);
+                    }
+                });
+            }
+        });
+    }
+
+    return baseStats;
+}
 
 /**
  * Determines the Tier of an item based on its Intrinsic Plug and Sockets.
@@ -55,12 +132,12 @@ export const PRESENTATION_NODES = {
  * TIER 4: Enhanced Trait: 2 + Multi-Perk: 2 + Enhanced: Mods, Magazine, Barrel
  * TIER 5: Enhanced Trait: 2 + Multi-Perk: 3 + Enhanced: Mods, Magazine, Barrel, Origin Trait + Cosmetics
  * 
- * ARMOR TIERS (Total Stats):
- * TIER 1: 52 - 57
- * TIER 2: 58 - 63
- * TIER 3: 64 - 69
- * TIER 4: 70 - 75
- * TIER 5: > 75
+ * ARMOR TIERS (Base Stats):
+ * TIER 1: < 55
+ * TIER 2: 55 - 59
+ * TIER 3: 60 - 65
+ * TIER 4: 66 - 68
+ * TIER 5: >= 69 (God Roll)
  * 
  * @param itemDef - The DestinyInventoryItemDefinition of the item.
  * @param socketsData - The DestinyItemSocketsComponent (live socket data).
@@ -76,39 +153,41 @@ export function getItemTier(
 ): number {
     if (!itemDef) return 1;
 
+    // Disable tiering for Exotics (TierType 6)
+    if (itemDef.inventory?.tierType === 6) return 1;
+
     // --- Armor Logic ---
     // Check if item has stats in instance data (Armor always has stats)
-    if (instanceData?.stats) {
-        // Sum primary 6 stats
-        const STAT_HASHES = [
-            2996146975, // Mobility
-            392767087,  // Resilience
-            1943323491, // Recovery
-            1735777505, // Discipline
-            144602215,  // Intellect
-            4244567218  // Strength
-        ];
+    if (instanceData?.stats && itemDef.itemType === 2) {
+        // Collect active plugs to find mods
+        const activePlugs: any[] = [];
+        if (socketsData?.sockets && plugDefinitions) {
+            socketsData.sockets.forEach((socket: any) => {
+                if (socket.plugHash && plugDefinitions[socket.plugHash]) {
+                    activePlugs.push(plugDefinitions[socket.plugHash]);
+                }
+            });
+        }
 
+        const isMasterworked = (instanceData.state & 4) === 4;
+        const baseStats = getArmorBaseStats(instanceData.stats, activePlugs, isMasterworked);
+        const ARMOR_STATS = Object.values(STAT_HASHES);
+        
         let total = 0;
-        let validStats = 0;
-        STAT_HASHES.forEach(h => {
-            // Handle both number and string keys from API response
-            const stat = instanceData.stats[h] || instanceData.stats[String(h)];
-            if (stat) {
-                total += stat.value;
-                validStats++;
-            }
+        ARMOR_STATS.forEach(h => {
+            total += baseStats[h] || 0;
         });
 
         // Armor (ItemType 2)
-        if (validStats > 0 && itemDef.itemType === 2) {
-            if (total > 75) return 5; // God Roll
-            if (total >= 66) return 4; // High Stat
-            if (total >= 60) return 3; // Decent
-            if (total >= 55) return 2; // Average
-            
-            return 1;
-        }
+        // Adjusted Tiers based on typical Base Stat Distributions
+        // Max base is usually 68 (some pre-Shadowkeep exotics go higher, but Legendary cap is ~68)
+        // Artifice adds +3 but that is a mod we removed.
+        if (total >= 68) return 5; // God Roll (theoretical max 68)
+        if (total >= 65) return 4; // High Stat
+        if (total >= 60) return 3; // Decent
+        if (total >= 55) return 2; // Average
+        
+        return 1;
     }
 
     // --- Weapon Logic ---

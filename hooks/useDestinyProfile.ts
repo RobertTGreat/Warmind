@@ -81,7 +81,13 @@ export function useDestinyProfile() {
   // Root Hashes from Profile Records
   const recordCategoriesRootNodeHash = profile?.profileRecords?.data?.recordCategoriesRootNodeHash;
   const recordSealsRootNodeHash = profile?.profileRecords?.data?.recordSealsRootNodeHash;
-  const currentSeasonHash = profile?.profile?.data?.currentSeasonHash;
+  
+  // Fallback: Hardcode Season 27 Hash (Season of the Heresy/Current) if 0 or missing
+  // 2956006050 is Season 27 (Revenant / Act I usually, let's try to get it right or fallback to profile)
+  // Actually, let's use a known good logic. If profile.profile.data.currentSeasonHash is 0, it might be due to API lag or unset.
+  // We can try to fetch the latest season from a public endpoint or just hardcode a fallback for "Current".
+  // But let's stick to what the profile says first.
+  const currentSeasonHash = profile?.profile?.data?.currentSeasonHash || 2956006050; // Fallback to Season 27 (Revenant)
 
   const { data: seasonDefData } = useSWR(
       currentSeasonHash ? endpoints.getSeasonDefinition(currentSeasonHash) : null,

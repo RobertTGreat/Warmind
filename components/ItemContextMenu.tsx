@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlug } from '@/lib/bungie';
 import { toast } from 'sonner';
@@ -153,6 +154,11 @@ export function ItemContextMenu({
 
     const characters = profile?.characters?.data ? Object.values(profile.characters.data) as any[] : [];
     const classNames = { 0: 'Titan', 1: 'Hunter', 2: 'Warlock' };
+    const CLASS_ICONS: Record<number, string> = {
+        0: '/class-titan.svg',
+        1: '/class-hunter.svg',
+        2: '/class-warlock.svg',
+    };
 
     // Actions
     const handleEquip = async (characterId: string) => {
@@ -248,60 +254,91 @@ export function ItemContextMenu({
             <div className="py-1">
                 {/* Equip Options */}
                 <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Equip</div>
-            {characters.map((char: any) => (
-                <button 
-                    key={`equip-${char.characterId}`}
-                    onClick={() => handleEquip(char.characterId)}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-700 flex items-center gap-2"
-                >
-                     <div 
-                        className="w-4 h-4 bg-contain bg-center bg-no-repeat rounded-sm"
-                        style={{ backgroundImage: `url(${getBungieImage(char.emblemPath)})` }} 
-                    />
-                    <span>{classNames[char.classType as keyof typeof classNames]}</span>
-                    <span className="text-xs text-destiny-gold ml-auto">{char.light}</span>
-                </button>
-            ))}
+                <div className="flex gap-1 px-3 pb-2">
+                    {characters.map((char: any) => (
+                        <button 
+                            key={`equip-${char.characterId}`}
+                            onClick={() => handleEquip(char.characterId)}
+                            className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group"
+                            title={`Equip on ${classNames[char.classType as keyof typeof classNames]} (${char.light})`}
+                        >
+                            <div 
+                                className="absolute inset-0 bg-cover bg-center opacity-70 group-hover:opacity-100 transition-opacity"
+                                style={{ backgroundImage: `url(${getBungieImage(char.emblemBackgroundPath)})` }} 
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center z-10">
+                                <Image 
+                                    src={CLASS_ICONS[char.classType]} 
+                                    width={28} 
+                                    height={28} 
+                                    className="object-contain drop-shadow-md" 
+                                    alt={classNames[char.classType as keyof typeof classNames]} 
+                                />
+                            </div>
+                        </button>
+                    ))}
+                </div>
             
-            <div className="h-px bg-gray-700 my-1" />
+            <div className="h-px bg-gray-700 my-1 mx-3" />
 
             {/* Store / Transfer Options */}
             <div className="px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">Store</div>
-            {characters.map((char: any) => (
+            <div className="flex gap-1 px-3 pb-2">
+                {characters.map((char: any) => (
+                    <button 
+                        key={`store-${char.characterId}`}
+                        onClick={() => handleTransfer(char.characterId, classNames[char.classType as keyof typeof classNames])}
+                        className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group"
+                        title={`Store on ${classNames[char.classType as keyof typeof classNames]}`}
+                    >
+                        <div 
+                            className="absolute inset-0 bg-cover bg-center opacity-70 group-hover:opacity-100 transition-opacity"
+                            style={{ backgroundImage: `url(${getBungieImage(char.emblemBackgroundPath)})` }} 
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                            <Image 
+                                src={CLASS_ICONS[char.classType]} 
+                                width={20} 
+                                height={20} 
+                                className="object-contain drop-shadow-md" 
+                                alt={classNames[char.classType as keyof typeof classNames]} 
+                            />
+                        </div>
+                    </button>
+                ))}
                 <button 
-                    key={`store-${char.characterId}`}
-                    onClick={() => handleTransfer(char.characterId, classNames[char.classType as keyof typeof classNames])}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-700 flex items-center gap-2"
+                    onClick={() => handleTransfer('VAULT', 'Vault')}
+                    className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group bg-slate-800"
+                    title="Vault"
                 >
-                    <div 
-                        className="w-4 h-4 bg-contain bg-center bg-no-repeat rounded-sm"
-                        style={{ backgroundImage: `url(${getBungieImage(char.emblemPath)})` }} 
-                    />
-                    <span>{classNames[char.classType as keyof typeof classNames]}</span>
+                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                        <div className="w-7 h-7 flex items-center justify-center bg-slate-700 rounded-sm group-hover:bg-slate-600 transition-colors">
+                            <div className="w-3.5 h-3.5 bg-slate-400 rotate-45" />
+                        </div>
+                    </div>
                 </button>
-            ))}
-             <button 
-                onClick={() => handleTransfer('VAULT', 'Vault')}
-                className="w-full text-left px-4 py-2 hover:bg-gray-700 flex items-center gap-2"
-            >
-                <div className="w-4 h-4 flex items-center justify-center bg-slate-800 rounded-sm">
-                   <div className="w-2 h-2 bg-slate-400 rotate-45" />
-                </div>
-                <span>Vault</span>
-            </button>
+            </div>
              
-            <div className="h-px bg-gray-700 my-1" />
+            <div className="h-px bg-gray-700 my-1 mx-3" />
 
-            <button onClick={handleLock} className="w-full text-left px-4 py-2 hover:bg-gray-700 flex justify-between">
-                <span>{isLocked ? 'Unlock' : 'Lock'}</span>
-            </button>
+            <div className="flex gap-1 px-3 pb-2">
+                <button 
+                    onClick={handleLock} 
+                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-slate-800 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
+                >
+                    {isLocked ? 'Unlock' : 'Lock'}
+                </button>
 
-            <button onClick={() => { 
-                setDetailsItem({ itemHash, itemInstanceId });
-                onClose(); 
-            }} className="w-full text-left px-4 py-2 hover:bg-gray-700">
-                Details
-            </button>
+                <button 
+                    onClick={() => { 
+                        setDetailsItem({ itemHash, itemInstanceId });
+                        onClose(); 
+                    }} 
+                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-slate-800 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
+                >
+                    Details
+                </button>
+            </div>
         </div>
     </div>,
         document.body

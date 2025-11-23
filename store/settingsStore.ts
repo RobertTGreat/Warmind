@@ -7,6 +7,7 @@ export type SortMethod = 'power' | 'name' | 'rarity' | 'newest';
 export interface VaultGroupingOptions {
     byClass: boolean;
     byRarity: boolean;
+    byTier: boolean;
 }
 
 interface SettingsStore {
@@ -51,7 +52,7 @@ export const useSettingsStore = create<SettingsStore>()(
         (set) => ({
             iconSize: 'medium',
             sortMethod: 'power',
-            vaultGrouping: { byClass: false, byRarity: false },
+            vaultGrouping: { byClass: false, byRarity: false, byTier: false },
             favoriteMembers: [],
             setIconSize: (size) => set({ iconSize: size }),
             setSortMethod: (method) => set({ sortMethod: method }),

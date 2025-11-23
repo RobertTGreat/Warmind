@@ -7,7 +7,7 @@ import { ItemTooltip } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useTransferStore } from '@/store/transferStore';
-import { getItemTier } from '@/lib/destinyUtils';
+import { getItemTier, BUCKETS } from '@/lib/destinyUtils';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -24,6 +24,7 @@ interface DestinyItemCardProps {
     powerDiff?: number;
     classFilter?: number; // If provided, hides item if classType doesn't match (and isn't 3)
     hidePower?: boolean;
+    hideTooltipPower?: boolean;
     hideBorder?: boolean;
     minimal?: boolean;
     showClassSymbolOnMismatch?: boolean;
@@ -62,6 +63,7 @@ export function DestinyItemCard({
     powerDiff,
     classFilter,
     hidePower,
+    hideTooltipPower,
     hideBorder,
     minimal,
     showClassSymbolOnMismatch,
@@ -82,6 +84,9 @@ export function DestinyItemCard({
   const isPending = itemInstanceId ? pendingOperations.some(op => op.itemInstanceId === itemInstanceId) : false;
 
   const def = definition || defResponse?.Response;
+
+  // Check if item is a subclass
+  const isSubclass = def?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
 
   // State hooks moved up to prevent "Rendered fewer hooks" error
   const [isHovered, setIsHovered] = useState(false);
@@ -343,10 +348,7 @@ export function DestinyItemCard({
           if (!isCosmetic) {
               // Mods Logic - Check strictly for "mod" in type
               if (typeName.includes("mod")) {
-                  // Filter out Empty sockets
-                  if (!name.includes("empty") && !name.includes("socket")) {
-                      mods.push(plug);
-                  }
+                  mods.push(plug);
               }
               // Perks Logic - Catch-all for remaining traits/perks
               else if (typeName.includes("trait") || typeName.includes("perk") || category.includes("trait") || category.includes("frames")) {
@@ -453,7 +455,8 @@ export function DestinyItemCard({
         >
             {/* Main Icon Container */}
             <div className={cn(
-                "relative w-full aspect-square overflow-hidden border-2 bg-slate-900",
+                "relative w-full aspect-square overflow-hidden border-2",
+                isSubclass ? "bg-transparent border-none" : "bg-slate-900",
                 rarityBorder,
                 isDimmed ? "opacity-20 grayscale" : ""
             )}>
@@ -586,7 +589,7 @@ export function DestinyItemCard({
                 name={name} 
                 itemType={itemType} 
                 rarity={rarity} 
-                power={instanceData?.primaryStat?.value}
+                power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
                 screenshot={screenshot}
                 flavorText={def.flavorText}
                 seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved)}

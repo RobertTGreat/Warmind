@@ -4,6 +4,7 @@ import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { Toaster } from "sonner";
 import { FirstLoadWarning } from "@/components/FirstLoadWarning";
+import { ClientManifestManager } from "@/components/ClientManifestManager";
 
 export const metadata: Metadata = {
   title: "Warmind - Destiny 2 Companion",
@@ -61,6 +62,7 @@ export default function RootLayout({
             </main>
         </div>
         <FirstLoadWarning />
+        <ClientManifestManager />
         <Toaster position="bottom-center" theme="system" closeButton />
       </body>
     </html>

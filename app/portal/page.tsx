@@ -44,57 +44,55 @@ export default function PortalPage() {
 
   return (
     <div className="min-h-screen pb-20 pt-10">
-      <div className="px-4 sm:px-8 space-y-12 max-w-[1600px] mx-auto mt-8">
+      <div className="px-4 sm:px-8 space-y-12 max-w-[1800px] mx-auto mt-8">
         
-        {/* Event Section (Conditionally Rendered) */}
-        <EventCard profile={profile} />
-
-        {/* Seasonal Section */}
-        <section className="space-y-6">
-            <div className="flex items-center gap-4 border-b border-white/10 pb-4">
-                <h2 className="text-2xl font-bold text-white">Seasonal Progress</h2>
-                <span className="px-2 py-0.5 text-xs font-bold bg-destiny-gold/20 text-destiny-gold rounded uppercase">
-                    Current Season
-                </span>
-            </div>
+        <div className="flex flex-col gap-8">
+             {/* Event Section (Conditionally Rendered) */}
+            <EventCard profile={profile} />
             
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Season Pass Track - Takes up 2 cols */}
-                <div className="xl:col-span-2 space-y-6">
-                    <div className="bg-black/20 border border-white/5 p-6 rounded-sm backdrop-blur-sm">
-                        <SeasonPassTrack 
-                            seasonHash={stats?.currentSeasonHash} 
-                            progressions={stats?.characterProgressions} 
-                        />
-                    </div>
+            {/* Seasonal Section - Full Width */}
+            <section className="space-y-6">
+                <div className="flex items-center gap-4 border-b border-white/10 pb-4">
+                    <h2 className="text-3xl font-bold text-white font-destiny uppercase tracking-wider">Seasonal Progress</h2>
                 </div>
-
-                {/* Seasonal Challenges - Takes up 1 col */}
-                <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-white uppercase tracking-wide">Seasonal Challenges</h3>
-                    <div className="bg-black/20 border border-white/5 p-6 rounded-sm backdrop-blur-sm">
-                        <SeasonalChallenges 
-                            seasonHash={stats?.currentSeasonHash} 
-                            profile={profile}
-                        />
-                    </div>
+                
+                <div className="w-full">
+                    <SeasonPassTrack 
+                        seasonHash={stats?.currentSeasonHash} 
+                        progressions={stats?.characterProgressions} 
+                    />
                 </div>
-            </div>
-        </section>
+            </section>
+        </div>
 
-        {/* Weekly Section */}
-        <section className="space-y-6">
-            <div className="flex items-center gap-4 border-b border-white/10 pb-4">
-                <h2 className="text-2xl font-bold text-white">Weekly Activities</h2>
-                <span className="px-2 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-400 rounded uppercase">
-                    Resets Tuesday
-                </span>
-            </div>
-            
-            <div className="bg-black/20 border border-white/5 p-6 rounded-sm backdrop-blur-sm">
-                <WeeklyMilestones />
-            </div>
-        </section>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            {/* Seasonal Challenges */}
+            <section className="space-y-6">
+                <div className="flex items-center gap-4 border-b border-white/10 pb-4">
+                     <h2 className="text-2xl font-bold text-white uppercase tracking-wide">Challenges</h2>
+                </div>
+                <div className="bg-black/20 border border-white/5 p-6 rounded-sm backdrop-blur-sm h-full">
+                    <SeasonalChallenges 
+                        seasonHash={stats?.currentSeasonHash} 
+                        profile={profile}
+                    />
+                </div>
+            </section>
+
+            {/* Weekly Section */}
+            <section className="space-y-6">
+                <div className="flex items-center gap-4 border-b border-white/10 pb-4">
+                    <h2 className="text-2xl font-bold text-white uppercase tracking-wide">Weekly Rituals</h2>
+                    <span className="px-2 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-400 rounded uppercase">
+                        Resets Tuesday
+                    </span>
+                </div>
+                
+                <div className="bg-black/20 border border-white/5 p-6 rounded-sm backdrop-blur-sm h-full">
+                    <WeeklyMilestones />
+                </div>
+            </section>
+        </div>
 
       </div>
     </div>

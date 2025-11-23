@@ -51,6 +51,7 @@ const CLASS_ICONS: Record<number, string> = {
 import { loginWithBungie } from "@/lib/bungie";
 import { useTransferStore } from "@/store/transferStore";
 import { useSettingsStore } from "@/store/settingsStore";
+import { parseSearchQuery, checkItemMatch } from "@/lib/searchUtils";
 
 export default function VaultPage() {
   const { profile, isLoading: profileLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
@@ -88,17 +89,24 @@ export default function VaultPage() {
   // 2. Fetch Definitions
   const { definitions, isLoading: defsLoading } = useItemDefinitions(allItems);
 
-  // 3. Filter Logic
-  const filterItem = (item: any) => {
+  // 3. Search Logic
+  const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
+  
+  // Full Inventory List for Dupe Check
+  const fullInventoryList = useMemo(() => {
+      if (!profile) return [];
+      return [
+          ...Object.values(profile.characterInventories?.data || {}).flatMap((c: any) => c.items),
+          ...Object.values(profile.characterEquipment?.data || {}).flatMap((c: any) => c.items),
+          ...(profile.profileInventory?.data?.items || [])
+      ];
+  }, [profile]);
+
+  const checkMatch = (item: any) => {
       if (!searchQuery) return true;
       const def = definitions[item.itemHash];
-      if (!def) return false;
-      
-      const term = searchQuery.toLowerCase();
-      const name = def.displayProperties?.name?.toLowerCase() || "";
-      const type = def.itemTypeDisplayName?.toLowerCase() || "";
-      
-      return name.includes(term) || type.includes(term);
+      const instance = profile?.itemComponents?.instances?.data?.[item.itemInstanceId];
+      return checkItemMatch(item, def, parsedQuery, instance, fullInventoryList);
   };
 
   // 4. Sort Logic
@@ -159,9 +167,9 @@ export default function VaultPage() {
 
   // Size-based styles for grid gaps
   const gapClass = {
-      'small': 'gap-y-8',
-      'medium': 'gap-y-10',
-      'large': 'gap-y-12'
+      'small': 'gap-1',
+      'medium': 'gap-1',
+      'large': 'gap-1'
   }[iconSize];
 
   // --- Drag and Drop Handlers ---
@@ -462,18 +470,28 @@ export default function VaultPage() {
                          // OPTIMISTIC UI: Remove pending items FROM vault
                          vItems = vItems.filter(i => !pendingOperations.some(op => op.itemInstanceId === i.itemInstanceId && op.fromOwnerId === 'VAULT'));
 
+                         // Filter Vault Items if Hiding
+                         if (parsedQuery.hideNonMatches) {
+                             vItems = vItems.filter((item: any) => checkMatch(item));
+                         }
+
                          const sortedVItems = sortItems(vItems);
 
                          return (
-                             <div key={bucketHash} className="flex gap-4 mb-6 min-h-[120px]">
+                             <div key={bucketHash} className="flex gap-2 mb-2 min-h-[120px]">
                                  {/* Character Columns */}
                                  {characters.map((char: any) => {
                                      if (hiddenCharacters.includes(char.characterId)) return null;
                                      
                                      const charId = char.characterId;
-                                     const equipped = (profile?.characterEquipment?.data?.[charId]?.items || [])
+                                     let equipped = (profile?.characterEquipment?.data?.[charId]?.items || [])
                                         .find((i: any) => i.bucketHash === bucketHash);
                                      
+                                     // Filter Equipped if Hiding
+                                     if (equipped && parsedQuery.hideNonMatches && !checkMatch(equipped)) {
+                                         equipped = null;
+                                     }
+
                                      // Inventory for this bucket
                                      let inventory = (profile?.characterInventories?.data?.[charId]?.items || [])
                                         .filter((i: any) => i.bucketHash === bucketHash);
@@ -490,15 +508,19 @@ export default function VaultPage() {
                                      // OPTIMISTIC UI: Remove pending items FROM this character
                                      inventory = inventory.filter((i: any) => !pendingOperations.some(op => op.itemInstanceId === i.itemInstanceId && op.fromOwnerId === charId));
 
+                                     // Filter Inventory if Hiding
+                                     if (parsedQuery.hideNonMatches) {
+                                         inventory = inventory.filter((item: any) => checkMatch(item));
+                                     }
+
                                      const sortedInventory = sortItems(inventory);
 
                                      return (
                                          <div 
                                              key={charId} 
                                              className={cn(
-                                                 "shrink-0 flex gap-2 p-2 transition-all border border-transparent rounded-sm", 
-                                                 "hover:border-white/5 hover:bg-white/5", // Drop zone hint on hover
-                                                 columnWidthClass
+                                                 "shrink-0 flex gap-1 p-1 transition-all border border-transparent rounded-sm", 
+                                                 "hover:border-white/5 hover:bg-white/5" // Drop zone hint on hover
                                              )}
                                              onDragOver={handleDragOver}
                                              onDrop={(e) => handleDrop(e, charId, bucketHash)}
@@ -513,7 +535,7 @@ export default function VaultPage() {
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[equipped.itemInstanceId]}
                                                        reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[equipped.itemInstanceId]?.plugs}
                                                        className={equippedSizeClass}
-                                                       isHighlighted={filterItem(equipped)}
+                                                       isHighlighted={checkMatch(equipped)}
                                                        itemInstanceId={equipped.itemInstanceId}
                                                        ownerId={char.characterId}
                                                        size={iconSize}
@@ -525,7 +547,7 @@ export default function VaultPage() {
                                             </div>
                                             
                                             {/* Inventory (Grid) */}
-                                            <div className={cn("grid grid-cols-3 gap-1 content-start flex-1 min-h-[60px]", gapClass)}>
+                                            <div className={cn("grid grid-cols-3 gap-1 content-start w-auto", gapClass)}>
                                                 {sortedInventory.map((item: any, idx: number) => (
                                                     <DestinyItemCard 
                                                        key={`${item.itemHash}-${idx}`}
@@ -534,7 +556,7 @@ export default function VaultPage() {
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                        reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                        className={iconSizeClass}
-                                                       isHighlighted={filterItem(item)}
+                                                       isHighlighted={checkMatch(item)}
                                                        itemInstanceId={item.itemInstanceId}
                                                        ownerId={char.characterId}
                                                        size={iconSize}
@@ -551,11 +573,11 @@ export default function VaultPage() {
                                 
                                 {/* Vault Column for this bucket */}
                                  <div 
-                                    className="flex-1 p-2 border border-transparent rounded-sm hover:border-white/5 hover:bg-white/5 transition-colors"
+                                    className="flex-1 p-1 border border-transparent rounded-sm hover:border-white/5 hover:bg-white/5 transition-colors ml-4"
                                     onDragOver={handleDragOver}
                                     onDrop={(e) => handleDrop(e, "VAULT", bucketHash)}
                                  >
-                                    <div className="text-xs text-slate-500 uppercase mb-2 font-bold">{bucketName} (Vault)</div>
+                                    <div className="text-xs text-slate-500 uppercase mb-1 font-bold">{bucketName} (Vault)</div>
                                      
                                      {/* Rendering Logic based on toggles */}
                                      {(() => {
@@ -571,7 +593,7 @@ export default function VaultPage() {
                                                           socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                           reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                           className={iconSizeClass}
-                                                          isHighlighted={filterItem(item)}
+                                                          isHighlighted={checkMatch(item)}
                                                           itemInstanceId={item.itemInstanceId}
                                                           ownerId="VAULT"
                                                           size={iconSize}
@@ -607,7 +629,7 @@ export default function VaultPage() {
                                                                            socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                                            reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                                            className={iconSizeClass}
-                                                                           isHighlighted={filterItem(item)}
+                                                                           isHighlighted={checkMatch(item)}
                                                                            itemInstanceId={item.itemInstanceId}
                                                                            ownerId="VAULT"
                                                                            size={iconSize}
@@ -645,7 +667,7 @@ export default function VaultPage() {
                                                                            socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                                            reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                                            className={iconSizeClass}
-                                                                           isHighlighted={filterItem(item)}
+                                                                           isHighlighted={checkMatch(item)}
                                                                            itemInstanceId={item.itemInstanceId}
                                                                            ownerId="VAULT"
                                                                            size={iconSize}
@@ -703,7 +725,7 @@ export default function VaultPage() {
                                                                                            socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                                                            reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                                                            className={iconSizeClass}
-                                                                                           isHighlighted={filterItem(item)}
+                                                                                           isHighlighted={checkMatch(item)}
                                                                                            itemInstanceId={item.itemInstanceId}
                                                                                            ownerId="VAULT"
                                                                                            size={iconSize}

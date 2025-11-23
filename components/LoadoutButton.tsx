@@ -225,8 +225,10 @@ export function LoadoutButton({ loadout, index, activeCharacterId, membershipInf
         return { weapons, armor, subclass, subclassPlugs };
     }, [resolvedItems, itemDefs]);
 
-    const renderIcon = (def: any, size: string = "w-10 h-10", rounded: string = "rounded-sm") => (
-        <div key={def.hash} className={`${size} bg-slate-900 border border-white/10 relative overflow-hidden ${rounded} shrink-0`}>
+    const renderIcon = (def: any, size: string = "w-10 h-10", rounded: string = "rounded-sm") => {
+        const isSubclass = def.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
+        return (
+        <div key={def.hash} className={`${size} ${isSubclass ? "bg-transparent border-none" : "bg-slate-900 border border-white/10"} relative overflow-hidden ${rounded} shrink-0`}>
              {def.displayProperties?.icon ? (
                 <Image 
                     src={getBungieImage(def.displayProperties.icon)} 
@@ -239,7 +241,7 @@ export function LoadoutButton({ loadout, index, activeCharacterId, membershipInf
                 <div className="w-full h-full bg-slate-800 flex items-center justify-center text-[8px] text-slate-500">?</div>
             )}
         </div>
-    );
+    )};
 
     return (
         <>

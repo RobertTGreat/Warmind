@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
-import { X } from 'lucide-react';
+import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { getBungieImage, bungieApi, endpoints, insertSocketPlug } from '@/lib/bungie';
@@ -12,11 +12,37 @@ import { toast } from 'sonner';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
+// Stat order matching the screenshot/game
+const WEAPON_STAT_ORDER = [
+    4284895488, // Impact
+    3614673599, // Blast Radius
+    4043523819, // Guard Resistance
+    2961396640, // Range
+    3897883278, // Defense / Shield Duration
+    2523465841, // Velocity
+    155624089,  // Stability
+    943549884,  // Handling
+    4188031367, // Reload Speed
+    1345609583, // Aim Assistance
+    3555269338, // Zoom
+    2715839340, // Recoil Direction
+    1931675084, // Inventory Size
+    2715839340, // Recoil
+    1591432999, // Accuracy
+    447667954,  // Draw Time
+    2591150011, // Charge Time
+    2837207746, // Swing Speed
+    3022301683, // Charge Rate
+    3736853112, // Guard Efficiency
+    2762071195, // Guard Endurance
+];
 
 export function ItemDetailsOverlay() {
   const { detailsItem, setDetailsItem } = useUIStore();
   const { profile, membershipInfo } = useDestinyProfile();
-  const [showAll, setShowAll] = useState(false);
+  
+  // Always declare hooks at the top level
+  const [showAllPerks, setShowAllPerks] = useState(false);
 
   // Fetch definition for the item
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
@@ -25,6 +51,7 @@ export function ItemDetailsOverlay() {
   const instance = detailsItem?.itemInstanceId ? profile?.itemComponents?.instances?.data?.[detailsItem.itemInstanceId] : undefined;
   const sockets = detailsItem?.itemInstanceId ? profile?.itemComponents?.sockets?.data?.[detailsItem.itemInstanceId]?.sockets : undefined;
   const stats = detailsItem?.itemInstanceId ? profile?.itemComponents?.stats?.data?.[detailsItem.itemInstanceId]?.stats : undefined;
+  const objectives = detailsItem?.itemInstanceId ? profile?.itemComponents?.objectives?.data?.[detailsItem.itemInstanceId]?.objectives : undefined;
 
   // Fetch plug definitions for Tier calculation
   const activePlugHashes = useMemo(() => {
@@ -38,117 +65,166 @@ export function ItemDetailsOverlay() {
       return getItemTier(itemDef, { sockets }, plugDefs, instance);
   }, [itemDef, sockets, plugDefs, instance]);
 
+  // Reset showAllPerks when item changes
+  useEffect(() => {
+      setShowAllPerks(false);
+  }, [detailsItem]);
+
   if (!detailsItem) return null;
 
-  const isSubclass = itemDef?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
+    const isSubclass = itemDef?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
+    const isWeapon = itemDef?.itemType === 3;
+    const isArmor = itemDef?.itemType === 2;
 
-  return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-100 animate-in fade-in duration-200 flex justify-center items-center p-4 md:p-12">
-        <button 
-            onClick={() => setDetailsItem(null)}
-            className="absolute top-6 right-6 p-2 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full z-50 transition-colors"
+    return (
+    <div 
+        className="fixed inset-0 z-[100] flex justify-center items-center p-4 md:p-8 bg-black/90 backdrop-blur-sm"
+        onClick={() => setDetailsItem(null)}
+    >
+        <div 
+            className="w-full max-w-[1400px] aspect-video max-h-[90vh] bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl overflow-hidden relative group flex flex-col md:flex-row isolate"
+            onClick={(e) => e.stopPropagation()}
         >
-            <X className="w-8 h-8" />
-        </button>
-
-        <div className="w-full max-w-7xl h-full max-h-[90vh] bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl flex flex-col md:flex-row overflow-hidden relative group">
              {/* Background Image (Blurred/Faded) */}
-             <div className="absolute inset-0 z-0 opacity-40 pointer-events-none select-none">
+             <div className="absolute inset-0 z-[-1] bg-[#0f0f0f]">
                  {itemDef?.screenshot && (
-                     <Image 
-                        src={getBungieImage(itemDef.screenshot)} 
-                        fill 
-                        sizes="(max-width: 768px) 100vw, 100vw"
-                        className="object-cover" 
-                        alt="" 
-                     />
+                     <>
+                        <Image 
+                            src={getBungieImage(itemDef.screenshot)} 
+                            fill 
+                            className="object-cover opacity-60" 
+                            alt="" 
+                        />
+                        {/* Gradients to make text readable */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#121212] via-[#121212]/80 to-transparent w-2/3" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-transparent h-1/2 bottom-0 top-auto" />
+                        <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-[#121212]/90 to-transparent" />
+                     </>
                  )}
-                 <div className="absolute inset-0 bg-linear-to-r from-[#1e1e1e] via-[#1e1e1e]/90 to-transparent md:via-[#1e1e1e]/80" />
-                 <div className="absolute inset-0 bg-linear-to-t from-[#1e1e1e] via-transparent to-transparent" />
              </div>
 
-             {/* Left Panel: Info & Stats */}
-             <div className="relative z-10 w-full md:w-[400px] lg:w-[450px] p-8 flex flex-col gap-6 border-r border-white/5 bg-[#1e1e1e]/80 md:bg-transparent overflow-y-auto md:overflow-visible shrink-0">
+             {/* Controls */}
+             <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
+                {isWeapon && (
+                    <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                        <span className="text-xs font-bold uppercase text-slate-300">All Perks</span>
+                        <button 
+                            onClick={() => setShowAllPerks(!showAllPerks)}
+                            className={cn(
+                                "w-10 h-5 rounded-full relative transition-colors duration-200",
+                                showAllPerks ? "bg-destiny-gold" : "bg-slate-600"
+                            )}
+                        >
+                            <div className={cn(
+                                "absolute top-1 w-3 h-3 rounded-full bg-white transition-transform duration-200",
+                                showAllPerks ? "left-6" : "left-1"
+                            )} />
+                        </button>
+                    </div>
+                )}
+
+                <button 
+                    onClick={() => setDetailsItem(null)}
+                    className="p-2 text-slate-400 hover:text-white bg-black/20 hover:bg-white/10 rounded-full transition-colors"
+                >
+                    <X className="w-8 h-8" />
+                </button>
+             </div>
+
+             {/* Left Panel: Header & Sockets */}
+             <div className="relative z-10 w-full md:w-[500px] h-full p-8 flex flex-col gap-8 overflow-y-auto scrollbar-hide">
                   
                   {/* Header */}
-                  <div className="flex gap-5">
-                      <div className="w-24 h-24 border-2 border-white/10 rounded-sm overflow-hidden shadow-lg shrink-0 bg-[#2a2a2a] relative">
+                  <div className="flex gap-5 items-start">
+                      <div className="w-20 h-20 border border-white/20 rounded-sm overflow-hidden shadow-lg shrink-0 bg-[#2a2a2a] relative">
                           {itemDef?.displayProperties?.icon && (
                               <Image 
                                 src={getBungieImage(itemDef.displayProperties.icon)} 
                                 fill 
-                                sizes="96px"
+                                sizes="80px"
                                 className="object-cover" 
                                 alt="" 
                               />
                           )}
+                          {/* Season Watermark Overlay if available */}
+                          {itemDef?.iconWatermark && (
+                              <Image 
+                                src={getBungieImage(itemDef.iconWatermark)} 
+                                fill
+                                sizes="80px"
+                                className="object-cover opacity-80"
+                                alt=""
+                              />
+                          )}
                       </div>
                       <div>
-                          <h2 className="text-3xl font-bold text-white leading-tight">{itemDef?.displayProperties?.name}</h2>
-                          <div className="text-sm text-destiny-gold font-bold uppercase tracking-wider mt-1 flex items-center gap-2 flex-wrap">
-                              {itemDef?.itemTypeDisplayName}
-                              {instance?.primaryStat && (
-                                  <span className="bg-white/10 px-2 py-0.5 rounded text-white text-xs">
-                                    ♦ {instance.primaryStat.value}
-                                  </span>
-                              )}
+                          <h2 className="text-3xl md:text-4xl font-bold text-white leading-none uppercase tracking-wide">{itemDef?.displayProperties?.name}</h2>
+                          <div className="text-sm text-slate-300 font-medium uppercase tracking-widest mt-2 flex items-center gap-3 flex-wrap">
+                              <span>{itemDef?.itemTypeDisplayName}</span>
                               {tierNumber > 1 && (
                                   <span className={cn(
-                                      "px-2 py-0.5 rounded text-xs flex items-center gap-1 border",
+                                      "px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border",
                                       tierNumber === 5 
                                         ? "bg-destiny-gold/20 text-destiny-gold border-destiny-gold" 
                                         : "bg-white/10 text-white border-white/10"
                                   )}>
-                                    TIER {tierNumber} <span className="text-[10px]">✦</span>
+                                    TIER {tierNumber} <span className="text-[8px]">✦</span>
                                   </span>
                               )}
                           </div>
+                          
+                          <div className="text-slate-400 italic text-xs mt-2 opacity-80 leading-relaxed border-l-2 border-white/20 pl-3">
+                              "{itemDef?.flavorText}"
+                          </div>
                       </div>
                   </div>
-                  
-                  {/* Flavor Text */}
-                  <div className="text-slate-300 italic text-sm border-l-2 border-white/20 pl-4 py-1 opacity-90">
-                      "{itemDef?.flavorText}"
-                  </div>
 
-                  {/* Stats Section */}
-                  <div className="mt-auto md:mt-8">
-                      {isSubclass ? (
-                          <SubclassStats stats={stats} itemDef={itemDef} />
-                      ) : (
-                          <ItemStats stats={stats} itemDef={itemDef} instance={instance} />
+                  {/* Sockets Section (Perks & Mods) */}
+                  <div className="flex-1 mt-4">
+                      {sockets && (
+                          <SocketViewer 
+                              sockets={sockets} 
+                              itemDef={itemDef} 
+                              item={detailsItem}
+                              profile={profile}
+                              membershipInfo={membershipInfo}
+                              isSubclass={isSubclass}
+                          />
                       )}
                   </div>
              </div>
 
-             {/* Right Panel: Sockets / Details */}
-             <div className="relative z-10 flex-1 p-8 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:none]">
-                  <div className="flex justify-end mb-4">
-                      <button 
-                        onClick={() => setShowAll(!showAll)}
-                        className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border",
-                            showAll 
-                                ? "bg-destiny-gold/20 text-destiny-gold border-destiny-gold" 
-                                : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"
-                        )}
-                      >
-                          <span>Show All Options</span>
-                          <div className={cn("w-2 h-2 rounded-full", showAll ? "bg-destiny-gold" : "bg-slate-600")} />
-                      </button>
-                  </div>
+             {/* Middle Spacer (Allows background to show) */}
+             <div className="hidden md:block flex-1 relative overflow-hidden">
+                {showAllPerks ? (
+                    <div className="absolute inset-0 overflow-y-auto p-8 scrollbar-hide">
+                         <PerkExplorer itemDef={itemDef} />
+                    </div>
+                ) : (
+                    /* Info Overlay (Watermark style) */
+                    <div className="absolute bottom-12 left-12 text-white/20 text-sm font-bold uppercase tracking-[0.2em] space-y-1 select-none pointer-events-none">
+                        <p>Item Hash: {detailsItem.itemHash}</p>
+                        {instance?.itemInstanceId && <p>ID: {instance.itemInstanceId}</p>}
+                    </div>
+                )}
+             </div>
 
-                  {sockets && (
-                      <SocketViewer 
-                          sockets={sockets} 
-                          itemDef={itemDef} 
-                          item={detailsItem}
-                          profile={profile}
-                          membershipInfo={membershipInfo}
-                          isSubclass={isSubclass}
-                          showAll={showAll}
-                      />
-                  )}
+             {/* Right Panel: Stats & History */}
+             <div className="relative z-10 w-full md:w-[350px] lg:w-[400px] h-full bg-[#121212]/60 md:bg-transparent p-8 flex flex-col gap-8 overflow-y-auto border-l border-white/5">
+                {/* Stats */}
+                <div className="mt-auto">
+                    {isSubclass ? (
+                        <div className="text-slate-500 text-center py-10">Subclass Details</div>
+                    ) : (
+                        <ItemStats 
+                            stats={stats} 
+                            itemDef={itemDef} 
+                            instance={instance} 
+                            objectives={objectives}
+                            isWeapon={isWeapon}
+                        />
+                    )}
+                </div>
              </div>
         </div>
     </div>
@@ -157,75 +233,117 @@ export function ItemDetailsOverlay() {
 
 // --- Sub-components ---
 
-function ItemStats({ stats, itemDef, instance }: any) {
-    // We need to map stat hashes to display info. 
-    // Ideally fetch definitions, but for common ones we can try to display raw first.
-    // The API returns stats in `stats` object: { [hash]: { value: number } }
-    
-    // Filter relevant stats based on itemDef.stats.stats
+function ItemStats({ stats, itemDef, instance, objectives, isWeapon }: any) {
     const relevantStats = useMemo(() => {
         if (!itemDef?.stats?.stats) return [];
-        return Object.entries(itemDef.stats.stats).map(([hash, def]: [string, any]) => {
+        
+        // Get raw stats from definition
+        const defStats = itemDef.stats.stats;
+        
+        // Create array and merge with live stats
+        let merged = Object.entries(defStats).map(([hash, def]: [string, any]) => {
+            const statHash = Number(hash);
             const liveValue = stats?.[hash]?.value ?? def.value;
             return {
-                hash,
+                hash: statHash,
                 value: liveValue,
                 ...def
             };
-        }).sort((a, b) => a.index - b.index); // Sort by index if available, or definition order
-    }, [itemDef, stats]);
+        });
+
+        // Filter and Sort
+        if (isWeapon) {
+            merged = merged
+                .filter(s => WEAPON_STAT_ORDER.includes(s.hash))
+                .sort((a, b) => WEAPON_STAT_ORDER.indexOf(a.hash) - WEAPON_STAT_ORDER.indexOf(b.hash));
+        } else {
+            // Armor or other: Sort by index
+            merged.sort((a, b) => a.index - b.index);
+        }
+        
+        return merged;
+    }, [itemDef, stats, isWeapon]);
+
+    // Calculate Enemies Defeated from Objectives or Kill Tracker
+    const killCount = useMemo(() => {
+        if (!objectives) return null;
+        // Look for kill tracker objectives (common hash patterns or just display)
+        // This is simplified; real kill trackers are complex plugs.
+        // But often the instance stats have a "Kills" record if it's a masterwork.
+        // Let's check objectives for now.
+        const killObj = objectives.find((o: any) => o.objectiveHash === 2302094943 || o.objectiveHash === 74070459); // Examples
+        if (killObj) return killObj.progress;
+        return null;
+    }, [objectives]);
 
     return (
-        <div className="flex flex-col gap-3 bg-black/20 p-4 rounded-lg border border-white/5">
-             {/* Masterwork / Tier Info could go here */}
-             
-             {relevantStats.map((stat: any) => (
-                 <StatRow key={stat.hash} statHash={stat.hash} value={stat.value} />
-             ))}
-             
-             {/* Enemies Defeated - tracked in objectives usually or kill tracker plug */}
+        <div className="flex flex-col gap-6">
+             {/* Weapon Tier / Primary Stat */}
+             <div className="flex items-center justify-between border-b border-white/20 pb-4">
+                 <div>
+                     <div className="text-slate-400 text-xs uppercase font-bold tracking-widest mb-1">Power</div>
+                     <div className="text-4xl font-bold text-destiny-gold flex items-start gap-1">
+                         {instance?.primaryStat?.value || itemDef?.primaryStat?.value || 0}
+                         <span className="text-2xl mt-1">✧</span>
+                     </div>
+                 </div>
+                 {killCount !== null && (
+                     <div className="text-right">
+                         <div className="text-slate-400 text-xs uppercase font-bold tracking-widest mb-1">Enemies Defeated</div>
+                         <div className="text-2xl font-bold text-white">{killCount.toLocaleString()}</div>
+                     </div>
+                 )}
+             </div>
+
+             <div className="flex flex-col gap-2">
+                 {relevantStats.map((stat: any) => (
+                     <StatRow key={stat.hash} statHash={stat.hash} value={stat.value} isWeapon={isWeapon} />
+                 ))}
+             </div>
         </div>
     );
 }
 
-function StatRow({ statHash, value }: { statHash: string, value: number }) {
+function StatRow({ statHash, value, isWeapon }: { statHash: number, value: number, isWeapon: boolean }) {
     const { data } = useSWR(endpoints.getStatDefinition(statHash), fetcher);
     const def = data?.Response;
 
     if (!def) return null;
     // Filter out "Attack" / "Defense" usually shown in header
-    if (def.displayProperties.name === "Attack" || def.displayProperties.name === "Defense" || def.displayProperties.name === "Power") return null;
+    if (["Attack", "Defense", "Power"].includes(def.displayProperties.name)) return null;
 
-    const isBar = def.displayAsNumeric; // Actually displayAsNumeric usually means NO bar, but let's check aggregationType
-    // Most weapon stats are bars.
+    // Bar Logic
+    const maxValue = isWeapon ? 100 : 42; // Armor stats max ~42 visible usually
+    const showBar = isWeapon && !["Recoil Direction", "RPM", "Magazine", "Draw Time", "Charge Time", "Swing Speed"].includes(def.displayProperties.name);
 
     return (
-        <div className="flex items-center gap-4 text-sm">
-            <div className="w-32 text-slate-400 font-medium truncate text-right">{def.displayProperties.name}</div>
+        <div className="flex items-center gap-4 text-sm group">
+            <div className="w-32 text-slate-400 font-bold uppercase text-[11px] tracking-wider text-right group-hover:text-white transition-colors truncate">
+                {def.displayProperties.name}
+            </div>
             <div className="flex-1 flex items-center gap-3">
-                <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div 
-                        className="h-full bg-white" 
-                        style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }} 
-                    />
-                </div>
+                {showBar ? (
+                    <div className="flex-1 h-3 bg-white/10 overflow-hidden">
+                        <div 
+                            className={cn(
+                                "h-full transition-all duration-500",
+                                "bg-white"
+                            )}
+                            style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }} 
+                        />
+                    </div>
+                ) : (
+                    <div className="flex-1" />
+                )}
                 <div className="w-8 text-right font-bold text-white">{value}</div>
             </div>
         </div>
     );
 }
 
-function SubclassStats({ stats, itemDef }: any) {
-    // Subclasses show different stats (Mobility, etc) derived from plugs usually.
-    // Or they show nothing in stats block and just rely on the plugs.
-    // Placeholder for now.
-    return null; 
-}
-
-function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubclass, showAll }: any) {
+function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubclass }: any) {
     const { definitions: categoryDefs } = useSocketCategoryDefinitions(itemDef?.sockets?.socketCategories?.map((c: any) => c.socketCategoryHash) || []);
     
-    // Reusable Plugs (Options)
     const reusablePlugsData = profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs;
 
     // Gather all plug hashes to fetch definitions
@@ -233,206 +351,266 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
         const hashes: number[] = [];
         sockets?.forEach((s: any) => {
             if (s.plugHash) hashes.push(s.plugHash);
+            if (s.reusablePlugs) s.reusablePlugs.forEach((rp: any) => hashes.push(rp.plugItemHash));
         });
+
+        // Also check profile reusablePlugs component
+        if (reusablePlugsData) {
+            Object.values(reusablePlugsData).forEach((plugs: any) => {
+                 plugs.forEach((p: any) => hashes.push(p.plugItemHash));
+            });
+        }
+
+        // And static definitions as fallback
+        if (itemDef?.sockets?.socketEntries) {
+             itemDef.sockets.socketEntries.forEach((s: any) => {
+                 if (s.reusablePlugItems) {
+                     s.reusablePlugItems.forEach((p: any) => hashes.push(p.plugItemHash));
+                 }
+             });
+        }
+
         return hashes;
-    }, [sockets]);
+    }, [sockets, reusablePlugsData, itemDef]);
 
     const { definitions: plugDefs } = useItemDefinitions(allPlugHashes);
+
+    // Filter out cosmetics completely
+    const nonCosmeticCategories = useMemo(() => {
+        if (!itemDef?.sockets?.socketCategories) return [];
+        return itemDef.sockets.socketCategories.filter((c: any) => {
+             const def = categoryDefs[c.socketCategoryHash];
+             if (!def) return false;
+             const name = def.displayProperties?.name || "";
+             return !name.toLowerCase().includes("cosmetic");
+        });
+    }, [itemDef, categoryDefs]);
+
+    const { intrinsic, mods, perks } = useMemo(() => {
+        const intrinsic: any[] = [];
+        const mods: any[] = [];
+        const perks: any[] = [];
+
+        nonCosmeticCategories.forEach((c: any) => {
+            const def = categoryDefs[c.socketCategoryHash];
+            const name = def?.displayProperties?.name || "";
+            const nameLower = name.toLowerCase();
+            
+            if (nameLower.includes("intrinsic") || nameLower.includes("archetype")) {
+                intrinsic.push(c);
+            } else if (nameLower.includes("mod")) {
+                mods.push(c);
+            } else {
+                perks.push(c);
+            }
+        });
+
+        return { intrinsic, mods, perks };
+    }, [nonCosmeticCategories, categoryDefs]);
+
+    const renderCategory = (category: any) => {
+        const categoryDef = categoryDefs[category.socketCategoryHash];
+        if (!categoryDef) return null;
+
+        const categorySockets = category.socketIndexes.map((idx: number) => ({
+            ...sockets[idx],
+            socketIndex: idx,
+            def: itemDef.sockets.socketEntries[idx],
+            reusablePlugs: reusablePlugsData?.[idx] || sockets[idx].reusablePlugs || [] 
+        }));
+
+        if (!categorySockets.length) return null;
+        
+        // Filter empty sockets
+        const validSockets = categorySockets.filter((socket: any) => {
+                const plug = plugDefs[socket.plugHash];
+                // Keep empty sockets if they are meant to be visible (like empty mod slots)
+                if (!plug && socket.isVisible) return true; 
+                if (!plug) return false;
+
+                // Filter Kill Trackers
+                if (plug.displayProperties?.name?.includes("Kill Tracker") || plug.itemTypeDisplayName?.includes("Tracker")) {
+                return false;
+                }
+
+                // Filter Cosmetics (Shaders, Ornaments)
+                const type = plug.itemTypeDisplayName?.toLowerCase() || "";
+                const category = plug.plug?.plugCategoryIdentifier?.toLowerCase() || "";
+                
+                if (type.includes("shader") || type.includes("ornament")) return false;
+                if (category.includes("shader") || category.includes("skins")) return false;
+
+                // Filter Transmat & Flair
+                if (type.includes("transmat") || category.includes("transmat")) return false;
+                if (type.includes("flair") || category.includes("flair")) return false;
+
+                return true;
+        });
+
+        if (validSockets.length === 0) return null;
+
+        return (
+            <div key={category.socketCategoryHash} className="flex flex-col gap-3">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-white/10 pb-1">
+                    {categoryDef.displayProperties?.name}
+                </h3>
+                
+                <div className="flex flex-wrap gap-3">
+                    {validSockets.map((socket: any) => (
+                        <Socket 
+                            key={socket.socketIndex} 
+                            socket={socket} 
+                            activePlug={plugDefs[socket.plugHash]} 
+                            plugDefs={plugDefs}
+                            item={item}
+                            itemDef={itemDef}
+                            categoryDef={categoryDef}
+                            membershipInfo={membershipInfo}
+                            profile={profile}
+                            isSubclass={isSubclass}
+                        />
+                    ))}
+                </div>
+            </div>
+        );
+    };
 
     if (!itemDef?.sockets?.socketCategories) return null;
 
     return (
-        <div className="flex flex-col gap-10 pb-20">
-            {itemDef.sockets.socketCategories.map((category: any) => {
-                const categoryDef = categoryDefs[category.socketCategoryHash];
-                
-                // If category definition is not loaded yet, skip or show placeholder. 
-                // Since we rely on it for filtering ("Cosmetics"), we should probably wait or default to safe behavior.
-                if (!categoryDef) return null; 
+        <div className="flex flex-col gap-8 pb-20">
+            {/* Intrinsic & Mods Row */}
+            <div className="flex flex-wrap gap-8">
+                {intrinsic.map(renderCategory)}
+                {mods.map(renderCategory)}
+            </div>
 
-                // Sort sockets by index provided in category
-                const categorySockets = category.socketIndexes.map((idx: number) => ({
-                    ...sockets[idx],
-                    socketIndex: idx,
-                    def: itemDef.sockets.socketEntries[idx],
-                    reusablePlugs: reusablePlugsData?.[idx] || sockets[idx].reusablePlugs || [] 
-                }));
-
-                if (!categorySockets.length) return null;
-                
-                // Double check if all filtered sockets in this category are null, if so hide the category
-                // We need to move the filter up or check after mapping but we are inside the map.
-                // Let's filter first.
-                const filteredSockets = categorySockets.filter((socket: any) => {
-                    const plug = plugDefs[socket.plugHash];
-                    if (!plug) return false;
-                    
-                    const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
-                    const categoryIdentifier = plug.plug?.plugCategoryIdentifier || "";
-                    
-                    if (!isSubclass) {
-                         if (
-                            typeName.includes("shader") || 
-                            typeName.includes("ornament") || 
-                            categoryIdentifier.includes("skins") ||
-                            // Filter out "Weapon Cosmetics" specifically which sometimes isn't named "Cosmetics"
-                            (categoryDef?.displayProperties?.name === "Weapon Cosmetics") ||
-                            (categoryDef?.displayProperties?.name === "Cosmetics") || 
-                            (categoryDef?.displayProperties?.name === "Appearance") ||
-                            // Hash check for Weapon Cosmetics (common hash: 3508727055 for shaders/ornaments on weapons)
-                            (category.socketCategoryHash === 3508727055) ||
-                             (category.socketCategoryHash === 2048875504) // Another cosmetic hash
-                        ) return false;
-                    }
-                    // Kill Tracker / Effects often in separate socket but we want to filter them too if they are purely cosmetic/stats
-                    // Often "Kill Tracker" is a separate category or type.
-                    if (typeName.includes("tracker") || plug.displayProperties?.name?.includes("Tracker")) return false;
-
-                    if (!socket.isVisible && !plug.itemTypeDisplayName) return false;
-                    
-                    return true;
-                });
-
-                if (filteredSockets.length === 0) return null;
-
-                return (
-                    <div key={category.socketCategoryHash} className="flex flex-col gap-4">
-                        <h3 className="text-xl font-bold text-white/90 border-b border-white/10 pb-2 flex items-center gap-2">
-                            {categoryDef?.displayProperties?.name || "Other"}
-                        </h3>
-                        
-                        <div className="flex flex-wrap gap-6">
-                            {filteredSockets.map((socket: any, i: number) => {
-                                const plug = plugDefs[socket.plugHash];
-                                // We already checked existence in filter, but TS might need it
-                                if (!plug) return null; 
-
-                                return (
-                                    <Socket 
-                                        key={socket.socketIndex} 
-                                        socket={socket} 
-                                        plug={plug} 
-                                        item={item}
-                                        membershipInfo={membershipInfo}
-                                        profile={profile}
-                                        isSubclass={isSubclass}
-                                        showAll={showAll}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
-                );
-            })}
+            {/* Perks (The rest) */}
+            {perks.map(renderCategory)}
         </div>
     );
 }
 
-function Socket({ socket, plug, item, membershipInfo, profile, isSubclass, showAll }: any) {
+import { createPortal } from 'react-dom';
+
+function PortalTooltip({ content, targetRect, position = 'top' }: any) {
+    if (!targetRect || !content) return null;
+    if (typeof document === 'undefined') return null;
+
+    // Calculate position
+    let top = 0;
+    let left = 0;
+    const tooltipWidth = 240; // Approx width
+    const gap = 8;
+
+    const scrollX = window.scrollX || 0;
+    const scrollY = window.scrollY || 0;
+
+    if (position === 'top') {
+        top = targetRect.top + scrollY - gap;
+        left = targetRect.left + scrollX + (targetRect.width / 2);
+    }
+
+    return createPortal(
+        <div 
+            className="fixed z-[200] pointer-events-none"
+            style={{ 
+                top: top, 
+                left: left,
+                transform: 'translate(-50%, -100%)' 
+            }}
+        >
+            <div className="w-60 bg-[#1a1a1a] border border-white/20 p-3 rounded shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+                {content}
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, membershipInfo, profile, isSubclass }: any) {
     const [isOpen, setIsOpen] = useState(false);
+    const [hoveredPlug, setHoveredPlug] = useState<any>(null);
+    const [hoverTarget, setHoverTarget] = useState<HTMLElement | null>(null);
     
-    // Calculate available options hashes
-    const optionHashes = useMemo(() => {
-        const hashes: number[] = [];
-        // 1. Live reusable plugs
+    const handleMouseEnter = (e: React.MouseEvent<HTMLElement>, plug: any) => {
+        setHoveredPlug(plug);
+        setHoverTarget(e.currentTarget);
+    };
+
+    const handleMouseLeave = () => {
+        setHoveredPlug(null);
+        setHoverTarget(null);
+    };
+    
+    // Determine if this is a weapon perk column (Circle + Vertical List)
+    // Logic: Item is Weapon (Type 3) AND Category is NOT Cosmetic/Masterwork/Mod
+    // Safe check: Check if category name contains "Trait", "Magazine", "Barrel", "Sight"
+    const categoryName = categoryDef?.displayProperties?.name || "";
+    const categoryNameLower = categoryName.toLowerCase();
+    
+    // More precise check for what should be a vertical column
+    // - Traits, Magazines, Barrels, Sights, Scopes
+    // - NOT Intrinsic (those are single usually)
+    // - NOT Mods
+    const isWeaponPerk = 
+        itemDef?.itemType === 3 && 
+        (categoryNameLower.includes("trait") || 
+         categoryNameLower.includes("magazine") || 
+         categoryNameLower.includes("barrel") || 
+         categoryNameLower.includes("sight") || 
+         categoryNameLower.includes("scope") || 
+         categoryNameLower.includes("perk")) &&
+        !categoryNameLower.includes("intrinsic") && // Intrinsics should be single
+        !categoryNameLower.includes("mod") &&
+        !categoryNameLower.includes("masterwork");
+        
+    const isWeaponMod = itemDef?.itemType === 3 && categoryNameLower.includes("mod");
+    
+    // Determine Shape
+    const isCircle = itemDef?.itemType === 3 && !categoryNameLower.includes("mod") && !categoryNameLower.includes("intrinsic"); // Weapon perks are circles, except intrinsics usually
+
+    // Resolve Options
+    // 1. Reusable Plugs (Profile)
+    // 2. Static Definition
+    const options = useMemo(() => {
+        let hashes: number[] = [];
+        
+        // Profile Data
         if (socket.reusablePlugs && socket.reusablePlugs.length > 0) {
-            socket.reusablePlugs.forEach((p: any) => hashes.push(p.plugItemHash));
+            hashes = socket.reusablePlugs.map((p: any) => p.plugItemHash);
         } 
-        // 2. Plug Set (Main source for subclasses/crafting)
-        else if (socket.def?.reusablePlugSetHash) {
-             // We need to fetch the PlugSet definition to get the items.
-             // We can't return hashes synchronously here if we don't have the definition yet.
-             // We need a side effect or data fetching hook for PlugSets.
-             // Since we can't easily do async inside useMemo return, we'll return a special flag or handle it in effect.
-             // Actually, better to handle PlugSet logic in a hook or component state.
-        }
-        // 3. Static definition reusable plugs (fallback or complement)
+        // Fallback to Definition (if not instanced or static)
         else if (socket.def?.reusablePlugItems) {
-            socket.def.reusablePlugItems.forEach((p: any) => hashes.push(p.plugItemHash));
+             hashes = socket.def.reusablePlugItems.map((p: any) => p.plugItemHash);
         }
         
-        // 4. Ensure equipped plug is in the list
+        // Ensure active plug is included
         if (socket.plugHash && !hashes.includes(socket.plugHash)) {
             hashes.unshift(socket.plugHash);
         }
 
-        return Array.from(new Set(hashes));
-    }, [socket]);
+        // Remove duplicates
+        hashes = Array.from(new Set(hashes));
 
-    // We need a way to get PlugSet items if optionHashes is empty but we have a PlugSetHash
-    const plugSetHash = socket.def?.reusablePlugSetHash || socket.def?.randomizedPlugSetHash;
-    // Only fetch plugset items if we are showing all options
-    const shouldFetchPlugSet = showAll || isSubclass; 
-    const { plugItems: plugSetItems } = usePlugSetItems(shouldFetchPlugSet ? plugSetHash : undefined);
-
-    const finalOptionHashes = useMemo(() => {
-        if (!showAll && !isSubclass && socket.plugHash) {
-            return [socket.plugHash];
-        }
-
-        let hashes = [...optionHashes];
-        if (plugSetItems.length > 0) {
-            // Merge plug set items
-            hashes = [...hashes, ...plugSetItems];
-        }
-        // Ensure unique and equipped is present
-        if (socket.plugHash && !hashes.includes(socket.plugHash)) {
-            hashes.unshift(socket.plugHash);
-        }
-        return Array.from(new Set(hashes));
-    }, [optionHashes, plugSetItems, socket.plugHash, showAll, isSubclass]);
-
-    // Always fetch definitions for these options so we can display them inline
-    // For subclasses, only fetch if isOpen or if !isSubclass (weapons)
-    const shouldFetchOptions = !isSubclass || isOpen;
-    const { definitions: optionDefs } = useItemDefinitions(shouldFetchOptions ? finalOptionHashes : []);
-
-    // Filter Options (Enhanced/Base logic, Masterwork logic)
-    const visibleOptions = useMemo(() => {
-        const options = finalOptionHashes.map(h => ({ hash: h, def: optionDefs[h] })).filter(o => o.def);
-        
-        if (!showAll) return options;
-
-        return options.filter(o => {
-             const name = o.def.displayProperties?.name || "";
-             
-             // Filter Base if Enhanced exists
-             const isEnhanced = name.includes("Enhanced");
-             if (!isEnhanced) {
-                 const potentialEnhanced = [`Enhanced ${name}`, `${name} Enhanced`];
-                 if (options.some(other => potentialEnhanced.includes(other.def.displayProperties?.name))) {
-                     return false;
-                 }
-             }
-             
-             // Filter Masterwork Levels (Hide non-equipped tiers to prevent separation/clutter)
-             if (name.includes("Masterwork") && name.includes("Tier")) {
-                 if (o.hash === socket.plugHash) return true;
-                 return false; 
-             }
-
-             return true;
-        });
-    }, [finalOptionHashes, optionDefs, showAll, socket.plugHash]);
+        // Map to definitions (passed from parent)
+        // Note: Parent might not have fetched ALL static definition plugs if we fell back to socket.def
+        // But for live items, profile data usually covers it.
+        return hashes.map(h => ({ hash: h, def: plugDefs[h] })).filter(o => o.def);
+    }, [socket, plugDefs]);
 
     const handleSelectPlug = async (plugItemHash: number, plugName: string) => {
-        // ... same as before ...
         if (plugItemHash === socket.plugHash) {
              setIsOpen(false);
              return; 
         }
-
         if (!membershipInfo) {
-            toast.error("You must be logged in to modify items.");
+            toast.error("Login required");
             return;
         }
-        
-        // Helper to find owner
+
         let ownerId = item.characterId; 
-        if (!ownerId && profile) {
-             const charIds = Object.keys(profile.characters?.data || {});
-             ownerId = charIds[0]; 
-        }
+        if (!ownerId && profile) ownerId = Object.keys(profile.characters?.data || {})[0];
 
         const promise = insertSocketPlug(
             item.itemInstanceId, 
@@ -443,207 +621,180 @@ function Socket({ socket, plug, item, membershipInfo, profile, isSubclass, showA
         );
 
         toast.promise(promise, {
-            loading: `Applying ${plugName}...`,
-            success: `Applied ${plugName}!`,
-            error: `Failed to apply ${plugName}`
+            loading: `Equipping ${plugName}...`,
+            success: `Equipped ${plugName}`,
+            error: `Failed to equip ${plugName}`
         });
         
         setIsOpen(false);
     };
 
-    // --- Subclass View: Single Clickable Icon -> Menu ---
-    if (isSubclass) {
+    if (!activePlug && options.length === 0) return <div className={cn("w-12 h-12 bg-white/5 border border-dashed border-white/20", isCircle ? "rounded-full" : "rounded-sm")} />;
+
+    const displayPlug = activePlug || options[0]?.def;
+    if (!displayPlug) return null;
+
+    // Single View (Armor Mods, Cosmetics, Single Perks)
+    const isEnhanced = displayPlug.displayProperties?.name?.includes("Enhanced");
+    const hasOptions = options.length > 1;
+
+    // Weapon Perks: Render as Vertical Column (Reusable Plugs System)
+    if (isWeaponPerk) {
         return (
-            <>
-                <button 
-                    onClick={() => setIsOpen(true)}
-                    className="w-16 h-16 md:w-20 md:h-20 border border-white/20 bg-black/40 hover:bg-white/10 hover:border-white/50 rounded-sm overflow-hidden transition-all flex items-center justify-center relative group/socket z-20"
-                    title={plug.displayProperties?.name}
-                >
-                    {plug.displayProperties?.icon && (
-                        <Image 
-                            src={getBungieImage(plug.displayProperties.icon)} 
-                            fill 
-                            sizes="80px"
-                            className="object-cover" 
-                            alt="" 
-                        />
-                    )}
-                    
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/socket:opacity-100 transition-opacity flex items-center justify-center text-center p-1 pointer-events-none">
-                        <span className="text-[10px] font-bold text-white line-clamp-2">{plug.displayProperties?.name}</span>
-                    </div>
-                </button>
+            <div className="flex flex-col gap-2 pt-2">
+                 {options.map((opt: any) => {
+                     const isSelected = opt.hash === socket.plugHash;
+                     const isOptEnhanced = opt.def.displayProperties?.name?.includes("Enhanced");
+                     
+                     return (
+                        <div 
+                            key={opt.hash}
+                            className="relative group/plug"
+                            onMouseEnter={(e) => handleMouseEnter(e, opt.def)}
+                            onMouseLeave={handleMouseLeave}
+                        >
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleSelectPlug(opt.hash, opt.def.displayProperties.name); }}
+                                className={cn(
+                                    "w-13 h-13 rounded-full overflow-hidden border relative transition-all",
+                                    isSelected 
+                                        ? "border-destiny-gold bg-[#5b94be] opacity-100 ring-1 ring-destiny-gold" 
+                                        : "border-gray-600 bg-black/40 opacity-50 hover:opacity-100 hover:border-gray-400"
+                                )}
+                            >
+                                {opt.def.displayProperties?.icon && (
+                                    <Image 
+                                        src={getBungieImage(opt.def.displayProperties.icon)} 
+                                        fill 
+                                        className="object-cover" 
+                                        alt={opt.def.displayProperties.name} 
+                                    />
+                                )}
+                                {isOptEnhanced && (
+                                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[5px] border-b-destiny-gold" />
+                                )}
+                            </button>
+                        </div>
+                     );
+                 })}
 
-                {/* Full Screen / Modal Selection Menu for Subclass Options */}
-                {isOpen && (
-                    <div className="fixed inset-0 z-150 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-100 p-4">
-                         <div className="w-full max-w-4xl max-h-[80vh] bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl flex flex-col overflow-hidden">
-                             {/* Header */}
-                             <div className="flex justify-between items-center p-6 border-b border-white/10 bg-[#1a1a1a]">
-                                 <div>
-                                     <h3 className="text-xl font-bold text-white">Select {plug.itemTypeDisplayName || "Option"}</h3>
-                                     <p className="text-sm text-slate-400">Choose an option to equip</p>
-                                 </div>
-                                 <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-full text-slate-400 hover:text-white">
-                                     <X className="w-6 h-6" />
-                                 </button>
-                             </div>
-
-                             {/* Grid of Options */}
-                             <div className="p-6 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 scrollbar-thin scrollbar-thumb-white/20">
-                                 {visibleOptions.map(({ hash, def }: any) => {
-                                     const isEquipped = hash === socket.plugHash;
-
-                                     return (
-                                         <button
-                                             key={hash}
-                                             onClick={() => handleSelectPlug(hash, def.displayProperties?.name)}
-                                             className={cn(
-                                                 "aspect-square border rounded-sm overflow-hidden relative group/option flex flex-col items-center justify-center bg-black/40 hover:bg-white/5 transition-all",
-                                                 isEquipped ? "border-destiny-gold ring-2 ring-destiny-gold/20" : "border-white/10 hover:border-white/40"
-                                             )}
-                                         >
-                                             <div className="w-16 h-16 mb-2 relative">
-                                                {def.displayProperties?.icon && (
-                                                    <Image 
-                                                        src={getBungieImage(def.displayProperties.icon)} 
-                                                        fill 
-                                                        sizes="64px"
-                                                        className="object-cover" 
-                                                        alt="" 
-                                                    />
-                                                )}
-                                             </div>
-                                             <div className="text-xs text-center px-2 font-medium text-slate-300 group-hover/option:text-white line-clamp-2">
-                                                 {def.displayProperties?.name}
-                                             </div>
-                                             
-                                             {isEquipped && (
-                                                 <div className="absolute top-2 right-2 w-2 h-2 bg-destiny-gold rounded-full" />
-                                             )}
-                                         </button>
-                                     );
-                                 })}
-                             </div>
-                         </div>
-                    </div>
+                 {/* Shared Tooltip for this column */}
+                 {hoveredPlug && hoverTarget && (
+                    <PortalTooltip 
+                        targetRect={hoverTarget.getBoundingClientRect()} 
+                        content={
+                            <>
+                                <p className="text-sm font-bold text-destiny-gold mb-1">{hoveredPlug.displayProperties?.name}</p>
+                                <p className="text-[10px] text-slate-400 uppercase mb-2">{hoveredPlug.itemTypeDisplayName}</p>
+                                <p className="text-xs text-slate-300 leading-relaxed">{hoveredPlug.displayProperties?.description}</p>
+                            </>
+                        } 
+                    />
                 )}
-            </>
+            </div>
         );
     }
 
-    // --- Weapon/Armor View: Column or Single ---
-    // If no options (or just 1 which is equipped), show single icon
-    // Actually visibleOptions might have length 1 even if others exist but are hidden.
-    // If !showAll, we definitely just show the single one unless isSubclass.
-        if (visibleOptions.length <= 1) {
-            const single = visibleOptions[0];
-            // If empty, fallback to equipped plug data (passed as prop 'plug')
-            const displayPlug = single ? single.def : plug;
-            if (!displayPlug) return null;
-
-         return (
-            <div className="w-16 h-16 md:w-20 md:h-20 border border-white/10 bg-black/40 rounded-sm overflow-hidden flex items-center justify-center relative group/socket" title={displayPlug.displayProperties?.name}>
+    // Standard Single View (Armor Mods, Cosmetics, etc)
+    return (
+        <div className="relative group/socket">
+            <button 
+                onClick={() => hasOptions && setIsOpen(true)}
+                onMouseEnter={(e) => handleMouseEnter(e, displayPlug)}
+                onMouseLeave={handleMouseLeave}
+                className={cn(
+                    "w-12 h-12 md:w-14 md:h-14 overflow-hidden border-2 relative transition-all",
+                    isCircle ? "rounded-full" : "rounded-sm",
+                    hasOptions ? "cursor-pointer hover:border-white" : "cursor-default",
+                    isEnhanced ? "border-destiny-gold" : "border-slate-500 bg-[#0f0f0f]",
+                    isOpen ? "ring-2 ring-white scale-110 z-50" : ""
+                )}
+            >
                 {displayPlug.displayProperties?.icon && (
                     <Image 
                         src={getBungieImage(displayPlug.displayProperties.icon)} 
                         fill 
-                        sizes="80px"
-                        className="object-cover opacity-80 group-hover/socket:opacity-100 transition-opacity" 
-                        alt="" 
+                        className="object-cover" 
+                        alt={displayPlug.displayProperties.name} 
                     />
                 )}
-                 {/* Hover Info */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/socket:opacity-100 transition-opacity flex items-center justify-center text-center p-1 pointer-events-none">
-                    <span className="text-[10px] font-bold text-white line-clamp-2">{displayPlug.displayProperties?.name}</span>
-                </div>
-            </div>
-         );
-    }
+                
+                {/* Enhanced Triangle */}
+                {isEnhanced && (
+                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[8px] border-b-destiny-gold" />
+                )}
+            </button>
 
-    // Show Column of Options
-    return (
-        <div className="flex flex-col gap-2">
-            {visibleOptions.map(({ hash, def }: any) => {
-                const isEquipped = hash === socket.plugHash;
+            {/* Portal Tooltip for Single View */}
+            {hoveredPlug && hoverTarget && (
+                <PortalTooltip 
+                    targetRect={hoverTarget.getBoundingClientRect()} 
+                    content={
+                        <>
+                            <p className="text-sm font-bold text-destiny-gold mb-1">{hoveredPlug.displayProperties?.name}</p>
+                            <p className="text-[10px] text-slate-400 uppercase mb-2">{hoveredPlug.itemTypeDisplayName}</p>
+                            <p className="text-xs text-slate-300 leading-relaxed">{hoveredPlug.displayProperties?.description}</p>
+                            {hasOptions && !isWeaponMod && (
+                                <div className="mt-3 border-t border-white/10 pt-2">
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase mb-1">Available Options</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {options.map(opt => (
+                                            <div 
+                                                key={opt.hash} 
+                                                className={cn(
+                                                    "relative w-6 h-6 rounded-full overflow-hidden border",
+                                                    opt.hash === socket.plugHash ? "border-destiny-gold" : "border-white/20 opacity-50"
+                                                )} 
+                                                title={opt.def.displayProperties?.name}
+                                            >
+                                                <Image src={getBungieImage(opt.def.displayProperties?.icon)} fill className="object-cover" alt="" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-[9px] text-blue-400 mt-2 font-bold uppercase tracking-wide">Click to Select</p>
+                                </div>
+                            )}
+                        </>
+                    } 
+                />
+            )}
 
-                return (
-                    <button
-                        key={hash}
-                        onClick={() => handleSelectPlug(hash, def.displayProperties?.name)}
-                        className={cn(
-                            "w-16 h-16 md:w-20 md:h-20 border rounded-sm overflow-hidden relative group/socket transition-all",
-                            isEquipped 
-                                ? "border-destiny-gold bg-black/40 opacity-100 ring-2 ring-destiny-gold/20" 
-                                : "border-white/10 bg-black/60 opacity-60 hover:opacity-100 hover:border-white/50"
-                        )}
-                        title={def.displayProperties?.name}
-                    >
-                        {def.displayProperties?.icon && (
-                            <Image 
-                                src={getBungieImage(def.displayProperties.icon)} 
-                                fill 
-                                sizes="80px"
-                                className="object-cover" 
-                                alt="" 
-                            />
-                        )}
-                        
-                        {isEquipped && (
-                             <div className="absolute top-0 right-0 w-3 h-3 bg-destiny-gold rounded-bl-sm" />
-                        )}
-
-                        {/* Hover Info */}
-                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover/socket:opacity-100 transition-opacity flex items-center justify-center text-center p-1 pointer-events-none">
-                             <span className="text-[10px] font-bold text-white line-clamp-3">{def.displayProperties?.name}</span>
-                        </div>
-                    </button>
-                );
-            })}
+            {/* Options Popup (For Single View Types with Options - e.g. Mods) */}
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-[60] bg-transparent" onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} />
+                    <div className="absolute top-full left-0 mt-2 z-[70] flex flex-col gap-2 bg-[#1a1a1a] border border-white/20 p-2 rounded shadow-2xl min-w-[220px] animate-in fade-in zoom-in-95 duration-100">
+                        <div className="text-xs uppercase font-bold text-slate-500 px-2 pb-1 border-b border-white/10 mb-1">Select Option</div>
+                         <div className="grid grid-cols-4 gap-2 max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
+                             {options.map((opt: any) => {
+                                 const isOptSelected = opt.hash === socket.plugHash;
+                                 return (
+                                     <button
+                                         key={opt.hash}
+                                         onClick={(e) => { e.stopPropagation(); handleSelectPlug(opt.hash, opt.def.displayProperties.name); }}
+                                         className={cn(
+                                             "w-10 h-10 overflow-hidden border relative hover:scale-110 transition-transform",
+                                             isCircle ? "rounded-full" : "rounded-sm",
+                                             isOptSelected ? "border-destiny-gold ring-1 ring-destiny-gold" : "border-slate-600 hover:border-white"
+                                         )}
+                                         title={opt.def.displayProperties.name}
+                                     >
+                                         <Image 
+                                             src={getBungieImage(opt.def.displayProperties.icon)} 
+                                             fill 
+                                             className="object-cover" 
+                                             alt="" 
+                                         />
+                                     </button>
+                                 );
+                             })}
+                         </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
-
-// Hook for Plug Sets
-function usePlugSetItems(plugSetHash?: number) {
-    const [plugItems, setPlugItems] = useState<number[]>([]);
-
-    useEffect(() => {
-        if (!plugSetHash) {
-            setPlugItems([]);
-            return;
-        }
-
-        const load = async () => {
-            try {
-                // Try local storage first
-                const cacheKey = `destiny_plugset_${plugSetHash}`;
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    setPlugItems(JSON.parse(cached));
-                    return;
-                }
-
-                const res = await bungieApi.get(endpoints.getPlugSetDefinition(plugSetHash));
-                const def = res.data.Response;
-                if (def && def.reusablePlugItems) {
-                    const items = def.reusablePlugItems.map((i: any) => i.plugItemHash);
-                    setPlugItems(items);
-                    try {
-                        localStorage.setItem(cacheKey, JSON.stringify(items));
-                    } catch (e) {}
-                }
-            } catch (e) {
-                console.error("Failed to load plug set", e);
-            }
-        };
-        load();
-    }, [plugSetHash]);
-
-    return { plugItems };
-}
-
 
 // Hook for socket categories
 function useSocketCategoryDefinitions(hashes: number[]) {
@@ -656,6 +807,8 @@ function useSocketCategoryDefinitions(hashes: number[]) {
         if (!uniqueHashes.length) return;
 
         const load = async () => {
+            // Check local cache or bulk fetch if possible to avoid N requests
+            // Using simple promise.all for now
             const newDefs: Record<number, any> = {};
             await Promise.all(uniqueHashes.map(async (h) => {
                 try {
@@ -671,6 +824,144 @@ function useSocketCategoryDefinitions(hashes: number[]) {
     }, [hashesKey]);
 
     return { definitions };
+}
+
+function PerkExplorer({ itemDef }: { itemDef: any }) {
+    const perkSockets = useMemo(() => {
+        if (!itemDef?.sockets?.socketEntries) return [];
+        
+        // Filter for sockets that look like perks (have randomized plugs or multiple options)
+        return itemDef.sockets.socketEntries
+            .map((s: any, index: number) => ({ ...s, index }))
+            .filter((s: any) => {
+                // Exclude cosmetics/stats/etc by simple heuristics if category not available
+                // Or just show everything that has options.
+                // Check randomizedPlugSetHash AND reusablePlugSetHash
+                return (s.randomizedPlugSetHash || s.reusablePlugSetHash || (s.reusablePlugItems && s.reusablePlugItems.length > 1)) 
+                    && s.socketTypeHash !== 0; 
+            });
+    }, [itemDef]);
+
+    return (
+        <div className="flex gap-3 h-full justify-center items-start pt-4">
+             {perkSockets.map((socket: any) => (
+                 <PerkColumn key={socket.index} socket={socket} />
+             ))}
+        </div>
+    );
+}
+
+function PerkColumn({ socket }: { socket: any }) {
+    const plugSetHash = socket.randomizedPlugSetHash || socket.reusablePlugSetHash;
+    const { data } = useSWR(plugSetHash ? endpoints.getPlugSetDefinition(plugSetHash) : null, fetcher);
+    const plugSet = data?.Response;
+    
+    const plugHashes = useMemo(() => {
+        let hashes: number[] = [];
+        
+        // Start with socket-level reusable plugs (static definitions)
+        if (socket.reusablePlugItems) {
+            hashes.push(...socket.reusablePlugItems.map((p: any) => p.plugItemHash));
+        }
+        
+        // Add plug set items (randomized/pool)
+        if (plugSet?.reusablePlugItems) {
+            hashes.push(...plugSet.reusablePlugItems.map((p: any) => p.plugItemHash));
+        }
+        
+        return Array.from(new Set(hashes));
+    }, [plugSet, socket]);
+    
+    const { definitions: plugs } = useItemDefinitions(plugHashes);
+    
+    const [hoveredPlug, setHoveredPlug] = useState<any>(null);
+    const [hoverTarget, setHoverTarget] = useState<HTMLElement | null>(null);
+
+    if (plugHashes.length === 0) return null;
+
+    // Filter out undesirable plugs (Kill Trackers, empty, etc)
+    const validPlugs = plugHashes
+        .map(h => plugs[h])
+        .filter(p => {
+            if (!p) return false;
+            const name = p.displayProperties?.name;
+            const type = p.itemTypeDisplayName?.toLowerCase() || "";
+            const category = p.plug?.plugCategoryIdentifier?.toLowerCase() || "";
+
+            if (!name) return false;
+
+            // Kill Trackers
+            if (name.includes("Kill Tracker") || name.includes("Tracker")) return false;
+            if (type.includes("tracker")) return false;
+            
+            // Cosmetics / Shaders / Ornaments
+            if (type.includes("shader") || type.includes("ornament")) return false;
+            if (category.includes("shader") || category.includes("skins")) return false;
+
+            // Filter Transmat & Flair
+            if (type.includes("transmat") || category.includes("transmat")) return false;
+            if (type.includes("flair") || category.includes("flair")) return false;
+
+            // Masterworks
+            if (type.includes("masterwork") || name.includes("Masterwork")) return false;
+            if (category.includes("masterwork")) return false;
+
+            // Intrinsic & Origin Traits (Filtered from All Perks View)
+            if (type.includes("intrinsic") || category.includes("intrinsic")) return false;
+            if (type.includes("origin trait") || category.includes("origin")) return false;
+            
+            // Classified
+            if (name.includes("Classified") || p.redacted) return false;
+
+            // Mods
+            if (type.includes("mod")) return false;
+            if (category.includes("mod")) return false;
+
+            return true;
+        });
+
+    if (validPlugs.length === 0) return null;
+
+    return (
+        <div className="flex flex-col gap-2 items-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {validPlugs.map((plug: any) => (
+                 <div 
+                    key={plug.hash} 
+                    className="relative"
+                    onMouseEnter={(e) => {
+                        setHoveredPlug(plug);
+                        setHoverTarget(e.currentTarget);
+                    }}
+                    onMouseLeave={() => {
+                        setHoveredPlug(null);
+                        setHoverTarget(null);
+                    }}
+                 >
+                    <div className="w-16 h-16 rounded-full border border-white/10 bg-[#1a1a1a] overflow-hidden hover:border-white hover:scale-110 transition-all cursor-default relative">
+                         <Image 
+                            src={getBungieImage(plug.displayProperties.icon)}
+                            fill
+                            className="object-cover"
+                            alt={plug.displayProperties.name}
+                         />
+                    </div>
+                 </div>
+            ))}
+            
+             {hoveredPlug && hoverTarget && (
+                <PortalTooltip 
+                    targetRect={hoverTarget.getBoundingClientRect()} 
+                    content={
+                        <>
+                            <p className="text-sm font-bold text-destiny-gold mb-1">{hoveredPlug.displayProperties?.name}</p>
+                            <p className="text-[10px] text-slate-400 uppercase mb-2">{hoveredPlug.itemTypeDisplayName}</p>
+                            <p className="text-xs text-slate-300 leading-relaxed">{hoveredPlug.displayProperties?.description}</p>
+                        </>
+                    } 
+                />
+            )}
+        </div>
+    );
 }
 
 export default ItemDetailsOverlay;

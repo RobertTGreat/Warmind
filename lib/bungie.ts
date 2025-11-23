@@ -70,7 +70,7 @@ export const endpoints = {
   getProfile: (membershipType: number, destinyMembershipId: string, components?: number[]) => {
     const componentList = components 
       ? components.join(',') 
-      : '100,102,103,104,200,201,202,204,205,206,300,301,302,304,305,306,307,308,310,700,701,800,900,901,1100';
+      : '100,102,103,104,200,201,202,203,204,205,206,300,301,302,304,305,306,307,308,310,700,701,800,900,901,1100';
     return `/Destiny2/${membershipType}/Profile/${destinyMembershipId}/?components=${componentList}`;
   },
   getClan: (groupId: string) => `/GroupV2/${groupId}/`,
@@ -126,12 +126,15 @@ export const endpoints = {
     `/Destiny2/${membershipType}/Account/${destinyMembershipId}/Character/${characterId}/Stats/Activities/`,
   getPostGameCarnageReport: (activityId: string) =>
     `/Destiny2/Stats/PostGameCarnageReport/${activityId}/`,
+  getNews: (page: number = 0, count: number = 10) => 
+    `/Content/SearchContentByTagAndType/news/News/en/?currentpage=${page + 1}&itemsperpage=${count}`,
   getLoadoutIconDefinition: (hash: number | string) =>
     `/Destiny2/Manifest/DestinyLoadoutIconDefinition/${hash}/`,
   getLoadoutNameDefinition: (hash: number | string) =>
     `/Destiny2/Manifest/DestinyLoadoutNameDefinition/${hash}/`,
   getLoadoutColorDefinition: (hash: number | string) =>
     `/Destiny2/Manifest/DestinyLoadoutColorDefinition/${hash}/`,
+  getDestinyManifest: () => '/Destiny2/Manifest/',
 };
 
 
@@ -254,4 +257,8 @@ export const getActivityHistory = async (membershipType: number, destinyMembersh
 
 export const getPostGameCarnageReport = async (activityId: string) => {
   return bungieApi.get(endpoints.getPostGameCarnageReport(activityId));
+};
+
+export const getDestinyNews = async (page: number = 0, count: number = 10) => {
+  return bungieApi.get(endpoints.getNews(page, count));
 };

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { getBungieImage } from '@/lib/bungie';
 import { useObjectiveDefinitions } from '@/hooks/useObjectiveDefinitions';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
+import { STAT_HASHES, getArmorBaseStats } from '@/lib/destinyUtils';
 
 // Map common stat hashes to readable names
 const STAT_NAMES: Record<number, string> = {
@@ -29,11 +30,12 @@ const STAT_NAMES: Record<number, string> = {
     2762071195: 'Guard Endurance',
     2837207746: 'Swing Speed',
     4244567218: 'Strength',
-    2996146975: 'Mobility',
-    1943323491: 'Recovery',
-    392767087: 'Resilience',
-    1735777505: 'Intellect',
-    144602215: 'Discipline'
+    [STAT_HASHES.MOBILITY]: 'Mobility',
+    [STAT_HASHES.RESILIENCE]: 'Resilience',
+    [STAT_HASHES.RECOVERY]: 'Recovery',
+    [STAT_HASHES.DISCIPLINE]: 'Discipline',
+    [STAT_HASHES.INTELLECT]: 'Intellect',
+    [STAT_HASHES.STRENGTH]: 'Strength'
 };
 
 // Order in which stats should appear
@@ -49,12 +51,12 @@ const STAT_ORDER = [
     1345609583, // Aim Assistance
     3555269338, // Zoom
     2715839340, // Recoil Direction
-    4244567218, // Strength
-    2996146975, // Mobility
-    1943323491, // Recovery
-    392767087, // Resilience
-    1735777505, // Intellect
-    144602215, // Discipline
+    STAT_HASHES.MOBILITY,
+    STAT_HASHES.RESILIENCE,
+    STAT_HASHES.RECOVERY,
+    STAT_HASHES.DISCIPLINE,
+    STAT_HASHES.INTELLECT,
+    STAT_HASHES.STRENGTH
 ];
 
 interface ItemTooltipProps {
@@ -174,26 +176,60 @@ export function ItemTooltip({
       'Basic': { text: 'text-white', bg: 'bg-slate-600', border: 'border-white/20' }
   }[rarity] || { text: 'text-white', bg: 'bg-slate-600', border: 'border-white/20' };
 
+  const ARMOR_STAT_HASHES = Object.values(STAT_HASHES);
+
+  // Calculate Base Stats for Armor
+  const baseStats = useMemo(() => {
+      // Only relevant for armor
+      const isArmorItem = itemType === "Armor" || itemDef?.itemType === 2;
+      if (!isArmorItem || !stats) return null;
+      
+      // Determine active plugs
+      let activePlugs: any[] = [...mods];
+      if (detailedPerks && detailedPerks.length > 0) {
+          activePlugs = [...activePlugs, ...detailedPerks.map(p => p.activePlug).filter(Boolean)];
+      }
+      
+      const isMasterworked = enhancementTier === 10;
+      
+      return getArmorBaseStats(stats, activePlugs, isMasterworked);
+  }, [stats, detailedPerks, mods, enhancementTier, itemType, itemDef]);
+
+  const baseTotal = baseStats ? Object.values(baseStats).reduce((acc, val) => acc + val, 0) : 0;
+
   // Process stats
   const visibleStats = stats ? Object.entries(stats)
-      .map(([hash, stat]) => ({
-          hash: Number(hash),
-          name: STAT_NAMES[Number(hash)],
-          value: stat.value,
-          max: stat.maximum || 100 // Default max usually 100 for display bars
-      }))
-      .filter(s => STAT_ORDER.includes(s.hash) && s.name) // Only show known stats
+      .map(([hash, stat]) => {
+          const statHash = Number(hash);
+          const isArmorStat = ARMOR_STAT_HASHES.includes(statHash);
+          // Use a visual max of 42 for armor stats to make bars readable (base max is ~30, +12 MW)
+          // Weapons use 100.
+          const max = stat.maximum || (isArmorStat ? 42 : 100);
+          
+          return {
+              hash: statHash,
+              name: STAT_NAMES[statHash],
+              value: stat.value,
+              max,
+              isArmorStat
+          };
+      })
+      .filter(s => STAT_ORDER.includes(s.hash)) // Removed strict name check for safety
       .sort((a, b) => STAT_ORDER.indexOf(a.hash) - STAT_ORDER.indexOf(b.hash))
       : [];
+
+  const isArmor = visibleStats.some(s => s.isArmorStat);
+  const armorTotal = isArmor ? visibleStats.reduce((acc, s) => s.isArmorStat ? acc + s.value : acc, 0) : 0;
+  const armorTierSum = isArmor ? visibleStats.reduce((acc, s) => s.isArmorStat ? acc + Math.floor(s.value / 10) : acc, 0) : 0;
 
   // Render via Portal
   if (typeof document === 'undefined' || !position) return null;
 
-  return createPortal(
+    return createPortal(
     <div 
         ref={containerRef}
         className={cn(
-            "fixed z-100 w-[350px] flex flex-col shadow-2xl font-sans backdrop-blur-xl",
+            "fixed z-[300] w-[350px] flex flex-col shadow-2xl font-sans backdrop-blur-xl",
             fixedPosition ? "pointer-events-auto" : "pointer-events-none"
         )}
         style={{ 
@@ -397,7 +433,7 @@ export function ItemTooltip({
                 )}
 
                 {/* Details Grid - Show Power here if no screenshot */}
-                {!screenshot && power && (
+                {!screenshot && power !== undefined && power !== 0 && (
                     <div className="flex items-center justify-between border-b border-white/10 pb-2">
                         <span className="text-slate-400 uppercase text-xs font-bold tracking-widest">Power Level</span>
                         <div className="flex items-center">
@@ -410,21 +446,57 @@ export function ItemTooltip({
                 {/* Stats Section */}
                 {visibleStats.length > 0 && (
                     <div className="space-y-1.5 pt-2 border-t border-white/10 mt-2">
+                        {/* Armor Total Header */}
+                        {isArmor && (
+                             <div className="flex items-center justify-between mb-2 px-0.5 pb-1 border-b border-white/5">
+                                <span className="text-slate-400 uppercase text-[10px] font-bold tracking-widest">Total Stats</span>
+                                <div className="flex items-center gap-3">
+                                    {/* Base Total Display */}
+                                    {baseTotal > 0 && baseTotal !== armorTotal && (
+                                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-medium">
+                                            Base <span className="text-slate-300 font-bold text-xs">{baseTotal}</span>
+                                        </span>
+                                    )}
+                                    <span className={cn(
+                                        "text-sm font-bold",
+                                        armorTotal >= 65 ? "text-destiny-gold" : (armorTotal >= 60 ? "text-white" : "text-slate-400")
+                                    )}>
+                                        {armorTotal} 
+                                        <span className="text-[10px] text-slate-500 ml-1.5 font-normal tracking-wider opacity-70">
+                                            T{armorTierSum}
+                                        </span>
+                                    </span>
+                                </div>
+                             </div>
+                        )}
                         {visibleStats.map(stat => (
-                            <div key={stat.hash} className="flex items-center gap-3 text-xs">
+                            <div key={stat.hash} className="flex items-center gap-3 text-xs relative group/stat">
                                 <span className="text-slate-400 w-24 text-right font-medium">{stat.name}</span>
                                 <div className="flex-1 h-3 bg-white/10 relative">
                                     <div 
                                         className={cn(
                                             "h-full transition-all",
-                                            // Armor stats usually don't have bars in tooltip, but let's keep it consistent or color code
-                                            // Using white for generic, maybe gold for high stats?
                                             "bg-white"
                                         )}
                                         style={{ width: `${Math.min((stat.value / stat.max) * 100, 100)}%` }} 
                                     />
+                                    {/* Show Base Marker if different */}
+                                    {baseStats && baseStats[stat.hash] !== undefined && baseStats[stat.hash] !== stat.value && (
+                                        <div 
+                                            className="absolute top-0 bottom-0 w-0.5 bg-destiny-gold/50 z-10"
+                                            style={{ left: `${Math.min((baseStats[stat.hash] / stat.max) * 100, 100)}%` }}
+                                        />
+                                    )}
                                 </div>
-                                <span className="text-white font-bold w-8 text-right">{stat.value}</span>
+                                <div className="w-8 text-right relative">
+                                    <span className="text-white font-bold">{stat.value}</span>
+                                    {/* Hover to show base value if different */}
+                                    {baseStats && baseStats[stat.hash] !== undefined && baseStats[stat.hash] !== stat.value && (
+                                        <span className="absolute right-0 -top-4 text-[10px] text-destiny-gold bg-black/80 px-1 rounded opacity-0 group-hover/stat:opacity-100 transition-opacity whitespace-nowrap">
+                                            Base: {baseStats[stat.hash]}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -437,13 +509,14 @@ export function ItemTooltip({
                         <div className="flex items-start gap-4">
                             {/* Perks Scroll Area */}
                             {detailedPerks && detailedPerks.length > 0 && (
-                                <div className="flex-1 flex flex-row gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:none]">
+                                <div className="flex-1 flex flex-row flex-wrap gap-2 pb-2">
                                     {detailedPerks.map((socket, idx) => (
                                          <div key={idx} className="flex flex-col gap-2 shrink-0">
                                             {/* Intrinsic / Active Plug usually first */}
                                             {socket.options.length > 0 ? (
                                                 socket.options.map((plug: any, i: number) => {
                                                    const isSelected = plug.hash === socket.activePlug?.hash;
+                                                   const isEnhanced = plug.displayProperties?.name?.includes("Enhanced");
                                                    const uniqueKey = `${plug.hash}-${i}`; // Ensure unique key
                                                    return (
                                                        <div 
@@ -459,10 +532,11 @@ export function ItemTooltip({
                                                             }}
                                                         >
                                                              <div className={cn(
-                                                                 "w-8 h-8 rounded-full overflow-hidden relative transition-all",
+                                                                 "w-8 h-8 rounded-full overflow-hidden relative transition-all border",
+                                                                 "border-gray-500",
                                                                  isSelected 
-                                                                    ? "opacity-100 shadow-[0_0_16px_#eebc22] bg-transparent" 
-                                                                    : "border border-white/10 opacity-40 hover:opacity-100 hover:border-white/40 bg-black/20"
+                                                                    ? "bg-[#5b94be] opacity-100" 
+                                                                    : "bg-black/20 opacity-40 hover:opacity-100"
                                                              )}>
                                                                  <Image 
                                                                      src={getBungieImage(plug.displayProperties?.icon)} 
@@ -471,10 +545,14 @@ export function ItemTooltip({
                                                                      className="object-cover" 
                                                                      alt="" 
                                                                  />
+                                                                 
+                                                                 {isEnhanced && (
+                                                                     <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[5px] border-b-destiny-gold" />
+                                                                 )}
                                                              </div>
                                                              
                                                              {/* Hover Tooltip for Icon */}
-                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-[#0f0f0f] border border-white/20 p-3 rounded shadow-2xl pointer-events-none opacity-0 group-hover/perkicon:opacity-100 transition-opacity z-50 backdrop-blur-md">
+                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-[#0f0f0f] border border-white/20 p-3 rounded shadow-2xl pointer-events-none opacity-0 group-hover/perkicon:opacity-100 transition-opacity z-[1000] backdrop-blur-md">
                                                                  <p className="text-sm font-bold text-destiny-gold mb-0.5 leading-tight">{plug.displayProperties?.name}</p>
                                                                  <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">{plug.itemTypeDisplayName}</p>
                                                                  <p className="text-xs text-slate-300 leading-relaxed">{plug.displayProperties?.description}</p>
@@ -485,7 +563,7 @@ export function ItemTooltip({
                                              ) : (
                                                  // Fallback if no options but we have active
                                                  socket.activePlug && (
-                                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10">
+                                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-500 bg-[#5b94be]">
                                                         <Image 
                                                             src={getBungieImage(socket.activePlug.displayProperties?.icon)} 
                                                             width={32}
@@ -504,24 +582,29 @@ export function ItemTooltip({
                             {/* Cosmetics Grid (Right Side) */}
                             {(mods.length > 0 || shaders.length > 0 || ornaments.length > 0 || killEffects.length > 0 || killTrackers.length > 0) && (
                                 <div className="grid grid-cols-2 gap-1.5 shrink-0 pt-0.5 border-l border-white/10 pl-3">
-                                    {[...mods, ...shaders, ...ornaments, ...killEffects, ...killTrackers].map((plug, i) => (
-                                        <div key={i} className="group/cosmetic relative">
-                                            <div className="w-8 h-8 border border-white/20 bg-black/40 overflow-hidden shadow-sm hover:border-white/60 transition-colors">
-                                                <Image 
-                                                    src={getBungieImage(plug.displayProperties?.icon)} 
-                                                    width={32}
-                                                    height={32}
-                                                    className="object-cover"
-                                                    alt="" 
-                                                />
+                                    {[...mods, ...shaders, ...ornaments, ...killEffects, ...killTrackers].map((plug, i) => {
+                                        const iconUrl = getBungieImage(plug.displayProperties?.icon);
+                                        return (
+                                            <div key={i} className="group/cosmetic relative">
+                                                <div className="w-8 h-8 border border-gray-500 bg-black/40 overflow-hidden shadow-sm hover:border-white/60 transition-colors flex items-center justify-center">
+                                                    {iconUrl && (
+                                                        <Image 
+                                                            src={iconUrl} 
+                                                            width={32}
+                                                            height={32}
+                                                            className="object-cover"
+                                                            alt="" 
+                                                        />
+                                                    )}
+                                                </div>
+                                                {/* Cosmetic Tooltip */}
+                                                <div className="absolute right-full mr-2 top-0 w-48 bg-[#0f0f0f] border border-white/20 p-2 rounded shadow-xl pointer-events-none opacity-0 group-hover/cosmetic:opacity-100 transition-opacity z-100 backdrop-blur-md">
+                                                    <p className="text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
+                                                    <p className="text-[9px] text-slate-400 uppercase">{plug.itemTypeDisplayName}</p>
+                                                </div>
                                             </div>
-                                            {/* Cosmetic Tooltip */}
-                                            <div className="absolute right-full mr-2 top-0 w-48 bg-[#0f0f0f] border border-white/20 p-2 rounded shadow-xl pointer-events-none opacity-0 group-hover/cosmetic:opacity-100 transition-opacity z-100 backdrop-blur-md">
-                                                <p className="text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
-                                                <p className="text-[9px] text-slate-400 uppercase">{plug.itemTypeDisplayName}</p>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
