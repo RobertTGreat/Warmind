@@ -43,6 +43,7 @@ export interface PGCRPlayer {
         deaths: { basic: { value: number; displayValue: string } };
         assists: { basic: { value: number; displayValue: string } };
         completed: { basic: { value: number; displayValue: string } };
+        activityDurationSeconds: { basic: { value: number; displayValue: string } };
     };
 }
 
@@ -75,10 +76,18 @@ export function useActivityHistory() {
                 for (const charId of characterIds) {
                     // Fetch Raids (Mode 4)
                     try {
-                        // Increased count to 250 to get more historical runs
-                        const raidRes = await getActivityHistory(membershipType, membershipId, charId, 4, 250); 
-                        if (raidRes.data.Response?.activities) {
-                            raids.push(...raidRes.data.Response.activities.map((a: any) => ({ ...a, characterId: charId })));
+                        let page = 0;
+                        let hasMore = true;
+                        while (hasMore) {
+                            const raidRes = await getActivityHistory(membershipType, membershipId, charId, 4, 250, page);
+                            const activities = raidRes.data.Response?.activities;
+                            
+                            if (activities && activities.length > 0) {
+                                raids.push(...activities.map((a: any) => ({ ...a, characterId: charId })));
+                                page++;
+                            } else {
+                                hasMore = false;
+                            }
                         }
                     } catch (e) {
                         console.error(`Failed to fetch raid history for char ${charId}`, e);
@@ -86,10 +95,18 @@ export function useActivityHistory() {
 
                     // Fetch Dungeons (Mode 82)
                     try {
-                         // Increased count to 250 to get more historical runs
-                        const dungeonRes = await getActivityHistory(membershipType, membershipId, charId, 82, 250);
-                        if (dungeonRes.data.Response?.activities) {
-                            dungeons.push(...dungeonRes.data.Response.activities.map((a: any) => ({ ...a, characterId: charId })));
+                        let page = 0;
+                        let hasMore = true;
+                        while (hasMore) {
+                            const dungeonRes = await getActivityHistory(membershipType, membershipId, charId, 82, 250, page);
+                            const activities = dungeonRes.data.Response?.activities;
+
+                            if (activities && activities.length > 0) {
+                                dungeons.push(...activities.map((a: any) => ({ ...a, characterId: charId })));
+                                page++;
+                            } else {
+                                hasMore = false;
+                            }
                         }
                     } catch (e) {
                         console.error(`Failed to fetch dungeon history for char ${charId}`, e);

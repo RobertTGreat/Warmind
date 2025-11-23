@@ -112,6 +112,11 @@ export function ActivityStats({ activity, history, onSelectRun }: ActivityStatsP
                                     yPos = Math.max(10, Math.min(90, yPos));
                                 }
 
+                                const kills = run.values.kills.basic.value;
+                                const deaths = run.values.deaths.basic.value;
+                                const assists = run.values.assists.basic.value;
+                                const kd = deaths > 0 ? (kills / deaths).toFixed(2) : kills;
+
                                 const tooltipTime = formatTime(duration);
                                 const tooltipDate = format(new Date(run.period), 'MMM d');
 
@@ -145,12 +150,32 @@ export function ActivityStats({ activity, history, onSelectRun }: ActivityStatsP
 
                                         {/* Tooltip - Increased Size */}
                                         <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
-                                            <div className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-white whitespace-nowrap shadow-xl flex flex-col gap-1 min-w-[100px]">
+                                            <div className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-white whitespace-nowrap shadow-xl flex flex-col gap-1 min-w-[140px]">
                                                 <span className={cn("font-bold text-sm", isCompleted ? "text-green-400" : "text-red-400")}>
                                                     {isCompleted ? "Cleared" : "Failed"}
                                                 </span>
                                                 <span className="text-slate-300 font-mono">{tooltipTime}</span>
-                                                <span className="text-slate-500 text-[10px] uppercase tracking-wider">{tooltipDate}</span>
+                                                
+                                                {/* KDA Stats */}
+                                                <div className="grid grid-cols-3 gap-2 border-t border-white/10 pt-1 mt-1">
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[10px] text-slate-500">K</span>
+                                                        <span className="font-bold text-white">{kills}</span>
+                                                    </div>
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[10px] text-slate-500">D</span>
+                                                        <span className="font-bold text-white">{deaths}</span>
+                                                    </div>
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[10px] text-slate-500">A</span>
+                                                        <span className="font-bold text-white">{assists}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-center text-[10px] text-slate-400 mt-0.5">
+                                                    K/D: <span className="text-destiny-gold font-bold">{kd}</span>
+                                                </div>
+
+                                                <span className="text-slate-500 text-[10px] uppercase tracking-wider mt-1">{tooltipDate}</span>
                                             </div>
                                         </div>
                                     </div>

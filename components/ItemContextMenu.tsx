@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
-import { equipItem, setItemLockState, getBungieImage, moveItem } from '@/lib/bungie';
+import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlug } from '@/lib/bungie';
 import { toast } from 'sonner';
 import { useTransferStore } from '@/store/transferStore';
 import { useUIStore } from '@/store/uiStore';
@@ -35,14 +35,30 @@ export function ItemContextMenu({
     const handleEquipPlug = async (socketIndex: number, plugItemHash: number) => {
         if (!itemInstanceId || !membershipInfo || !ownerId) return;
         
-        // Helper to find actual owner if VAULT (needs character ID for action context)
-        const characterId = ownerId === 'VAULT' ? stats?.characterId || Object.keys(profile?.characters?.data || {})[0] : ownerId;
+        const targetCharacterId = ownerId === 'VAULT' 
+            ? stats?.characterId || Object.keys(profile?.characters?.data || {})[0] 
+            : ownerId;
 
         const promise = (async () => {
-            // Note: This function insertSocketPlug needs to be imported or available
-            // Assuming it's exported from bungie lib based on previous context
-            const { insertSocketPlug } = await import('@/lib/bungie');
-            await insertSocketPlug(itemInstanceId, plugItemHash, socketIndex, characterId, membershipInfo.membershipType);
+            // 1. Move from Vault if needed
+            if (ownerId === 'VAULT') {
+                await moveItem(itemInstanceId, itemHash, 'VAULT', targetCharacterId, membershipInfo.membershipType);
+            }
+
+            // 2. Unlock if locked
+            if (isLocked) {
+                await setItemLockState(itemInstanceId, targetCharacterId, membershipInfo.membershipType, false);
+            }
+
+            try {
+                // 3. Insert Plug
+                await insertSocketPlug(itemInstanceId, plugItemHash, socketIndex, targetCharacterId, membershipInfo.membershipType);
+            } finally {
+                // 4. Relock if it was locked (restore state)
+                if (isLocked) {
+                    await setItemLockState(itemInstanceId, targetCharacterId, membershipInfo.membershipType, true);
+                }
+            }
         })();
 
         toast.promise(promise, {
@@ -50,8 +66,6 @@ export function ItemContextMenu({
             success: 'Perk applied!',
             error: 'Failed to apply perk'
         });
-        // Don't close menu so user can see change (if we had live update) or just close
-        // onClose(); 
     };
 
     // Prepare Tooltip Data

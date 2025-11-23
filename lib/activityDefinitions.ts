@@ -1,4 +1,3 @@
-
 export interface ActivityDefinition {
     id: string;
     name: string;
@@ -22,25 +21,28 @@ const METRICS = {
     GARDEN: 1168279855,
     DSC: 954805812,
     VOG: 2506886274,
-    VOW: 1481884437,
-    KINGS_FALL: 2929188295,
-    RON: 286663655,
-    CROTA: 419614834,
-    SALVATIONS_EDGE: 3292846252,
+    VOW: 3585185883,
+    KINGS_FALL: 1624029217,
+    RON: 321051454,
+    CROTA: 2552956848,
+    SALVATIONS_EDGE: 31271381,
+    DESERT_PERPETUAL: 2512468158, 
 
     // DUNGEONS
-    PIT: 662466577,
-    PROPHECY: 3024827974,
-    GRASP: 3838728738,
+    PIT: 1451729471,
+    PROPHECY: 352659556,
+    GRASP: 451157118,
     DUALITY: 166128401,
-    SPIRE: 1278404531,
-    GHOSTS: 2660931443,
-    WARLORD: 3780576304,
-    VESPER: 0 // Placeholder until API update
+    SPIRE: 3702217360,
+    GHOSTS: 3846201365,
+    WARLORD: 3932004679,
+    VESPER: 2695240656,
+    SUNDERED_DOCTRINE: 1777540712
 };
 
 // Record Hashes (Flawless / Etc)
 const RECORDS = {
+    // RAIDS
     LAST_WISH_FLAWLESS: 4177910003,
     GARDEN_FLAWLESS: 1558682416,
     DSC_FLAWLESS: 3850081629,
@@ -49,19 +51,43 @@ const RECORDS = {
     KINGS_FALL_FLAWLESS: 261554605,
     RON_FLAWLESS: 3056824086,
     CROTA_FLAWLESS: 2298029928,
-    SALVATIONS_EDGE_FLAWLESS: 3436628258, 
+    SALVATIONS_EDGE_FLAWLESS: 3553593767,
+    DESERT_PERPETUAL_FLAWLESS: 2936644752, 
+
+    // DUNGEONS (Solo Flawless)
+    PIT_SOLO_FLAWLESS: 3232684501,
+    PROPHECY_SOLO_FLAWLESS: 3191784400,
+    GRASP_SOLO_FLAWLESS: 3718971745,
+    DUALITY_SOLO_FLAWLESS: 3539526313,
+    SPIRE_SOLO_FLAWLESS: 3708410994,
+    GHOSTS_SOLO_FLAWLESS: 3305873442,
+    WARLORD_SOLO_FLAWLESS: 2620674022,
+    VESPER_SOLO_FLAWLESS: 3254829425, // "Perfect Solitude"
+    SUNDERED_DOCTRINE_SOLO_FLAWLESS: 1670591875
 };
 
 export const ACTIVITIES: ActivityDefinition[] = [
     // --- RAIDS ---
     {
+        id: 'the_desert_perpetual',
+        name: "The Desert Perpetual",
+        type: 'RAID',
+        activityHash: 2413635930,                          // Normal mode activity hash (verified via Bungie API)
+        relatedActivityHashes: [2413635930, 178748159],    // Normal + Master/Contest variants
+        metricHash: METRICS.DESERT_PERPETUAL,              // Now valid: 2512468158
+        triumphHash: 3954661385,                           // Unchanged: Clear triumph
+        flawlessRecordHash: RECORDS.DESERT_PERPETUAL_FLAWLESS, // Now valid: 2936644752
+        exoticItemHash: 3742953758,                        // "The When And Where" rocket launcher (light.gg verified)
+        dayOneRecordHash: 1238672274,                      // Day One clear (optional)
+    },
+    {
         id: 'salvations_edge',
         name: "Salvation's Edge",
         type: 'RAID',
-        activityHash: 2052662744, // Standard Version
-        relatedActivityHashes: [2052662744, 3376966203], // Normal, Master
-        metricHash: 3292846252,
-        flawlessRecordHash: 3436628258, 
+        activityHash: 940375169,
+        relatedActivityHashes: [940375169, 4129614942],
+        metricHash: METRICS.SALVATIONS_EDGE,
+        flawlessRecordHash: RECORDS.SALVATIONS_EDGE_FLAWLESS,
         exoticItemHash: 267469843, // Euphony
     },
     {
@@ -69,7 +95,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Crota's End",
         type: 'RAID',
         activityHash: 540415767,
-        relatedActivityHashes: [540415767, 1087761206], // Normal, Master
+        relatedActivityHashes: [540415767, 1507509200],
         metricHash: METRICS.CROTA,
         flawlessRecordHash: RECORDS.CROTA_FLAWLESS,
         exoticItemHash: 1959368027, // Necrochasm
@@ -78,8 +104,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'root_of_nightmares',
         name: "Root of Nightmares",
         type: 'RAID',
-        activityHash: 1181565501,
-        relatedActivityHashes: [1181565501, 3139014430], // Normal, Master
+        activityHash: 2381413764,
+        relatedActivityHashes: [2381413764, 2918919505], // Normal, Master
         metricHash: METRICS.RON,
         flawlessRecordHash: RECORDS.RON_FLAWLESS,
         exoticItemHash: 2817568609, // Conditional Finality
@@ -88,8 +114,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'kings_fall',
         name: "King's Fall",
         type: 'RAID',
-        activityHash: 292102995,
-        relatedActivityHashes: [292102995, 2692916568], // Normal, Master
+        activityHash: 1374392663,
+        relatedActivityHashes: [1374392663, 3257594522], // Normal, Master
         metricHash: METRICS.KINGS_FALL,
         flawlessRecordHash: RECORDS.KINGS_FALL_FLAWLESS,
         exoticItemHash: 2820464090, // Touch of Malice
@@ -98,8 +124,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'vow_of_the_disciple',
         name: "Vow of the Disciple",
         type: 'RAID',
-        activityHash: 1441887206,
-        relatedActivityHashes: [1441887206, 4217492330], // Normal, Master
+        activityHash: 1441982566,
+        relatedActivityHashes: [1441982566, 3889634515], // Normal, Master
         metricHash: METRICS.VOW,
         flawlessRecordHash: RECORDS.VOW_FLAWLESS,
         exoticItemHash: 2212933383, // Collective Obligation
@@ -109,7 +135,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Vault of Glass",
         type: 'RAID',
         activityHash: 3881495763,
-        relatedActivityHashes: [3881495763, 1388536442], // Normal, Master
+        relatedActivityHashes: [3881495763, 3022541210], // Normal, Master
         metricHash: METRICS.VOG,
         flawlessRecordHash: RECORDS.VOG_FLAWLESS,
         exoticItemHash: 247461753, // Vex Mythoclast
@@ -128,8 +154,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'garden_of_salvation',
         name: "Garden of Salvation",
         type: 'RAID',
-        activityHash: 2659723068,
-        relatedActivityHashes: [2659723068], // No Master
+        activityHash: 1042180643,
+        relatedActivityHashes: [1042180643], // No Master
         metricHash: METRICS.GARDEN,
         flawlessRecordHash: RECORDS.GARDEN_FLAWLESS,
         exoticItemHash: 3539486224, // Divinity
@@ -138,8 +164,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'last_wish',
         name: "Last Wish",
         type: 'RAID',
-        activityHash: 212231333,
-        relatedActivityHashes: [212231333], // No Master
+        activityHash: 2122313384,
+        relatedActivityHashes: [2122313384], // No Master
         metricHash: METRICS.LAST_WISH,
         flawlessRecordHash: RECORDS.LAST_WISH_FLAWLESS,
         exoticItemHash: 2069224589, // One Thousand Voices
@@ -147,44 +173,55 @@ export const ACTIVITIES: ActivityDefinition[] = [
 
     // --- DUNGEONS ---
     {
+        id: 'sundered_doctrine',
+        name: "Sundered Doctrine",
+        type: 'DUNGEON',
+        activityHash: 2105055614,                          // Seal/activity proxy (light.gg verified)
+        relatedActivityHashes: [2105055614, 3479286171],   // Normal + Master variants
+        metricHash: METRICS.SUNDERED_DOCTRINE,             // Now valid: 1777540712
+        triumphHash: 2105055614,                           // Unchanged: Clear triumph
+        soloFlawlessRecordHash: RECORDS.SUNDERED_DOCTRINE_SOLO_FLAWLESS, // Now valid: 1670591875
+        exoticItemHash: 331231237,                         // Finality's Auger linear fusion rifle (light.gg verified)
+    },
+    {
         id: 'vespers_host',
         name: "Vesper's Host",
         type: 'DUNGEON',
-        activityHash: 3774021535, 
-        relatedActivityHashes: [3774021535], // Add Master Hash if known
-        metricHash: 0, // TBD
+        activityHash: 3492566689,
+        relatedActivityHashes: [3492566689, 4293676253],
+        metricHash: METRICS.VESPER,
+        soloFlawlessRecordHash: RECORDS.VESPER_SOLO_FLAWLESS,
         exoticItemHash: 2535628877, // Ice Breaker
-        soloFlawlessRecordHash: 0,
     },
     {
         id: 'warlords_ruin',
         name: "Warlord's Ruin",
         type: 'DUNGEON',
-        activityHash: 245363579,
-        relatedActivityHashes: [245363579, 1333015944], // Normal, Master
+        activityHash: 2004855007, // Normal
+        relatedActivityHashes: [2004855007, 2534833093], // Normal, Master
         metricHash: METRICS.WARLORD,
         exoticItemHash: 2978866586, // Buried Bloodline
-        soloFlawlessRecordHash: 2620674022,
+        soloFlawlessRecordHash: RECORDS.WARLORD_SOLO_FLAWLESS,
     },
     {
         id: 'ghosts_of_the_deep',
         name: "Ghosts of the Deep",
         type: 'DUNGEON',
-        activityHash: 2012323598,
-        relatedActivityHashes: [2012323598, 2740359481], // Normal, Master
+        activityHash: 313828469,
+        relatedActivityHashes: [313828469, 2716998124], // Normal, Master
         metricHash: METRICS.GHOSTS,
         exoticItemHash: 3516380376, // The Navigator
-        soloFlawlessRecordHash: 3305873442,
+        soloFlawlessRecordHash: RECORDS.GHOSTS_SOLO_FLAWLESS,
     },
     {
         id: 'spire_of_the_watcher',
         name: "Spire of the Watcher",
         type: 'DUNGEON',
-        activityHash: 3666319433,
-        relatedActivityHashes: [3666319433, 166821702], // Normal, Master
+        activityHash: 1262462921,
+        relatedActivityHashes: [1262462921, 2296818662], // Normal, Master
         metricHash: METRICS.SPIRE,
         exoticItemHash: 192937277, // Hierarchy of Needs
-        soloFlawlessRecordHash: 3708410994,
+        soloFlawlessRecordHash: RECORDS.SPIRE_SOLO_FLAWLESS,
     },
     {
         id: 'duality',
@@ -194,17 +231,17 @@ export const ACTIVITIES: ActivityDefinition[] = [
         relatedActivityHashes: [2823159265, 3611083616], // Normal, Master
         metricHash: METRICS.DUALITY,
         exoticItemHash: 2526166644, // Heartshadow
-        soloFlawlessRecordHash: 3539526313,
+        soloFlawlessRecordHash: RECORDS.DUALITY_SOLO_FLAWLESS,
     },
     {
         id: 'grasp_of_avarice',
         name: "Grasp of Avarice",
         type: 'DUNGEON',
-        activityHash: 4078673071,
-        relatedActivityHashes: [4078673071, 1604556526], // Normal, Master
+        activityHash: 4078656646,
+        relatedActivityHashes: [4078656646, 1112917203], // Normal, Master
         metricHash: METRICS.GRASP,
         exoticItemHash: 2390499981, // Gjallarhorn
-        soloFlawlessRecordHash: 1579398922,
+        soloFlawlessRecordHash: RECORDS.GRASP_SOLO_FLAWLESS,
     },
     {
         id: 'prophecy',
@@ -213,17 +250,17 @@ export const ACTIVITIES: ActivityDefinition[] = [
         activityHash: 4148187374,
         relatedActivityHashes: [4148187374],
         metricHash: METRICS.PROPHECY,
-        soloFlawlessRecordHash: 2674486330,
+        soloFlawlessRecordHash: RECORDS.PROPHECY_SOLO_FLAWLESS,
     },
     {
         id: 'pit_of_heresy',
         name: "Pit of Heresy",
         type: 'DUNGEON',
-        activityHash: 1375089621,
-        relatedActivityHashes: [1375089621],
+        activityHash: 2582501063,
+        relatedActivityHashes: [2582501063],
         metricHash: METRICS.PIT,
-        exoticItemHash: 1929472306, // Xenophage
-        soloFlawlessRecordHash: 3232684501,
+        exoticItemHash: 1929472306,
+        soloFlawlessRecordHash: RECORDS.PIT_SOLO_FLAWLESS,
     },
     {
         id: 'shattered_throne',
