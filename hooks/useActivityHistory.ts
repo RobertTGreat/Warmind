@@ -3,6 +3,7 @@ import { getActivityHistory } from '@/lib/bungie';
 import { useDestinyProfile } from './useDestinyProfile';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { getCachedHistory, setCachedHistory } from '@/lib/activityCache';
 
 export interface ActivityHistoryItem {
     activityDetails: {
@@ -66,6 +67,20 @@ export function useActivityHistory() {
 
         const fetchHistory = async () => {
             setLoading(true);
+            const cacheKey = `history_${membershipType}_${membershipId}_${characterIds.sort().join('_')}`;
+            
+            // Try loading from cache first
+            const cachedData = await getCachedHistory(cacheKey);
+            if (cachedData) {
+                setRaidHistory(cachedData.raids);
+                setDungeonHistory(cachedData.dungeons);
+                setLoading(false);
+                // We can choose to re-fetch in background or just return
+                // For now, let's just return to be fast. 
+                // Or maybe only fetch if cache is old? The lib handles expiry (1 hour).
+                return;
+            }
+
             try {
                 const raids: ActivityHistoryItem[] = [];
                 const dungeons: ActivityHistoryItem[] = [];
@@ -123,6 +138,10 @@ export function useActivityHistory() {
 
                 setRaidHistory(uniqueRaids);
                 setDungeonHistory(uniqueDungeons);
+
+                // Save to cache
+                await setCachedHistory(cacheKey, { raids: uniqueRaids, dungeons: uniqueDungeons });
+
             } catch (err) {
                 console.error("Error fetching activity history", err);
             } finally {

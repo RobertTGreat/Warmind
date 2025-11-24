@@ -74,7 +74,8 @@ export const endpoints = {
     return `/Destiny2/${membershipType}/Profile/${destinyMembershipId}/?components=${componentList}`;
   },
   getClan: (groupId: string) => `/GroupV2/${groupId}/`,
-  searchUsers: (q: string) => `/User/Search/GlobalName/0/`,
+  searchUsers: (q: string, page: number = 0) => `/User/Search/GlobalName/${page}/`,
+  searchDestinyPlayer: (membershipType: number, displayName: string) => `/Destiny2/SearchDestinyPlayer/${membershipType}/${encodeURIComponent(displayName)}/`,
   getGroupsForMember: (membershipType: number, destinyMembershipId: string) =>
     `/GroupV2/User/${membershipType}/${destinyMembershipId}/0/1/`,
   getMembersOfGroup: (groupId: string) => 

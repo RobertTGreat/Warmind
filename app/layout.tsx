@@ -7,17 +7,94 @@ import { FirstLoadWarning } from "@/components/FirstLoadWarning";
 import { ClientManifestManager } from "@/components/ClientManifestManager";
 
 export const metadata: Metadata = {
-  title: "Warmind - Destiny 2 Companion",
-  description: "A minimalist Destiny 2 companion app for gear, vault, and clan management.",
-  applicationName: "Warmind",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Warmind",
+  metadataBase: new URL('https://warmind.app'), // Replace with your actual domain
+  title: {
+    default: "Warmind - Destiny 2 Companion",
+    template: "%s | Warmind",
   },
+  description: "A minimalist Destiny 2 companion app for gear, vault, and clan management. Manage your inventory, view activities, and track progress.",
+  applicationName: "Warmind",
+  keywords: ["Destiny 2", "Companion", "Inventory", "Vault", "Clan", "Warmind", "Bungie", "Game", "Manager"],
+  authors: [{ name: "Warmind Team" }],
+  creator: "Warmind Team",
+  publisher: "Warmind",
   formatDetection: {
     telephone: false,
+    address: false,
+    email: false,
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Warmind",
+    startupImage: [], // Add startup images if available
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://warmind.app",
+    title: "Warmind - Destiny 2 Companion",
+    description: "Manage your Destiny 2 inventory, vault, and clan with ease. A minimalist companion app designed for speed and simplicity.",
+    siteName: "Warmind",
+    images: [
+      {
+        url: "/og-image.jpg", // Add an OG image to your public folder
+        width: 1200,
+        height: 630,
+        alt: "Warmind - Destiny 2 Companion",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Warmind - Destiny 2 Companion",
+    description: "Manage your Destiny 2 inventory, vault, and clan with ease.",
+    images: ["/og-image.jpg"], // Same as OG image usually
+    creator: "@WarmindApp", // Replace with actual handle
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon-32.ico', sizes: '32x32' },
+      { url: '/favicon-64.ico', sizes: '64x64' },
+    ],
+    shortcut: ['/favicon.ico'],
+    apple: [
+      // Add apple touch icon if available, e.g. { url: '/apple-icon.png', sizes: '180x180' }
+    ],
+    other: [
+      {
+        rel: 'apple-touch-icon-precomposed',
+        url: '/apple-touch-icon-precomposed.png',
+      },
+    ],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  verification: {
+    google: "verification_token", // Replace with your verification token
+    yandex: "yandex_verification_token",
+    yahoo: "yahoo_verification_token",
+    other: {
+      me: ["my-email"],
+    },
+  },
+  alternates: {
+    canonical: "https://warmind.app",
+    languages: {
+      'en-US': 'https://warmind.app/en-US',
+    },
+  },
+  category: 'game',
 };
 
 export const viewport: Viewport = {

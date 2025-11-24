@@ -2,12 +2,15 @@
 
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { useActivityHistory } from '@/hooks/useActivityHistory';
+import { useOtherUserProfile } from '@/hooks/useOtherUserProfile';
+import { useOtherUserActivityHistory } from '@/hooks/useOtherUserActivityHistory';
 import { ACTIVITIES } from '@/lib/activityDefinitions';
 import { ActivityReportCard } from '@/components/ActivityReportCard';
 import { PGCRViewer } from '@/components/PGCRViewer';
+import { UserSearch } from '@/components/UserSearch';
 import { Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 const CLASS_NAMES = {
     0: 'Titan',
@@ -23,10 +26,49 @@ export default function ActivityPage() {
         isLoggedIn,
     } = useDestinyProfile();
 
-    const { raidHistory, dungeonHistory, isLoadingHistory } = useActivityHistory();
+    const { raidHistory: myRaidHistory, dungeonHistory: myDungeonHistory, isLoadingHistory: myIsLoadingHistory } = useActivityHistory();
+    
+    // Other user state
+    const [selectedUser, setSelectedUser] = useState<{ membershipType: number; membershipId: string; displayName: string } | null>(null);
+    
+    // Fetch other user's profile
+    const { profile: otherUserProfile, isLoading: isLoadingOtherProfile } = useOtherUserProfile(
+        selectedUser?.membershipType || null,
+        selectedUser?.membershipId || null
+    );
+
+    // Get character IDs from other user's profile
+    const otherUserCharacterIds = useMemo(() => {
+        if (!otherUserProfile?.characters?.data) return [];
+        return Object.keys(otherUserProfile.characters.data);
+    }, [otherUserProfile]);
+
+    // Fetch other user's activity history
+    const { raidHistory: otherRaidHistory, dungeonHistory: otherDungeonHistory, isLoadingHistory: otherIsLoadingHistory } = 
+        useOtherUserActivityHistory(
+            selectedUser?.membershipType || null,
+            selectedUser?.membershipId || null,
+            otherUserCharacterIds
+        );
+
+    // Use selected user's data if available, otherwise use current user's data
+    const activeProfile = selectedUser ? otherUserProfile : profile;
+    const raidHistory = selectedUser ? otherRaidHistory : myRaidHistory;
+    const dungeonHistory = selectedUser ? otherDungeonHistory : myDungeonHistory;
+    const isLoadingHistory = selectedUser ? otherIsLoadingHistory : myIsLoadingHistory;
+    const isLoadingProfile = selectedUser ? isLoadingOtherProfile : isLoading;
+
     const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
 
-    if (isLoading) {
+    const handleSelectUser = (membershipType: number, membershipId: string, displayName: string) => {
+        setSelectedUser({ membershipType, membershipId, displayName });
+    };
+
+    const handleClearUser = () => {
+        setSelectedUser(null);
+    };
+
+    if (isLoadingProfile) {
         return (
             <div className="w-full h-[calc(100vh-80px)] flex items-center justify-center">
                 <Loader2 className="w-12 h-12 animate-spin text-destiny-gold" />
@@ -34,10 +76,19 @@ export default function ActivityPage() {
         );
     }
 
-    if (!isLoggedIn) {
+    if (!isLoggedIn && !selectedUser) {
         return (
             <div className="p-10 text-center text-slate-400">
-                Please login to view your activity report.
+                Please login to view your activity report, or search for another player.
+            </div>
+        );
+    }
+
+    if (selectedUser && !activeProfile) {
+        return (
+            <div className="p-10 text-center text-slate-400">
+                <Loader2 className="w-12 h-12 animate-spin text-destiny-gold mx-auto mb-4" />
+                <p>Loading {selectedUser.displayName}'s profile...</p>
             </div>
         );
     }
@@ -60,9 +111,22 @@ export default function ActivityPage() {
     return (
         <div className="min-h-screen p-4 md:p-8 pb-24">
             <PageHeader 
-                title="Activity Report" 
-                description="Track your Raid and Dungeon completions, flawless runs, and exotic drops."
-            />
+                title={selectedUser ? `${selectedUser.displayName}'s Activity Report` : "Activity Report"} 
+                description="Track Raid and Dungeon completions, flawless runs, and exotic drops."
+            >
+                <div className="flex flex-col items-end gap-2">
+                    <UserSearch 
+                        onSelectUser={handleSelectUser}
+                        onClear={handleClearUser}
+                        selectedUser={selectedUser}
+                    />
+                    {selectedUser && (
+                        <div className="text-sm text-slate-400">
+                            Viewing: <span className="text-white font-semibold">{selectedUser.displayName}</span>
+                        </div>
+                    )}
+                </div>
+            </PageHeader>
 
             <div className="mt-8 space-y-12">
                 {/* Raids Section */}

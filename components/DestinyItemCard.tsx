@@ -7,7 +7,7 @@ import { ItemTooltip } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useTransferStore } from '@/store/transferStore';
-import { getItemTier, BUCKETS } from '@/lib/destinyUtils';
+import { getItemTier, getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -243,31 +243,213 @@ export function DestinyItemCard({
 
 
   // EARLY RETURNS AFTER ALL HOOKS
+  // Note: We MUST NOT return null before all hooks are called.
+  // We use useMemo for values that depend on props/state, and only conditionally render in the return statement or use dummy components.
   
-  // Filter by class if requested
-  if (classFilter !== undefined && def && def.classType !== 3 && def.classType !== classFilter) {
-      if (showClassSymbolOnMismatch) {
-          // Render simple box with class icon
-          return (
-              <div className={cn(
-                  "flex items-center justify-center bg-black/20 border border-white/5 opacity-40 select-none pointer-events-none",
-                  className
-              )}>
-                  <Image 
-                    src={CLASS_ICONS[def.classType] || ""} 
-                    alt="Class Mismatch" 
-                    width={24} 
-                    height={24} 
-                    className="object-contain opacity-50" 
-                  />
-              </div>
-          );
-      }
-      return null;
-  }
+  const classMismatch = classFilter !== undefined && def && def.classType !== 3 && def.classType !== classFilter;
+  const showMismatch = classMismatch && showClassSymbolOnMismatch;
+  const shouldRenderMismatch = classMismatch && showMismatch;
+  const shouldHideItem = classMismatch && !showMismatch;
 
   const isLoading = !def && !error;
   const isDimmed = isHighlighted === false;
+  
+  // Calculate display properties (safely handle missing def)
+  const icon = def ? getBungieImage(def.displayProperties?.icon) : null;
+  const name = def?.displayProperties?.name;
+  const rarity = def?.inventory?.tierTypeName; 
+  const itemType = def?.itemTypeDisplayName;
+  const screenshot = def ? getBungieImage(def.screenshot) : null;
+  const damageTypeHash = instanceData?.damageTypeHash || def?.defaultDamageTypeHash;
+  const elementIcon = ELEMENT_ICONS[damageTypeHash];
+
+  // Plugs Logic (Mods/Perks) - Moved logic into useMemo to be hook-safe
+  // We already compute 'detailedPerks' with useMemo which iterates sockets.
+  // We can just extract cosmetic lists from socketsData + plugDefs directly here or memorize them.
+  const { perks, mods, shaders, ornaments, killEffects, killTrackers, enhancementTierDerived } = useMemo(() => {
+      const p: any[] = [];
+      const m: any[] = [];
+      const s: any[] = [];
+      const o: any[] = [];
+      const ke: any[] = [];
+      const kt: any[] = [];
+      let et: number | null = null;
+
+      if (socketsData?.sockets && plugDefs) {
+          socketsData.sockets.forEach((socket: any) => {
+              if (!socket.plugHash) return;
+              const plug = plugDefs[socket.plugHash];
+              if (!plug) return;
+
+              const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+              const category = plug.plug?.plugCategoryIdentifier || "";
+              const n = plug.displayProperties?.name?.toLowerCase() || "";
+              
+              if (typeName.includes("masterwork") || category.includes("masterwork")) {
+                 const tierMatch = plug.displayProperties?.name?.match(/Tier (\d+)/);
+                 if (tierMatch) {
+                     et = parseInt(tierMatch[1], 10);
+                 }
+              }
+
+              let isCosmetic = false;
+
+              if (typeName.includes("shader")) {
+                  s.push(plug);
+                  isCosmetic = true;
+              } 
+              
+              if (typeName.includes("ornament") || category.includes("skins")) {
+                  o.push(plug);
+                  isCosmetic = true;
+              } 
+              
+              if (n.includes("kill tracker") || typeName.includes("tracker")) {
+                  kt.push(plug);
+                  isCosmetic = true;
+              } 
+              
+              if (typeName.includes("transmat")) {
+                  ke.push(plug);
+                  isCosmetic = true;
+              }
+              
+              if (!isCosmetic) {
+                  if (typeName.includes("mod")) {
+                      m.push(plug);
+                  }
+                  else if (typeName.includes("trait") || typeName.includes("perk") || category.includes("trait") || category.includes("frames")) {
+                      p.push(plug);
+                  }
+              }
+          });
+      }
+      return { perks: p, mods: m, shaders: s, ornaments: o, killEffects: ke, killTrackers: kt, enhancementTierDerived: et };
+  }, [socketsData, plugDefs]);
+
+  // Derived properties
+  const isMasterwork = (instanceData ? (instanceData.state & 4) === 4 : false) || (enhancementTierDerived === 10);
+  const enhancementTier = (isMasterwork && (!enhancementTierDerived || enhancementTierDerived < 10)) ? 10 : enhancementTierDerived;
+
+  const rarityBorder = hideBorder ? 'border-transparent' : (
+      isMasterwork ? 'border-destiny-gold shadow-[0_0_4px_rgba(227,206,98,0.5)]' :
+      ({
+      'Exotic': 'border-yellow-500',
+      'Legendary': 'border-purple-500',
+      'Rare': 'border-blue-500',
+      'Common': 'border-green-500',
+      'Basic': 'border-white/20'
+  }[rarity as string] || 'border-white/20'));
+
+  // Stats Logic
+  const stats = useMemo(() => {
+      if (!def) return {};
+      let initialStats = { ...(def.stats?.stats || {}) };
+      if (Object.keys(initialStats).length === 0 && def.investmentStats) {
+          def.investmentStats.forEach((stat: any) => {
+              initialStats[stat.statTypeHash] = {
+                  statHash: stat.statTypeHash,
+                  value: stat.value,
+                  minimum: 0,
+                  maximum: 100,
+                  displayMaximum: 100
+              };
+          });
+      }
+      const s = { ...initialStats };
+      if (instanceData?.stats) {
+          Object.entries(instanceData.stats).forEach(([hash, stat]: [string, any]) => {
+              s[hash] = { ...s[hash], value: stat.value };
+          });
+      }
+      return s;
+  }, [def, instanceData]);
+
+  // Calculate Tier
+  const tierNumber = getItemTier(def, socketsData, plugDefs, instanceData, reusablePlugs);
+  const tier = tierNumber > 1 ? `Tier ${tierNumber}` : null;
+
+  // Calculate Armor Quality
+  const armorQuality = useMemo(() => {
+      if (def?.itemType !== 2 || !instanceData?.stats) return null;
+       // We need activePlugs for base stat calculation
+      const activePlugs: any[] = [];
+      if (socketsData?.sockets && plugDefs) {
+          socketsData.sockets.forEach((socket: any) => {
+              if (socket.plugHash && plugDefs[socket.plugHash]) {
+                  activePlugs.push(plugDefs[socket.plugHash]);
+              }
+          });
+      }
+      const isMw = (instanceData.state & 4) === 4;
+      const baseStats = getArmorBaseStats(instanceData.stats, activePlugs, isMw);
+      return getArmorQuality(baseStats, def);
+  }, [def, instanceData, socketsData, plugDefs]);
+
+  // Handlers
+  const handleContextMenu = (e: React.MouseEvent) => {
+      e.preventDefault();
+      setContextMenuPos({ x: e.clientX, y: e.clientY });
+      setIsHovered(false);
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+      if (!itemInstanceId) return;
+      e.dataTransfer.setData('application/json', JSON.stringify({
+          itemHash,
+          itemInstanceId,
+          ownerId,
+          def
+      }));
+      e.dataTransfer.setData('text/plain', itemInstanceId);
+  };
+
+  const isLocked = instanceData ? (instanceData.state & 1) === 1 : false;
+
+  const expirationDate = instanceData?.expirationDate ? new Date(instanceData.expirationDate) : null;
+  const timeLeft = expirationDate ? (() => {
+      const diff = expirationDate.getTime() - new Date().getTime();
+      if (diff <= 0) return "Expired";
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      if (hours > 24) return `${Math.floor(hours / 24)}d`;
+      if (hours > 0) return `${hours}h`;
+      const minutes = Math.floor(diff / (1000 * 60));
+      return `${minutes}m`;
+  })() : null;
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+      if (!contextMenuPos) {
+          setInitialTooltipPos({ x: e.clientX, y: e.clientY });
+          setIsHovered(true);
+      }
+  };
+
+  const starConfig = {
+      small: { text: 'text-[9px]', top: 'top-3.5', left: 'left-[0.3rem]', gap: 'gap-0' },
+      medium: { text: 'text-[11px]', top: 'top-4.5', left: 'left-[0.38rem]', gap: 'gap-0' },
+      large: { text: 'text-[13px]', top: 'top-5.5', left: 'left-[0.45rem]', gap: 'gap-0' }
+  }[size];
+
+  // RENDER LOGIC START
+
+  if (shouldHideItem) return null;
+
+  if (shouldRenderMismatch && def) {
+      return (
+          <div className={cn(
+              "flex items-center justify-center bg-black/20 border border-white/5 opacity-40 select-none pointer-events-none",
+              className
+          )}>
+              <Image 
+                src={CLASS_ICONS[def.classType] || ""} 
+                alt="Class Mismatch" 
+                width={24} 
+                height={24} 
+                className="object-contain opacity-50" 
+              />
+          </div>
+      );
+  }
 
   if (isLoading) {
       return (
@@ -283,160 +465,6 @@ export function DestinyItemCard({
       );
   }
 
-  const icon = getBungieImage(def.displayProperties?.icon);
-  const name = def.displayProperties?.name;
-  const rarity = def.inventory?.tierTypeName; 
-  const itemType = def.itemTypeDisplayName;
-  const screenshot = getBungieImage(def.screenshot);
-  
-  // Determine Element
-  const damageTypeHash = instanceData?.damageTypeHash || def.defaultDamageTypeHash;
-  const elementIcon = ELEMENT_ICONS[damageTypeHash];
-
-  // Filter Plugs and Find Masterwork Status
-  const perks: any[] = [];
-  const mods: any[] = [];
-  const shaders: any[] = [];
-  const ornaments: any[] = [];
-  const killEffects: any[] = []; // Transmat / Kill Effects
-  const killTrackers: any[] = []; // Kill Trackers
-  let enhancementTier: number | null = null;
-
-  if (socketsData?.sockets && plugDefs) {
-      socketsData.sockets.forEach((socket: any) => {
-          if (!socket.plugHash) return;
-          const plug = plugDefs[socket.plugHash];
-          if (!plug) return;
-
-          const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
-          const category = plug.plug?.plugCategoryIdentifier || "";
-          const name = plug.displayProperties?.name?.toLowerCase() || "";
-          
-          // Check for Masterwork / Enhancement Tier
-          // We check this, but we don't return immediately because some plugs might be multi-purpose or we might want to categorize them
-          if (typeName.includes("masterwork") || category.includes("masterwork")) {
-             const tierMatch = plug.displayProperties?.name?.match(/Tier (\d+)/);
-             if (tierMatch) {
-                 enhancementTier = parseInt(tierMatch[1], 10);
-             }
-             // If it's just a masterwork, we usually don't show it in the grid, 
-             // but let's continue to check if it falls into other categories (unlikely but safe)
-          }
-
-          let isCosmetic = false;
-
-          if (typeName.includes("shader")) {
-              shaders.push(plug);
-              isCosmetic = true;
-          } 
-          
-          if (typeName.includes("ornament") || category.includes("skins")) {
-              ornaments.push(plug);
-              isCosmetic = true;
-          } 
-          
-          if (name.includes("kill tracker") || typeName.includes("tracker")) {
-              killTrackers.push(plug);
-              isCosmetic = true;
-          } 
-          
-          if (typeName.includes("transmat")) {
-              killEffects.push(plug);
-              isCosmetic = true;
-          }
-          
-          if (!isCosmetic) {
-              // Mods Logic - Check strictly for "mod" in type
-              if (typeName.includes("mod")) {
-                  mods.push(plug);
-              }
-              // Perks Logic - Catch-all for remaining traits/perks
-              else if (typeName.includes("trait") || typeName.includes("perk") || category.includes("trait") || category.includes("frames")) {
-                  perks.push(plug);
-              }
-          }
-      });
-  }
-
-  // Rarity Colors (Border)
-  // Check bit 2 (value 4) for Masterwork state in instanceData, OR if Tier is 10
-  const isMasterwork = (instanceData ? (instanceData.state & 4) === 4 : false) || (enhancementTier === 10);
-
-  // Ensure enhancement tier reflects masterwork state if not found via plugs
-  if (isMasterwork && (!enhancementTier || enhancementTier < 10)) {
-      enhancementTier = 10;
-  }
-
-  const rarityBorder = hideBorder ? 'border-transparent' : (
-      isMasterwork ? 'border-destiny-gold shadow-[0_0_4px_rgba(227,206,98,0.5)]' :
-      ({
-      'Exotic': 'border-yellow-500',
-      'Legendary': 'border-purple-500',
-      'Rare': 'border-blue-500',
-      'Common': 'border-green-500',
-      'Basic': 'border-white/20'
-  }[rarity as string] || 'border-white/20'));
-
-  // Merge Stats (Prefer Instance over Definition)
-  const stats = { ...(def.stats?.stats || {}) };
-  if (instanceData?.stats) {
-      Object.entries(instanceData.stats).forEach(([hash, stat]: [string, any]) => {
-          stats[hash] = { ...stats[hash], value: stat.value };
-      });
-  }
-  
-  // Calculate Tier (Custom Logic)
-  const tierNumber = getItemTier(def, socketsData, plugDefs, instanceData);
-  const tier = tierNumber > 1 ? `Tier ${tierNumber}` : null;
-
-
-  const handleContextMenu = (e: React.MouseEvent) => {
-      e.preventDefault();
-      setContextMenuPos({ x: e.clientX, y: e.clientY });
-      // Disable tooltip when menu is open? Maybe not strictly needed but good UX
-      setIsHovered(false);
-  };
-
-  const handleDragStart = (e: React.DragEvent) => {
-      if (!itemInstanceId) return;
-      e.dataTransfer.setData('application/json', JSON.stringify({
-          itemHash,
-          itemInstanceId,
-          ownerId,
-          def // Maybe too big?
-      }));
-      // Also set text for debugging
-      e.dataTransfer.setData('text/plain', itemInstanceId);
-  };
-
-  // Check lock state (bit 0 of state)
-    const isLocked = instanceData ? (instanceData.state & 1) === 1 : false;
-
-    // Expiration Logic
-    const expirationDate = instanceData?.expirationDate ? new Date(instanceData.expirationDate) : null;
-    const timeLeft = expirationDate ? (() => {
-        const diff = expirationDate.getTime() - new Date().getTime();
-        if (diff <= 0) return "Expired";
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        if (hours > 24) return `${Math.floor(hours / 24)}d`;
-        if (hours > 0) return `${hours}h`;
-        const minutes = Math.floor(diff / (1000 * 60));
-        return `${minutes}m`;
-    })() : null;
-
-    const handleMouseEnter = (e: React.MouseEvent) => {
-        if (!contextMenuPos) {
-            setInitialTooltipPos({ x: e.clientX, y: e.clientY });
-            setIsHovered(true);
-        }
-    };
-
-    // Size-based styles
-    const starConfig = {
-        small: { text: 'text-[9px]', top: 'top-3.5', left: 'left-[0.3rem]', gap: 'gap-0' },
-        medium: { text: 'text-[11px]', top: 'top-4.5', left: 'left-[0.38rem]', gap: 'gap-0' },
-        large: { text: 'text-[13px]', top: 'top-5.5', left: 'left-[0.45rem]', gap: 'gap-0' }
-    }[size];
 
     return (
     <>
@@ -491,8 +519,8 @@ export function DestinyItemCard({
                     </div>
                 )}
 
-                {/* Tier Indicator Overlay (Stars) */}
-                {tierNumber > 1 && (
+                {/* Tier Indicator Overlay (Stars) - Weapons and Armor */}
+                {(def.itemType === 3 || def.itemType === 2) && tierNumber > 1 && (
                     <div className={cn(
                         "absolute z-20 flex flex-col leading-none",
                         starConfig.top,
@@ -590,9 +618,9 @@ export function DestinyItemCard({
                 itemType={itemType} 
                 rarity={rarity} 
                 power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
-                screenshot={screenshot}
+                screenshot={screenshot || undefined}
                 flavorText={def.flavorText}
-                seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved)}
+                seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
                 elementIcon={elementIcon}
                 stats={stats}
                 itemHash={itemHash}
@@ -603,12 +631,15 @@ export function DestinyItemCard({
                 killEffects={killEffects}
                 killTrackers={killTrackers}
                 enhancementTier={enhancementTier}
-                tier={tier}
+                tier={tier || undefined}
                 initialPosition={initialTooltipPos}
                 objectives={objectives}
                 itemDef={def}
                 isShiny={isShiny}
                 detailedPerks={detailedPerks}
+                armorQuality={armorQuality}
+                socketsData={socketsData}
+                plugDefs={plugDefs}
             />
         )}
 

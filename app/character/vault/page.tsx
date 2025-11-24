@@ -53,6 +53,17 @@ import { useTransferStore } from "@/store/transferStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { parseSearchQuery, checkItemMatch } from "@/lib/searchUtils";
 
+// Helper to merge instance data with item stats for tooltip display
+function getInstanceDataWithStats(profile: any, itemInstanceId: string) {
+    const instance = profile?.itemComponents?.instances?.data?.[itemInstanceId];
+    const itemStats = profile?.itemComponents?.stats?.data?.[itemInstanceId]?.stats;
+    if (!instance) return undefined;
+    return {
+        ...instance,
+        stats: itemStats
+    };
+}
+
 export default function VaultPage() {
   const { profile, isLoading: profileLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
   const [searchQuery, setSearchQuery] = useState("");
@@ -531,7 +542,7 @@ export default function VaultPage() {
                                                 {equipped ? (
                                                     <DestinyItemCard 
                                                        itemHash={equipped.itemHash}
-                                                       instanceData={profile?.itemComponents?.instances?.data?.[equipped.itemInstanceId]}
+                                                       instanceData={getInstanceDataWithStats(profile, equipped.itemInstanceId)}
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[equipped.itemInstanceId]}
                                                        reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[equipped.itemInstanceId]?.plugs}
                                                        className={equippedSizeClass}
@@ -552,7 +563,7 @@ export default function VaultPage() {
                                                     <DestinyItemCard 
                                                        key={`${item.itemHash}-${idx}`}
                                                        itemHash={item.itemHash}
-                                                       instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                       instanceData={getInstanceDataWithStats(profile, item.itemInstanceId)}
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                        reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                        className={iconSizeClass}
@@ -582,14 +593,14 @@ export default function VaultPage() {
                                      {/* Rendering Logic based on toggles */}
                                      {(() => {
                                          // 1. No grouping
-                                         if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                             if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
                                              return (
                                                 <div className={cn("flex flex-wrap gap-1 min-h-[60px]", gapClass)}>
                                                     {sortedVItems.map((item: any, idx: number) => (
                                                        <DestinyItemCard 
                                                           key={`${item.itemHash}-${idx}`}
                                                           itemHash={item.itemHash}
-                                                          instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                          instanceData={getInstanceDataWithStats(profile, item.itemInstanceId)}
                                                           socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                           reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                           className={iconSizeClass}
@@ -625,7 +636,7 @@ export default function VaultPage() {
                                                                         <DestinyItemCard 
                                                                            key={`${item.itemHash}-${idx}`}
                                                                            itemHash={item.itemHash}
-                                                                           instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                                           instanceData={getInstanceDataWithStats(profile, item.itemInstanceId)}
                                                                            socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                                            reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                                            className={iconSizeClass}
@@ -663,7 +674,7 @@ export default function VaultPage() {
                                                                         <DestinyItemCard 
                                                                            key={`${item.itemHash}-${idx}`}
                                                                            itemHash={item.itemHash}
-                                                                           instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                                           instanceData={getInstanceDataWithStats(profile, item.itemInstanceId)}
                                                                            socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                                            reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                                            className={iconSizeClass}

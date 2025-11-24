@@ -2,20 +2,30 @@ import { ActivityDefinition } from "@/lib/activityDefinitions";
 import { ActivityHistoryItem } from "@/hooks/useActivityHistory";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface ActivityStatsProps {
     activity: ActivityDefinition;
     history: ActivityHistoryItem[];
     onSelectRun: (instanceId: string) => void;
+    isFlawless?: boolean;
+    isMasterCompleted?: boolean;
+    isDayOneCompleted?: boolean;
+    isEpicCompleted?: boolean;
+    weekOneCompletion?: { completed: boolean; date?: Date; instanceId?: string } | null;
 }
 
-export function ActivityStats({ activity, history, onSelectRun }: ActivityStatsProps) {
+export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMasterCompleted, isDayOneCompleted, isEpicCompleted, weekOneCompletion }: ActivityStatsProps) {
     // Filter history for this specific activity (matching primary hash OR any related hashes)
     const activityRuns = useMemo(() => history.filter(h => 
         h.activityDetails.referenceId === activity.activityHash || 
         activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)
     ), [history, activity]);
+    
+    // Navigation state for paginating through runs
+    const [runOffset, setRunOffset] = useState(0);
+    const RUNS_PER_PAGE = 20;
     
     const completedRuns = activityRuns.filter(h => h.values.completed.basic.value === 1);
     const totalClears = completedRuns.length;
@@ -31,10 +41,12 @@ export function ActivityStats({ activity, history, onSelectRun }: ActivityStatsP
         totalKills += run.values.kills.basic.value;
         totalDeaths += run.values.deaths.basic.value;
         const duration = run.values.activityDurationSeconds.basic.value;
-        totalSeconds += duration;
         
+        // Only count full clears (completed runs) for time calculations
         if (run.values.completed.basic.value === 1) {
+            totalSeconds += duration; // Only count completed runs for total time
             totalDurationForAvg += duration;
+            // Fastest run: only consider full clears
             if (duration < fastestSeconds) {
                 fastestSeconds = duration;
             }
@@ -51,11 +63,24 @@ export function ActivityStats({ activity, history, onSelectRun }: ActivityStatsP
         return `${h > 0 ? `${h}h ` : ''}${m}m ${s}s`;
     };
 
-    // Recent Runs (Last 20)
-    const recentRuns = activityRuns.slice(0, 20); // Newest first (index 0 is newest)
+    // Recent Runs with pagination
+    const maxOffset = Math.max(0, activityRuns.length - RUNS_PER_PAGE);
+    const currentOffset = Math.min(runOffset, maxOffset);
+    const recentRuns = activityRuns.slice(currentOffset, currentOffset + RUNS_PER_PAGE);
+    const canGoBack = currentOffset < maxOffset;
+    const canGoForward = currentOffset > 0;
+    
+    const handleBack = () => {
+        setRunOffset(prev => Math.min(prev + RUNS_PER_PAGE, maxOffset));
+    };
+    
+    const handleForward = () => {
+        setRunOffset(prev => Math.max(prev - RUNS_PER_PAGE, 0));
+    };
 
     return (
         <div className="mt-4 space-y-6">
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                  <div className="space-y-1">
@@ -78,9 +103,42 @@ export function ActivityStats({ activity, history, onSelectRun }: ActivityStatsP
 
             {/* Recent Runs Graph */}
             <div className="pt-6 border-t border-white/5">
-                <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase tracking-widest mb-4">
-                    <span>Recent History</span>
-                    <span>Faster ↓</span>
+                <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">Recent History</span>
+                    
+                    {/* Navigation Buttons */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleBack}
+                            disabled={!canGoBack}
+                            className={cn(
+                                "flex items-center gap-1 px-2 py-1 rounded transition-all text-[10px] font-medium",
+                                canGoBack
+                                    ? " hover:scale-120 text-white"
+                                    : " text-slate-600"
+                            )}
+                            title="View older runs"
+                        >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                            <span>Older</span>
+                        </button>
+                        <button
+                            onClick={handleForward}
+                            disabled={!canGoForward}
+                            className={cn(
+                                "flex items-center gap-1 px-2 py-1 rounded transition-all text-[10px] font-medium",
+                                canGoForward
+                                    ? " hover:scale-120 text-white"
+                                    : " text-slate-600"
+                            )}
+                            title="View newer runs"
+                        >
+                            <span>Newer</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                    
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">Faster ↓</span>
                 </div>
 
                 {recentRuns.length === 0 ? (

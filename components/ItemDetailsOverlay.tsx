@@ -214,7 +214,12 @@ export function ItemDetailsOverlay() {
                 {/* Stats */}
                 <div className="mt-auto">
                     {isSubclass ? (
-                        <div className="text-slate-500 text-center py-10">Subclass Details</div>
+                        <SubclassStats 
+                            sockets={sockets}
+                            itemDef={itemDef}
+                            profile={profile}
+                            item={detailsItem}
+                        />
                     ) : (
                         <ItemStats 
                             stats={stats} 
@@ -337,6 +342,175 @@ function StatRow({ statHash, value, isWeapon }: { statHash: number, value: numbe
                 )}
                 <div className="w-8 text-right font-bold text-white">{value}</div>
             </div>
+        </div>
+    );
+}
+
+function SubclassStats({ sockets, itemDef, profile, item }: any) {
+    const reusablePlugsData = profile?.itemComponents?.reusablePlugs?.data?.[item?.itemInstanceId]?.plugs;
+    
+    // Gather all plug hashes
+    const allPlugHashes = useMemo(() => {
+        const hashes: number[] = [];
+        sockets?.forEach((s: any) => {
+            if (s.plugHash) hashes.push(s.plugHash);
+        });
+        if (reusablePlugsData) {
+            Object.values(reusablePlugsData).forEach((plugs: any) => {
+                plugs.forEach((p: any) => hashes.push(p.plugItemHash));
+            });
+        }
+        return Array.from(new Set(hashes));
+    }, [sockets, reusablePlugsData]);
+
+    const { definitions: plugDefs } = useItemDefinitions(allPlugHashes);
+
+    // Categorize sockets by type
+    const categorized = useMemo(() => {
+        if (!sockets || !plugDefs) return { super: null, classAbility: null, melee: null, grenade: null, aspects: [], fragments: [] };
+        
+        let superAbility: any = null;
+        let classAbility: any = null;
+        let melee: any = null;
+        let grenade: any = null;
+        const aspects: any[] = [];
+        const fragments: any[] = [];
+
+        sockets.forEach((socket: any, idx: number) => {
+            if (!socket.plugHash) return;
+            const plug = plugDefs[socket.plugHash];
+            if (!plug) return;
+
+            const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
+            const category = plug.plug?.plugCategoryIdentifier?.toLowerCase() || "";
+            const name = plug.displayProperties?.name?.toLowerCase() || "";
+
+            // Super abilities
+            if (typeName.includes("super") || category.includes("super")) {
+                superAbility = { plug, socketIndex: idx };
+            }
+            // Class abilities (Rift, Barricade, Dodge)
+            else if (typeName.includes("class ability") || category.includes("class_abilities")) {
+                classAbility = { plug, socketIndex: idx };
+            }
+            // Melee
+            else if (typeName.includes("melee") || category.includes("melee")) {
+                melee = { plug, socketIndex: idx };
+            }
+            // Grenade
+            else if (typeName.includes("grenade") || category.includes("grenade")) {
+                grenade = { plug, socketIndex: idx };
+            }
+            // Aspects
+            else if (typeName.includes("aspect") || category.includes("aspects")) {
+                aspects.push({ plug, socketIndex: idx });
+            }
+            // Fragments
+            else if (typeName.includes("fragment") || category.includes("fragments")) {
+                fragments.push({ plug, socketIndex: idx });
+            }
+        });
+
+        return { super: superAbility, classAbility, melee, grenade, aspects, fragments };
+    }, [sockets, plugDefs]);
+
+    const AbilityCard = ({ ability, label }: { ability: any, label: string }) => {
+        if (!ability) return null;
+        const plug = ability.plug;
+        
+        return (
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/10 hover:border-white/20 transition-colors">
+                <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/20 shrink-0 bg-black/40">
+                    {plug.displayProperties?.icon && (
+                        <Image 
+                            src={getBungieImage(plug.displayProperties.icon)} 
+                            width={48} 
+                            height={48} 
+                            className="object-cover" 
+                            alt="" 
+                        />
+                    )}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">{label}</p>
+                    <p className="text-sm font-bold text-white truncate">{plug.displayProperties?.name}</p>
+                </div>
+            </div>
+        );
+    };
+
+    const SmallAbilityIcon = ({ ability }: { ability: any }) => {
+        if (!ability) return <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10" />;
+        const plug = ability.plug;
+        
+        return (
+            <div className="w-10 h-10 rounded-lg overflow-hidden border border-white/20 bg-black/40 hover:border-white/40 transition-colors group relative">
+                {plug.displayProperties?.icon && (
+                    <Image 
+                        src={getBungieImage(plug.displayProperties.icon)} 
+                        width={40} 
+                        height={40} 
+                        className="object-cover" 
+                        alt="" 
+                    />
+                )}
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-[#0f0f0f] border border-white/20 p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                    <p className="text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
+                    <p className="text-[9px] text-slate-400 mt-1 line-clamp-3">{plug.displayProperties?.description}</p>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* Super */}
+            {categorized.super && (
+                <div className="mb-2">
+                    <AbilityCard ability={categorized.super} label="Super" />
+                </div>
+            )}
+
+            {/* Core Abilities Row */}
+            <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col items-center gap-2">
+                    <SmallAbilityIcon ability={categorized.classAbility} />
+                    <span className="text-[9px] text-slate-500 uppercase font-bold">Class</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                    <SmallAbilityIcon ability={categorized.melee} />
+                    <span className="text-[9px] text-slate-500 uppercase font-bold">Melee</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                    <SmallAbilityIcon ability={categorized.grenade} />
+                    <span className="text-[9px] text-slate-500 uppercase font-bold">Grenade</span>
+                </div>
+            </div>
+
+            {/* Aspects */}
+            {categorized.aspects.length > 0 && (
+                <div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Aspects</p>
+                    <div className="flex gap-2">
+                        {categorized.aspects.map((a: any, i: number) => (
+                            <SmallAbilityIcon key={i} ability={a} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Fragments */}
+            {categorized.fragments.length > 0 && (
+                <div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Fragments</p>
+                    <div className="flex flex-wrap gap-2">
+                        {categorized.fragments.map((f: any, i: number) => (
+                            <SmallAbilityIcon key={i} ability={f} />
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

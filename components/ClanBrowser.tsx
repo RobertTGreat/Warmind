@@ -14,9 +14,9 @@ const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
 type SortOption = 'joined_desc' | 'joined_asc' | 'name_asc' | 'rank_desc' | 'online' | 'power_desc' | 'guardian_rank_desc';
 
-const ITEMS_PER_PAGE = 21;
+const ITEMS_PER_PAGE = 12;
 
-export default function ClanPage() {
+export function ClanBrowser() {
   const { membershipInfo, isLoggedIn } = useDestinyProfile();
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -39,6 +39,7 @@ export default function ClanPage() {
 
   const group = groupsData?.Response?.results?.[0]?.group;
   const groupId = group?.groupId;
+
 
   // 2. Get Clan Members
   const { data: membersData, isLoading: membersLoading } = useSWR(
@@ -166,55 +167,17 @@ export default function ClanPage() {
       );
   }
 
+
   return (
-    <div className="space-y-8 pb-12">
-      {/* Clan Banner / Header */}
-      <div className="relative overflow-hidden rounded-sm border border-white/10 bg-gray-800/20">
-          <div className="relative h-64 flex items-center justify-center">
-            <div className="absolute inset-0 bg-cover bg-center opacity-30" 
-                 style={{ backgroundImage: `url(${getImg(group.bannerPath)})` }} />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-gray-900/50 to-gray-900" />
-            
-            <div className="relative z-10 text-center space-y-4 max-w-3xl px-4">
-                <div>
-                    <h1 className="text-4xl md:text-6xl font-bold text-white uppercase tracking-widest drop-shadow-xl">
-                        {group.name}
-                    </h1>
-                    <p className="text-destiny-gold font-mono text-lg tracking-wide mt-1">
-                        [{group.clanInfo?.clanCallsign}]
-                    </p>
-                </div>
-                
-                {group.motto && (
-                    <p className="text-xl italic text-slate-300 font-serif">"{group.motto}"</p>
-                )}
-            </div>
-          </div>
-
-          {/* Clan Details Footer */}
-          <div className="bg-black/40 backdrop-blur-sm p-4 border-t border-white/5 flex flex-wrap gap-6 justify-center text-sm text-slate-400">
-             <div className="flex items-center gap-2">
-                 <Users className="w-4 h-4 text-destiny-gold" />
-                 <span>{group.memberCount} Members</span>
-             </div>
-             <div className="flex items-center gap-2">
-                 <Calendar className="w-4 h-4 text-destiny-gold" />
-                 <span>Founded {new Date(group.creationDate).toLocaleDateString()}</span>
-             </div>
-             {group.about && (
-                 <div className="flex items-center gap-2 max-w-md truncate" title={group.about}>
-                     <Info className="w-4 h-4 text-destiny-gold" />
-                     <span className="truncate">{group.about}</span>
-                 </div>
-             )}
-          </div>
-      </div>
-
+    <div className="space-y-4">
       {/* Controls & Roster */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-4">
-                <PageHeader title="Roster" description="Active Guardians in your clan." className="mb-0" />
+                <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+                    <Shield className="w-5 h-5 text-destiny-gold" />
+                    <h2 className="text-lg font-bold text-white uppercase tracking-wider">Clan Roster</h2>
+                </div>
                 {isLoadingStats && (
                     <div className="flex items-center gap-2 text-xs text-destiny-gold animate-pulse bg-destiny-gold/10 px-2 py-1 rounded">
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -228,7 +191,7 @@ export default function ClanPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input 
                         type="text" 
-                        placeholder="Search guardians..."
+                        placeholder="Search..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50"
@@ -240,15 +203,12 @@ export default function ClanPage() {
                      <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as SortOption)}
-                        className="appearance-none bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:border-destiny-gold/50 cursor-pointer min-w-[180px]"
+                        className="appearance-none bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:border-destiny-gold/50 cursor-pointer min-w-[120px]"
                      >
-                         <option value="online">Online Status</option>
-                         <option value="power_desc">Power Level</option>
-                         <option value="guardian_rank_desc">Guardian Rank</option>
-                         <option value="name_asc">Name (A-Z)</option>
-                         <option value="rank_desc">Clan Rank</option>
-                         <option value="joined_desc">Newest Members</option>
-                         <option value="joined_asc">Oldest Members</option>
+                         <option value="online">Online</option>
+                         <option value="power_desc">Power</option>
+                         <option value="guardian_rank_desc">Rank</option>
+                         <option value="name_asc">Name</option>
                      </select>
                 </div>
 
@@ -270,11 +230,11 @@ export default function ClanPage() {
             <div className="flex justify-center py-12"><Loader2 className="animate-spin text-destiny-gold w-8 h-8" /></div>
         ) : filteredAndSortedMembers?.length === 0 ? (
              <div className="text-center py-12 text-slate-500">
-                 No guardians found matching your criteria.
+                 No guardians found.
              </div>
         ) : (
             <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {paginatedMembers?.map((member: any) => {
                         const user = member.destinyUserInfo;
                         // Use preloaded stats if available
@@ -321,3 +281,4 @@ export default function ClanPage() {
     </div>
   );
 }
+

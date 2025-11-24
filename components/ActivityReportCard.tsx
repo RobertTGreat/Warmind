@@ -2,7 +2,7 @@ import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { ActivityDefinition } from '@/lib/activityDefinitions';
 import { cn } from '@/lib/utils';
-import { Skull, ShieldAlert, Sword, ChevronLeft, Loader2, Timer, Zap, BarChart2, Target } from 'lucide-react';
+import { Skull, ShieldAlert, ChevronLeft, Loader2, Timer, Zap, BarChart2, Target, Sword } from 'lucide-react';
 import { ActivityStats } from './ActivityStats';
 import { ActivityHistoryItem, usePGCR, PGCRPlayer } from '@/hooks/useActivityHistory';
 import { useMemo, useState } from 'react';
@@ -65,6 +65,7 @@ function AdvancedStats({
         const masterHash = activity.relatedActivityHashes?.[1];
 
         history.forEach(run => {
+            // Only count full clears (completed runs)
             const completed = run.values.completed.basic.value === 1;
             if (!completed) return;
 
@@ -76,6 +77,7 @@ function AdvancedStats({
             const duration = run.values.activityDurationSeconds.basic.value;
             totalTimeSeconds += duration;
 
+            // Fastest run: only consider full clears
             if (!fastestRun || duration < fastestRun.values.activityDurationSeconds.basic.value) {
                 fastestRun = run;
             }
@@ -330,20 +332,98 @@ export function ActivityReportCard({
         completions = metrics.metrics[activity.metricHash].objectiveProgress.progress;
     }
 
+    // Helper to check record completion (handles different record structures)
+    const checkRecordComplete = useMemo(() => {
+        return (recordHash: number | null | undefined): boolean => {
+            if (!recordHash || !records?.records?.[recordHash]) return false;
+            const record = records.records[recordHash];
+            
+            // Check objectives array (most common)
+            if (record.objectives && Array.isArray(record.objectives) && record.objectives.length > 0) {
+                return record.objectives[0]?.complete === true;
+            }
+            
+            // Check state (some records use state instead)
+            if (record.state !== undefined) {
+                // State 67 = completed (4 = claimed, 8 = completed, 67 = completed and claimed)
+                return (record.state & 8) === 8 || record.state === 67;
+            }
+            
+            // Check intervalInfo for interval records
+            if (record.intervalInfo && record.intervalInfo.intervals) {
+                return record.intervalInfo.intervals.some((interval: any) => interval.completed === true);
+            }
+            
+            return false;
+        };
+    }, [records]);
+
+    // Helper function to auto-find record hashes by searching all records
+    // This is a fallback if record hashes aren't explicitly defined in activityDefinitions.ts
+    const findRecordHash = useMemo(() => {
+        return (searchPattern: (recordName: string, recordDesc: string) => boolean): number | null => {
+            if (!records?.records) return null;
+            for (const [hash, record] of Object.entries(records.records)) {
+                const recordName = (record as any)?.displayProperties?.name?.toLowerCase() || '';
+                const recordDesc = (record as any)?.displayProperties?.description?.toLowerCase() || '';
+                if (searchPattern(recordName, recordDesc)) {
+                    return Number(hash);
+                }
+            }
+            return null;
+        };
+    }, [records]);
+
+    // Auto-find Master record if not explicitly defined
+    const masterRecordHash = useMemo(() => {
+        if (activity.masterRecordHash) return activity.masterRecordHash;
+        const activityName = activity.name.toLowerCase();
+        const normalizedName = activityName.replace(/'/g, '').replace(/:/g, '');
+        return findRecordHash((name, desc) => {
+            // Look for "Master Difficulty" followed by activity name
+            return (name.includes('master difficulty') || desc.includes('master difficulty')) &&
+                   (name.includes(`"${activityName}"`) || 
+                    name.includes(normalizedName) ||
+                    name.includes(activityName.replace(/the /g, '')));
+        });
+    }, [activity.masterRecordHash, activity.name, findRecordHash]);
+
+    // Auto-find Flawless record if not explicitly defined
+    const flawlessRecordHash = useMemo(() => {
+        if (activity.flawlessRecordHash) return activity.flawlessRecordHash;
+        const activityName = activity.name.toLowerCase();
+        const normalizedName = activityName.replace(/'/g, '').replace(/:/g, '');
+        return findRecordHash((name, desc) => {
+            // Look for flawless records that mention the activity (but not solo flawless)
+            return (name.includes('flawless') || desc.includes('flawless')) &&
+                   !name.includes('solo') &&
+                   (name.includes(activityName) || 
+                    name.includes(normalizedName) ||
+                    desc.includes(activityName));
+        });
+    }, [activity.flawlessRecordHash, activity.name, findRecordHash]);
+
+    // Auto-find Contest record if not explicitly defined
+    const contestRecordHash = useMemo(() => {
+        if (activity.contestRecordHash) return activity.contestRecordHash;
+        if (activity.dayOneRecordHash) return activity.dayOneRecordHash;
+        const activityName = activity.name.toLowerCase();
+        const normalizedName = activityName.replace(/'/g, '').replace(/:/g, '');
+        return findRecordHash((name, desc) => {
+            // Look for contest/day one records
+            return (name.includes('contest') || name.includes('day one') || desc.includes('contest mode')) &&
+                   (name.includes(activityName) || 
+                    name.includes(normalizedName) ||
+                    desc.includes(activityName));
+        });
+    }, [activity.contestRecordHash, activity.dayOneRecordHash, activity.name, findRecordHash]);
+
+
     // 2. Check Flawless
-    const isFlawless = activity.flawlessRecordHash 
-        ? records?.records?.[activity.flawlessRecordHash]?.objectives?.[0]?.complete 
-        : false;
+    const isFlawless = checkRecordComplete(flawlessRecordHash);
 
     // 3. Check Solo Flawless
-    const isSoloFlawless = activity.soloFlawlessRecordHash
-        ? records?.records?.[activity.soloFlawlessRecordHash]?.objectives?.[0]?.complete
-        : false;
-
-    // 4. Check Exotic
-    const isExoticAcquired = activity.exoticItemHash 
-        ? (collectibles?.collectibles?.[activity.exoticItemHash]?.state & 1) === 0
-        : false;
+    const isSoloFlawless = checkRecordComplete(activity.soloFlawlessRecordHash);
 
     // Filter history for this activity (matching primary hash OR any related hashes)
     const activityHistory = history.filter(h => 
@@ -351,7 +431,114 @@ export function ActivityReportCard({
         activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)
     );
 
-    // 5. Weekly Progress (Client-side calculation from history)
+    // 4. Check Master Completion - use same logic as advanced stats
+    // Check if there are any completed master runs in history
+    const isMasterCompleted = useMemo(() => {
+        // First try record check if available
+        if (masterRecordHash && checkRecordComplete(masterRecordHash)) {
+            return true;
+        }
+        
+        // Fallback: check history for master runs (same logic as advanced stats)
+        const normalHash = activity.relatedActivityHashes?.[0] || activity.activityHash;
+        const masterHash = activity.relatedActivityHashes?.[1];
+        
+        if (!masterHash) return false;
+        
+        // Count completed master runs (exact same logic as AdvancedStats)
+        let masterRuns = 0;
+        for (const run of activityHistory) {
+            const completed = run.values.completed.basic.value === 1;
+            if (!completed) continue;
+            
+            // Check if this run matches the master hash
+            if (run.activityDetails.referenceId === masterHash) {
+                masterRuns++;
+            }
+        }
+        
+        return masterRuns >= 1;
+    }, [masterRecordHash, checkRecordComplete, activityHistory, activity.relatedActivityHashes, activity.activityHash]);
+
+    // 5. Check Day One Completion (contest record or calculated from history)
+    const isDayOneCompleted = useMemo(() => {
+        // First check if there's a contest/day one record hash (explicit or auto-found)
+        if (contestRecordHash) {
+            return checkRecordComplete(contestRecordHash);
+        }
+        
+        // Otherwise calculate from history - day one is within 24 hours of release
+        if (!activity.releaseDate) return false;
+        
+        const releaseDate = new Date(activity.releaseDate);
+        const dayOneEnd = new Date(releaseDate);
+        dayOneEnd.setHours(dayOneEnd.getHours() + 24); // 24 hours after release
+        
+        // Find first completed run within day one
+        for (const run of activityHistory) {
+            if (run.values.completed.basic.value === 1) {
+                const runDate = new Date(run.period);
+                if (runDate >= releaseDate && runDate <= dayOneEnd) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }, [contestRecordHash, activity.releaseDate, activityHistory, records]);
+
+    // 6. Check Epic Completion (for Desert Perpetual)
+    const isEpicCompleted = checkRecordComplete(activity.epicRecordHash);
+
+    // 6b. Check Epic Flawless Completion (for Desert Perpetual)
+    const isEpicFlawlessCompleted = checkRecordComplete(activity.epicFlawlessRecordHash);
+
+    // 7. Week One Completion (Calculate from history based on release date)
+    // Week one = within 7 days (168 hours) of release date, not calendar week
+    const weekOneCompletion = useMemo(() => {
+        if (!activity.releaseDate) return null;
+        
+        // Parse release date and set to start of day in UTC
+        const releaseDateStr = activity.releaseDate; // Format: 'YYYY-MM-DD'
+        const [year, month, day] = releaseDateStr.split('-').map(Number);
+        const releaseDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+        
+        // Week one ends 7 days (168 hours) after release
+        const weekOneEnd = new Date(releaseDate);
+        weekOneEnd.setUTCDate(weekOneEnd.getUTCDate() + 7);
+        weekOneEnd.setUTCHours(23, 59, 59, 999); // End of day 7 days later
+        
+        // Find earliest completed run within week one window
+        let earliestCompletion: { date: Date; instanceId: string } | null = null;
+        
+        for (const run of activityHistory) {
+            if (run.values.completed.basic.value === 1) {
+                const runDate = new Date(run.period);
+                
+                // Check if run is within week one window (within 7 days of release)
+                if (runDate >= releaseDate && runDate <= weekOneEnd) {
+                    if (!earliestCompletion || runDate < earliestCompletion.date) {
+                        earliestCompletion = {
+                            date: runDate,
+                            instanceId: run.activityDetails.instanceId
+                        };
+                    }
+                }
+            }
+        }
+        
+        if (earliestCompletion) {
+            return {
+                completed: true,
+                date: earliestCompletion.date,
+                instanceId: earliestCompletion.instanceId
+            };
+        }
+        
+        return { completed: false };
+    }, [activityHistory, activity.releaseDate]);
+
+    // 8. Weekly Progress (Client-side calculation from history)
     const weeklyProgress = useMemo(() => {
         const now = new Date();
         const dayOfWeek = now.getUTCDay(); // 0 = Sun, 1 = Mon, 2 = Tue...
@@ -430,6 +617,50 @@ export function ActivityReportCard({
                         )}
                         <div className="absolute inset-0 bg-linear-to-b from-transparent via-black/20 to-[#161b22]" />
                         
+                        {/* Completion Tags Above Title */}
+                        <div className="absolute bottom-12 left-4 z-10 pr-12">
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                                {isSoloFlawless && (
+                                    <span className="px-1.5 py-0.5 bg-destiny-gold/20 rounded border border-destiny-gold/40 text-[9px] text-destiny-gold font-semibold uppercase tracking-wide">
+                                        Solo Flawless
+                                    </span>
+                                )}
+                                {isFlawless && !isSoloFlawless && (
+                                    <span className="px-1.5 py-0.5 bg-purple-500/20 rounded border border-purple-500/40 text-[9px] text-purple-400 font-semibold uppercase tracking-wide">
+                                        Flawless
+                                    </span>
+                                )}
+                                {isMasterCompleted && (
+                                    <span className="px-1.5 py-0.5 bg-yellow-500/20 rounded border border-yellow-500/40 text-[9px] text-yellow-500 font-semibold uppercase tracking-wide">
+                                        Master
+                                    </span>
+                                )}
+                                {isDayOneCompleted && (
+                                    <span className="px-1.5 py-0.5 bg-red-500/20 rounded border border-red-500/40 text-[9px] text-red-400 font-semibold uppercase tracking-wide">
+                                        Day One
+                                    </span>
+                                )}
+                                {weekOneCompletion?.completed && (
+                                    <span className="px-1.5 py-0.5 bg-blue-500/20 rounded border border-blue-500/40 text-[9px] text-blue-400 font-semibold uppercase tracking-wide">
+                                        Week One
+                                    </span>
+                                )}
+                                {isEpicFlawlessCompleted && (
+                                    <span className="px-1.5 py-0.5 bg-destiny-gold/30 rounded border border-destiny-gold/60 text-[9px] text-destiny-gold font-semibold uppercase tracking-wide flex items-center gap-1">
+                                        <span className="w-1 h-1 rounded-full bg-destiny-gold"></span>
+                                        <span className="w-1 h-1 rounded-full bg-destiny-gold"></span>
+                                        Epic Flawless
+                                    </span>
+                                )}
+                                {isEpicCompleted && !isEpicFlawlessCompleted && (
+                                    <span className="px-1.5 py-0.5 bg-destiny-gold/30 rounded border border-destiny-gold/60 text-[9px] text-destiny-gold font-semibold uppercase tracking-wide flex items-center gap-1">
+                                        <span className="w-1 h-1 rounded-full bg-destiny-gold"></span>
+                                        Epic
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        
                         {/* Title Overlay */}
                         <div className="absolute bottom-3 left-4 z-10 pr-12">
                             <h3 className="text-2xl font-bold text-white drop-shadow-md tracking-wide">{name}</h3>
@@ -464,24 +695,6 @@ export function ActivityReportCard({
                             })}
                         </div>
 
-                        {/* Badges Overlay (Top Right) */}
-                        <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
-                            {isSoloFlawless && (
-                                 <div className="px-2 py-1 bg-black/70 backdrop-blur rounded border border-destiny-gold/50 text-[10px] text-destiny-gold font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg">
-                                    <Skull className="w-3 h-3" /> Solo Flawless
-                                 </div>
-                            )}
-                            {isFlawless && !isSoloFlawless && (
-                                 <div className="px-2 py-1 bg-black/70 backdrop-blur rounded border border-purple-500/50 text-[10px] text-purple-400 font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg">
-                                    <ShieldAlert className="w-3 h-3" /> Flawless
-                                 </div>
-                            )}
-                            {activity.exoticItemHash && isExoticAcquired && (
-                                <div className="px-2 py-1 bg-black/70 backdrop-blur rounded border border-yellow-500/50 text-[10px] text-yellow-500 font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg">
-                                    <Sword className="w-3 h-3" /> Exotic
-                                </div>
-                            )}
-                        </div>
                     </div>
 
                     {/* Main Content */}
@@ -493,7 +706,12 @@ export function ActivityReportCard({
                                  <ActivityStats 
                                     activity={activity} 
                                     history={activityHistory} 
-                                    onSelectRun={handleRunClick} 
+                                    onSelectRun={handleRunClick}
+                                    isFlawless={isFlawless || isSoloFlawless}
+                                    isMasterCompleted={isMasterCompleted}
+                                    isDayOneCompleted={isDayOneCompleted}
+                                    isEpicCompleted={isEpicCompleted}
+                                    weekOneCompletion={weekOneCompletion}
                                 />
                             </div>
                         </div>

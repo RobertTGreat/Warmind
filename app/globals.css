@@ -69,6 +69,15 @@ body {
   background: #475569; 
 }
 
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
 /* 3D Card Flip Utilities */
 .perspective-1000 {
   perspective: 1000px;

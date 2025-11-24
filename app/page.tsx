@@ -1,12 +1,26 @@
 'use client';
 
+import { useEffect } from "react";
 import { loginWithBungie } from "@/lib/bungie";
 import { ArrowRight, Newspaper } from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { NewsFeed } from "@/components/NewsFeed";
+import { ClanBrowser } from "@/components/ClanBrowser";
+import { FireteamList } from "@/components/FireteamList";
 
 export default function Home() {
   const { isLoggedIn } = useDestinyProfile();
+
+  useEffect(() => {
+    // Hide scrollbar on home page
+    document.documentElement.classList.add('no-scrollbar');
+    document.body.classList.add('no-scrollbar');
+
+    return () => {
+      document.documentElement.classList.remove('no-scrollbar');
+      document.body.classList.remove('no-scrollbar');
+    };
+  }, []);
 
   if (!isLoggedIn) {
     // Login Overlay State
@@ -44,20 +58,26 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center pt-8 min-h-screen pb-20">
       {/* Dashboard Content */}
-      <div className="w-full px-4 sm:px-8 space-y-8 max-w-[1600px]">
+      <div className="w-full px-4 sm:px-8 space-y-12 max-w-[1600px]">
           
-          {/* News Header */}
-          <div className="w-full flex flex-col gap-2 pt-8">
-              <h2 className="text-2xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Newspaper className="w-6 h-6 text-destiny-gold" />
-                  Latest Intel
-              </h2>
-              <div className="h-px w-full bg-linear-to-r from-white/20 to-transparent" />
+          {/* Top: News Feed (replacing previous Clan Banner area) */}
+          <div className="space-y-6">
+            <div className="w-full">
+                <NewsFeed />
+            </div>
           </div>
-          
-          {/* News Feed Grid */}
-          <div className="w-full">
-            <NewsFeed />
+
+          {/* Bottom Grid: Clan Roster (2 cols) + Fireteam (1 col) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Clan Roster */}
+              <div className="lg:col-span-2">
+                  <ClanBrowser />
+              </div>
+
+              {/* Fireteam Widget */}
+              <div className="lg:col-span-1 h-full">
+                   <FireteamList />
+              </div>
           </div>
       </div>
     </div>

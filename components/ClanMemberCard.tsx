@@ -104,19 +104,25 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
 
             {/* Info Section */}
             <div className="flex-1 px-4 py-2 flex flex-col justify-center relative z-10 overflow-hidden">
-                <div className="flex items-baseline gap-2 overflow-hidden">
-                    <ScrollingText className="font-bold text-white text-base">
-                        {user.bungieGlobalDisplayName || user.displayName}
-                    </ScrollingText>
-                    {user.bungieGlobalDisplayNameCode && (
-                        <span className="text-xs text-destiny-gold opacity-70">#{user.bungieGlobalDisplayNameCode}</span>
-                    )}
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-2 overflow-hidden">
+                        <ScrollingText className="font-bold text-white text-base">
+                            {user.bungieGlobalDisplayName || user.displayName}
+                        </ScrollingText>
+                        {user.bungieGlobalDisplayNameCode && (
+                            <span className="text-xs text-destiny-gold opacity-70">#{user.bungieGlobalDisplayNameCode}</span>
+                        )}
+                    </div>
                     
-                    {specialTags && specialTags.map((tag) => (
-                        <span key={tag.label} className={cn("ml-2 text-[10px] px-1.5 py-0.5 rounded border font-bold tracking-wide uppercase whitespace-nowrap", tag.className)}>
-                            {tag.label}
-                        </span>
-                    ))}
+                    {specialTags && (
+                         <div className="flex flex-wrap gap-1">
+                             {specialTags.map((tag) => (
+                                <span key={tag.label} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-bold tracking-wide uppercase whitespace-nowrap", tag.className)}>
+                                    {tag.label}
+                                </span>
+                             ))}
+                         </div>
+                    )}
                 </div>
                 
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">

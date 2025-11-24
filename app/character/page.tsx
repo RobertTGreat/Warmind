@@ -115,15 +115,22 @@ function PowerListItem({ itemHash, power, diff, isMax }: { itemHash: number, pow
 // Wrapper to handle common item props - Moved outside component
 function ItemCardWrapper({ item, profile, basePower, classFilter, characterId, ownerId, isHighlighted }: any) {
     const instance = profile.itemComponents?.instances?.data?.[item.itemInstanceId];
+    const itemStats = profile.itemComponents?.stats?.data?.[item.itemInstanceId]?.stats;
     const { iconSize } = useSettingsStore();
     
     const diff = undefined; 
+
+    // Merge instance data with stats for tooltip display
+    const instanceDataWithStats = instance ? {
+        ...instance,
+        stats: itemStats
+    } : undefined;
 
     return (
         <DestinyItemCard
             itemHash={item.itemHash}
             itemInstanceId={item.itemInstanceId}
-            instanceData={instance}
+            instanceData={instanceDataWithStats}
             socketsData={profile.itemComponents?.sockets?.data?.[item.itemInstanceId]}
             reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
             className="w-full h-full"

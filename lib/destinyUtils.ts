@@ -45,14 +45,26 @@ export const PRESENTATION_NODES = {
     EXOTICS: 1068557105, // Added Exotics
 };
 
+// Armor Stat Hashes (Primary use - these are the canonical hashes for armor)
 export const STAT_HASHES = {
+    // Armor Stats - Unique identifiers for each armor stat
     MOBILITY: 2996146975,
     RESILIENCE: 392767087,
     RECOVERY: 1943323491,
-    DISCIPLINE: 144602215,
-    INTELLECT: 1735777505,
+    DISCIPLINE: 1735777505,
+    INTELLECT: 144602215,
     STRENGTH: 4244567218
 };
+
+// Array of armor stat hashes for iteration (no duplicates)
+export const ARMOR_STAT_HASHES = [
+    STAT_HASHES.MOBILITY,
+    STAT_HASHES.RESILIENCE,
+    STAT_HASHES.RECOVERY,
+    STAT_HASHES.DISCIPLINE,
+    STAT_HASHES.INTELLECT,
+    STAT_HASHES.STRENGTH
+] as const;
 
 /**
  * Calculates the Base Stats for armor by removing Masterwork and Mod bonuses.
@@ -67,11 +79,10 @@ export function getArmorBaseStats(
     activePlugs: any[],
     isMasterworked: boolean
 ): Record<number, number> {
-    const ARMOR_STATS = Object.values(STAT_HASHES);
     const baseStats: Record<number, number> = {};
 
-    // Initialize with current stats
-    ARMOR_STATS.forEach(hash => {
+    // Initialize with current stats using the armor stat hashes array (no duplicates)
+    ARMOR_STAT_HASHES.forEach(hash => {
         // Handle string/number keys
         const val = currentStats[hash]?.value ?? currentStats[String(hash)]?.value ?? 0;
         baseStats[hash] = val;
@@ -80,7 +91,7 @@ export function getArmorBaseStats(
     // 1. Remove Masterwork Bonus (+2 to all stats if MW)
     // Note: In current D2, MW gives +2 to all stats.
     if (isMasterworked) {
-        ARMOR_STATS.forEach(hash => {
+        ARMOR_STAT_HASHES.forEach(hash => {
             baseStats[hash] = Math.max(0, baseStats[hash] - 2);
         });
     }
@@ -110,7 +121,7 @@ export function getArmorBaseStats(
 
             if (isStatMod) {
                 plug.investmentStats.forEach((stat: any) => {
-                    if (ARMOR_STATS.includes(stat.statTypeHash)) {
+                    if (ARMOR_STAT_HASHES.includes(stat.statTypeHash)) {
                         baseStats[stat.statTypeHash] = Math.max(0, baseStats[stat.statTypeHash] - stat.value);
                     }
                 });
@@ -133,11 +144,11 @@ export function getArmorBaseStats(
  * TIER 5: Enhanced Trait: 2 + Multi-Perk: 3 + Enhanced: Mods, Magazine, Barrel, Origin Trait + Cosmetics
  * 
  * ARMOR TIERS (Base Stats):
- * TIER 1: < 55
- * TIER 2: 55 - 59
- * TIER 3: 60 - 65
- * TIER 4: 66 - 68
- * TIER 5: >= 69 (God Roll)
+ * TIER 1: < 57
+ * TIER 2: 58 - 63
+ * TIER 3: 64 - 69
+ * TIER 4: 70 - 75
+ * TIER 5: >= 75 (God Roll)
  * 
  * @param itemDef - The DestinyInventoryItemDefinition of the item.
  * @param socketsData - The DestinyItemSocketsComponent (live socket data).
@@ -149,7 +160,8 @@ export function getItemTier(
     itemDef: any,
     socketsData: any,
     plugDefinitions: Record<number, any>,
-    instanceData?: any
+    instanceData?: any,
+    reusablePlugsData?: Record<number, any[]> // Socket index -> array of available plugs
 ): number {
     if (!itemDef) return 1;
 
@@ -159,33 +171,77 @@ export function getItemTier(
     // --- Armor Logic ---
     // Check if item has stats in instance data (Armor always has stats)
     if (instanceData?.stats && itemDef.itemType === 2) {
-        // Collect active plugs to find mods
+        // Artifice/Trade-off mod hashes (only usable on Artificer armor)
+        const ARTIFICE_MOD_HASHES = [
+            4030660414, // +Class / -Health
+            455024236,  // +Grenade / -Health
+            4164883102, // +Melee / -Health
+            4026414261, // +Super / -Health
+            3121760799  // +Weapons / -Health
+        ];
+        
+        // Collect active plugs to find mods and check for Artifice slot
         const activePlugs: any[] = [];
+        let hasArtificeSlot = false;
+        
         if (socketsData?.sockets && plugDefinitions) {
-            socketsData.sockets.forEach((socket: any) => {
+            socketsData.sockets.forEach((socket: any, socketIndex: number) => {
+                // Check if an Artifice mod is equipped (by hash)
+                if (ARTIFICE_MOD_HASHES.includes(socket.plugHash)) {
+                    hasArtificeSlot = true;
+                }
+                
+                // Check reusable plugs from socket data
+                if (socket.reusablePlugs) {
+                    socket.reusablePlugs.forEach((rp: any) => {
+                        if (ARTIFICE_MOD_HASHES.includes(rp.plugItemHash)) {
+                            hasArtificeSlot = true;
+                        }
+                    });
+                }
+                
+                // Check reusable plugs from separate reusablePlugsData (profile.itemComponents.reusablePlugs)
+                if (reusablePlugsData?.[socketIndex]) {
+                    reusablePlugsData[socketIndex].forEach((rp: any) => {
+                        if (ARTIFICE_MOD_HASHES.includes(rp.plugItemHash)) {
+                            hasArtificeSlot = true;
+                        }
+                    });
+                }
+                
                 if (socket.plugHash && plugDefinitions[socket.plugHash]) {
-                    activePlugs.push(plugDefinitions[socket.plugHash]);
+                    const plug = plugDefinitions[socket.plugHash];
+                    activePlugs.push(plug);
                 }
             });
         }
 
         const isMasterworked = (instanceData.state & 4) === 4;
         const baseStats = getArmorBaseStats(instanceData.stats, activePlugs, isMasterworked);
-        const ARMOR_STATS = Object.values(STAT_HASHES);
         
         let total = 0;
-        ARMOR_STATS.forEach(h => {
+        ARMOR_STAT_HASHES.forEach(h => {
             total += baseStats[h] || 0;
         });
 
-        // Armor (ItemType 2)
-        // Adjusted Tiers based on typical Base Stat Distributions
-        // Max base is usually 68 (some pre-Shadowkeep exotics go higher, but Legendary cap is ~68)
-        // Artifice adds +3 but that is a mod we removed.
-        if (total >= 68) return 5; // God Roll (theoretical max 68)
-        if (total >= 65) return 4; // High Stat
-        if (total >= 60) return 3; // Decent
-        if (total >= 55) return 2; // Average
+        // Armor Tiering (ItemType 2)
+        // TIER 5: 75 base stats + Artifice mod slot - true god roll
+        // TIER 4: MW + 70+ stats OR has Artifice slot (any stats)
+        // TIER 3: MW + 64-69 OR non-MW + 70+
+        // TIER 2: 58-63 stats
+        // TIER 1: < 58 stats
+
+        // Tier 5: 75+ base stats AND has Artifice mod slot
+        if (total >= 75 && hasArtificeSlot) return 5;
+        
+        // Tier 4: MW + high stats OR any Artifice armor OR 75 stats without Artifice
+        if ((isMasterworked && total >= 70) || hasArtificeSlot || total >= 75) return 4;
+        
+        // Tier 3: MW + good stats OR high stats without MW
+        if ((isMasterworked && total >= 64) || total >= 70) return 3;
+        
+        // Tier 2: Decent stats
+        if (total >= 58) return 2;
         
         return 1;
     }
@@ -370,4 +426,50 @@ export function getBestItemsPerSlot(
     }
 
     return bestItems;
+}
+
+export interface ArmorQuality {
+    min: number; // Current base total
+    max: number; // Max possible for this tier
+    percentage: number; // Quality percentage
+}
+
+/**
+ * Calculates the quality of an armor roll based on its base stats.
+ * 
+ * @param baseStats - The base stats (without mods/MW).
+ * @param itemDef - The item definition.
+ * @returns ArmorQuality object or null if not applicable.
+ */
+export function getArmorQuality(
+    baseStats: Record<number, number>,
+    itemDef: any
+): ArmorQuality | null {
+    if (!itemDef || itemDef.itemType !== 2) return null;
+    
+    // Calculate total
+    let total = 0;
+    Object.values(baseStats).forEach(v => total += v);
+
+    // Determine Max Base Stats
+    // Exotic: 71 (Some go higher, but 71 is a safe "100%")
+    // Legendary: 68
+    // Class Item: 0 (or ignore)
+    
+    // If it's a class item, quality is usually irrelevant (always "perfect" or 0)
+    if (itemDef.inventory?.bucketTypeHash === BUCKETS.CLASS_ARMOR) {
+        return { min: 0, max: 0, percentage: 100 };
+    }
+
+    const isExotic = itemDef.inventory?.tierType === 6;
+    const max = isExotic ? 71 : 68; // simplified DIM logic
+
+    // Percentage
+    const percentage = Math.min(100, (total / max) * 100);
+
+    return {
+        min: total,
+        max: max,
+        percentage: parseFloat(percentage.toFixed(1))
+    };
 }

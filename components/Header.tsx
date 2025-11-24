@@ -11,13 +11,13 @@ import { logout, getBungieImage } from '@/lib/bungie';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 
 const navItems = [
-  { name: 'Clan', href: '/clan', icon: Shield },
+  { name: 'Home', href: '/', icon: Shield },
   { name: 'Collections', href: '/collections', icon: Book },
   { name: 'Triumphs', href: '/triumphs', icon: Trophy },
-  { name: 'Portal', href: '/portal', icon: Globe },
+  { name: 'Progression', href: '/progression', icon: Globe },
   { name: 'Character', href: '/character', icon: User },
   { name: 'Quests', href: '/quests', icon: Scroll },
-  { name: 'Activity', href: '/activity', icon: Activity },
+  { name: 'Activities', href: '/activity', icon: Activity },
 ];
 
 import { useEffect, useState } from 'react';

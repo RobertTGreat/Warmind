@@ -13,7 +13,8 @@ import {
     Home,
     Swords,
     Users,
-    Globe
+    Globe,
+    Activity
 } from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { transferItem } from "@/lib/bungie";
@@ -30,8 +31,8 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
         { name: 'Vault', href: '/character/vault', icon: Box },
         { name: 'Inventory', href: '/character/inventory', icon: Backpack },
     ],
-    '/portal': [
-        { name: 'Portal', href: '/portal', icon: Globe },
+    '/progression': [
+        { name: 'Progression', href: '/progression', icon: Globe },
     ],
     '/collections': [
         { name: 'Collections', href: '/collections', icon: Book },
@@ -44,6 +45,9 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
     ],
     '/quests': [
         { name: 'Quests', href: '/quests', icon: Swords },
+    ],
+    '/activity': [
+        { name: 'Activity', href: '/activity', icon: Activity },
     ],
 };
 
