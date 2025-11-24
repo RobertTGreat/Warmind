@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
-import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlug } from '@/lib/bungie';
+import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlugFree } from '@/lib/bungie';
 import { toast } from 'sonner';
 import { useTransferStore } from '@/store/transferStore';
 import { useUIStore } from '@/store/uiStore';
@@ -52,8 +52,10 @@ export function ItemContextMenu({
             }
 
             try {
-                // 3. Insert Plug
-                await insertSocketPlug(itemInstanceId, plugItemHash, socketIndex, targetCharacterId, membershipInfo.membershipType);
+                // 3. Insert Plug using the FREE endpoint
+                // This works for weapon perk toggles, subclass abilities, and free mods
+                // Reference: https://github.com/DestinyItemManager/DIM/blob/master/src/app/inventory/advanced-write-actions.ts
+                await insertSocketPlugFree(itemInstanceId, plugItemHash, socketIndex, targetCharacterId, membershipInfo.membershipType);
             } finally {
                 // 4. Relock if it was locked (restore state)
                 if (isLocked) {
@@ -65,7 +67,14 @@ export function ItemContextMenu({
         toast.promise(promise, {
             loading: 'Applying perk...',
             success: 'Perk applied!',
-            error: 'Failed to apply perk'
+            error: (err) => {
+                const bungieError = err.response?.data;
+                // ErrorCode 1641 = DestinySocketActionNotAllowed
+                if (bungieError?.ErrorCode === 1641) {
+                    return 'This action requires materials or special permissions.';
+                }
+                return bungieError?.Message || 'Failed to apply perk';
+            }
         });
     };
 

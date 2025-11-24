@@ -70,7 +70,7 @@ export const endpoints = {
   getProfile: (membershipType: number, destinyMembershipId: string, components?: number[]) => {
     const componentList = components 
       ? components.join(',') 
-      : '100,102,103,104,200,201,202,203,204,205,206,300,301,302,304,305,306,307,308,310,700,701,800,900,901,1100';
+      : '100,102,103,104,200,201,202,203,204,205,206,300,301,302,304,305,306,307,308,309,310,700,701,800,900,901,1100';
     return `/Destiny2/${membershipType}/Profile/${destinyMembershipId}/?components=${componentList}`;
   },
   getClan: (groupId: string) => `/GroupV2/${groupId}/`,
@@ -121,6 +121,7 @@ export const endpoints = {
   setLockState: () => `/Destiny2/Actions/Items/SetLockState/`,
   equipLoadout: () => `/Destiny2/Actions/Loadouts/EquipLoadout/`,
   insertSocketPlug: () => `/Destiny2/Actions/Items/InsertSocketPlug/`,
+  insertSocketPlugFree: () => `/Destiny2/Actions/Items/InsertSocketPlugFree/`,
   
   // Activity History & Stats
   getActivityHistory: (membershipType: number, destinyMembershipId: string, characterId: string) => 
@@ -207,12 +208,61 @@ export const equipLoadout = async (loadoutIndex: number, characterId: string, me
     });
 };
 
+/**
+ * Insert a plug into a socket (paid action - requires AdvancedWriteActions scope)
+ * NOTE: For free actions like subclass abilities, use insertSocketPlugFree instead.
+ */
 export const insertSocketPlug = async (itemInstanceId: string, plugItemHash: number, socketIndex: number, characterId: string, membershipType: number) => {
-    return bungieApi.post(endpoints.insertSocketPlug(), {
-        actionToken: "", // Not strictly needed if headers are correct usually, but sometimes required to be present as key
-        itemInstanceId,
-        plugItemHash,
-        socketIndex,
+    // NOTE: InsertSocketPlug requires the 'AdvancedWriteActions' OAuth scope.
+    // This scope is restricted and requires Bungie approval for your API application.
+    // Without it, this call will return 403 Forbidden.
+    // See: https://github.com/Bungie-net/api/wiki/OAuth-Documentation
+    try {
+        const response = await bungieApi.post(endpoints.insertSocketPlug(), {
+            actionToken: "",
+            itemInstanceId,
+            plugItemHash,
+            socketIndex,
+            characterId,
+            membershipType
+        });
+        return response;
+    } catch (error: any) {
+        // Provide clearer error for 403 (missing AdvancedWriteActions scope)
+        if (error.response?.status === 403) {
+            const bungieError = error.response?.data;
+            // Check if it's specifically a scope/permission issue
+            if (bungieError?.ErrorCode === 2108 || bungieError?.ErrorStatus === "WebAuthRequired") {
+                throw new Error("This app doesn't have permission to modify subclass abilities. The 'AdvancedWriteActions' OAuth scope is required, which must be approved by Bungie.");
+            }
+            throw new Error("Permission denied. Your app may not have the required 'AdvancedWriteActions' scope.");
+        }
+        throw error;
+    }
+};
+
+/**
+ * Insert a plug into a socket for FREE (no material cost).
+ * This is used for subclass abilities, aspects, fragments, and other free-to-swap plugs.
+ * Does NOT require the AdvancedWriteActions scope.
+ * 
+ * Reference: https://github.com/DestinyItemManager/DIM/blob/master/src/app/inventory/advanced-write-actions.ts
+ */
+export const insertSocketPlugFree = async (
+    itemInstanceId: string, 
+    plugItemHash: number, 
+    socketIndex: number, 
+    characterId: string, 
+    membershipType: number,
+    socketArrayType: number = 0 // DestinySocketArrayType.Default = 0
+) => {
+    return bungieApi.post(endpoints.insertSocketPlugFree(), {
+        itemId: itemInstanceId,
+        plug: {
+            socketIndex,
+            socketArrayType,
+            plugItemHash
+        },
         characterId,
         membershipType
     });
