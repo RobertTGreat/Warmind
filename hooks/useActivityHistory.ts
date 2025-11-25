@@ -1,9 +1,8 @@
 import useSWR from 'swr';
 import { getActivityHistory } from '@/lib/bungie';
 import { useDestinyProfile } from './useDestinyProfile';
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { getCachedHistory, setCachedHistory } from '@/lib/activityCache';
+import { useState, useEffect, useCallback } from 'react';
+import { getCachedHistory, setCachedHistory, clearCache, getInvalidInstanceIds } from '@/lib/activityCache';
 
 export interface ActivityHistoryItem {
     activityDetails: {
@@ -132,15 +131,20 @@ export function useActivityHistory() {
                 const uniqueRaids = Array.from(new Map(raids.map(item => [item.activityDetails.instanceId, item])).values());
                 const uniqueDungeons = Array.from(new Map(dungeons.map(item => [item.activityDetails.instanceId, item])).values());
 
+                // Filter out any known invalid instances before storing
+                const invalidIds = getInvalidInstanceIds();
+                const filteredRaids = uniqueRaids.filter(r => !invalidIds.has(r.activityDetails.instanceId));
+                const filteredDungeons = uniqueDungeons.filter(d => !invalidIds.has(d.activityDetails.instanceId));
+
                 // Sort by date (newest first)
-                uniqueRaids.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
-                uniqueDungeons.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
+                filteredRaids.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
+                filteredDungeons.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
 
-                setRaidHistory(uniqueRaids);
-                setDungeonHistory(uniqueDungeons);
+                setRaidHistory(filteredRaids);
+                setDungeonHistory(filteredDungeons);
 
-                // Save to cache
-                await setCachedHistory(cacheKey, { raids: uniqueRaids, dungeons: uniqueDungeons });
+                // Save to cache (setCachedHistory will also filter)
+                await setCachedHistory(cacheKey, { raids: filteredRaids, dungeons: filteredDungeons });
 
             } catch (err) {
                 console.error("Error fetching activity history", err);
@@ -152,17 +156,34 @@ export function useActivityHistory() {
         fetchHistory();
     }, [membershipType, membershipId, characterIds.join(',')]);
 
+    // Function to force refresh the cache
+    const refreshHistory = useCallback(async () => {
+        if (!membershipType || !membershipId || characterIds.length === 0) return;
+        
+        // Clear the cache to force a fresh fetch
+        await clearCache();
+        
+        // Reset state and trigger re-fetch
+        setRaidHistory([]);
+        setDungeonHistory([]);
+        setLoading(true);
+        
+        // The useEffect will handle the re-fetch since loading state changed
+    }, [membershipType, membershipId, characterIds]);
+
     return {
         raidHistory,
         dungeonHistory,
-        isLoadingHistory: loading
+        isLoadingHistory: loading,
+        refreshHistory
     };
 }
 
-// Updated to use our proxy API to avoid CORS/Mixed Content issues
+// Fetch PGCR via server proxy (required due to CORS restrictions on Bungie's PGCR endpoint)
 const fetchPGCR = async (instanceId: string) => {
-    const res = await axios.get(`/api/pgcr/${instanceId}`);
-    return res.data.Response;
+    const res = await fetch(`/api/pgcr/${instanceId}`);
+    const data = await res.json();
+    return data.Response;
 };
 
 export function usePGCR(instanceId: string | null) {

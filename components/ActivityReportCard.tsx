@@ -5,7 +5,8 @@ import { cn } from '@/lib/utils';
 import { Skull, ShieldAlert, ChevronLeft, Loader2, Timer, Zap, BarChart2, Target, Sword } from 'lucide-react';
 import { ActivityStats } from './ActivityStats';
 import { ActivityHistoryItem, usePGCR, PGCRPlayer } from '@/hooks/useActivityHistory';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { getInvalidInstanceIds, addInvalidInstanceId, purgeInvalidInstancesFromCache } from '@/lib/activityCache';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -199,8 +200,22 @@ function AdvancedStats({
     );
 }
 
-function CardBack({ instanceId, onBack }: { instanceId: string, onBack: () => void }) {
+function CardBack({ instanceId, onBack, onMarkInvalid }: { instanceId: string, onBack: () => void, onMarkInvalid?: (instanceId: string) => void }) {
     const { pgcr, isLoading, isError } = usePGCR(instanceId);
+
+    // Check for invalid reports
+    const playerCount = pgcr?.entries?.length || 0;
+    const isCompleted = pgcr?.entries?.some((e: PGCRPlayer) => e.values.completed.basic.value === 1) || false;
+    const isSoloFailed = pgcr && playerCount === 1 && !isCompleted;
+    const hasTooManyPlayers = pgcr && playerCount > 15;
+    const isInvalid = isSoloFailed || hasTooManyPlayers;
+
+    // Mark invalid instances immediately when detected (persists to localStorage)
+    useEffect(() => {
+        if (isInvalid && onMarkInvalid) {
+            onMarkInvalid(instanceId);
+        }
+    }, [isInvalid, instanceId, onMarkInvalid]);
 
     if (isLoading) return (
         <div className="w-full h-full flex items-center justify-center bg-[#161b22]">
@@ -217,6 +232,20 @@ function CardBack({ instanceId, onBack }: { instanceId: string, onBack: () => vo
             <button onClick={onBack} className="text-xs text-slate-400 hover:text-white border border-white/10 px-3 py-1 rounded">Back</button>
         </div>
     );
+    
+    // Show message for invalid reports
+    if (isInvalid) {
+        const reason = isSoloFailed 
+            ? "Solo failed attempt" 
+            : `Invalid activity report (${playerCount} players)`;
+            
+        return (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-[#161b22] p-4 text-center">
+                <p className="text-slate-400 mb-4 text-sm">{reason}</p>
+                <button onClick={onBack} className="text-xs text-slate-400 hover:text-white border border-white/10 px-3 py-1 rounded">Back</button>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full h-full flex flex-col bg-[#161b22] overflow-hidden">
@@ -315,8 +344,22 @@ export function ActivityReportCard({
     // Local state for flipping
     const [viewMode, setViewMode] = useState<'FRONT' | 'ADVANCED' | 'PGCR'>('FRONT');
     const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+    // Track invalid instance IDs (solo failed clears, >15 players) - loaded from localStorage
+    const [invalidInstanceIds, setInvalidInstanceIds] = useState<Set<string>>(new Set());
+    
+    // Load persisted invalid instance IDs on mount
+    useEffect(() => {
+        setInvalidInstanceIds(getInvalidInstanceIds());
+    }, []);
     
     const isFlipped = viewMode !== 'FRONT';
+    
+    // Callback to mark an instance as invalid (called from CardBack when PGCR is loaded)
+    const handleMarkInvalid = (instanceId: string) => {
+        addInvalidInstanceId(instanceId); // Persist to localStorage
+        purgeInvalidInstancesFromCache(); // Also remove from IndexedDB cache
+        setInvalidInstanceIds(prev => new Set([...prev, instanceId]));
+    };
 
     // Fetch Activity Definition
     const { data: activityDefData } = useSWR(
@@ -426,9 +469,11 @@ export function ActivityReportCard({
     const isSoloFlawless = checkRecordComplete(activity.soloFlawlessRecordHash);
 
     // Filter history for this activity (matching primary hash OR any related hashes)
+    // Also exclude invalid instances (solo failed clears, >15 players)
     const activityHistory = history.filter(h => 
-        h.activityDetails.referenceId === activity.activityHash || 
-        activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)
+        (h.activityDetails.referenceId === activity.activityHash || 
+        activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)) &&
+        !invalidInstanceIds.has(h.activityDetails.instanceId)
     );
 
     // 4. Check Master Completion - use same logic as advanced stats
@@ -640,7 +685,8 @@ export function ActivityReportCard({
                                         Day One
                                     </span>
                                 )}
-                                {weekOneCompletion?.completed && (
+                                {/* Only show Week One if Day One is NOT completed (Day One overrides Week One) */}
+                                {weekOneCompletion?.completed && !isDayOneCompleted && (
                                     <span className="px-1.5 py-0.5 bg-blue-500/20 rounded border border-blue-500/40 text-[9px] text-blue-400 font-semibold uppercase tracking-wide">
                                         Week One
                                     </span>
@@ -712,6 +758,7 @@ export function ActivityReportCard({
                                     isDayOneCompleted={isDayOneCompleted}
                                     isEpicCompleted={isEpicCompleted}
                                     weekOneCompletion={weekOneCompletion}
+                                    onMarkInvalid={handleMarkInvalid}
                                 />
                             </div>
                         </div>
@@ -730,7 +777,8 @@ export function ActivityReportCard({
                     {viewMode === 'PGCR' && selectedInstanceId && (
                         <CardBack 
                             instanceId={selectedInstanceId} 
-                            onBack={handleBack} 
+                            onBack={handleBack}
+                            onMarkInvalid={handleMarkInvalid}
                         />
                     )}
                 </div>

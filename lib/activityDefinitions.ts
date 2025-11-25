@@ -164,7 +164,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Deep Stone Crypt",
         type: 'RAID',
         activityHash: 910380154,
-        relatedActivityHashes: [910380154], // No Master for DSC
+        relatedActivityHashes: [910380154, 3976949817], // No Master for DSC
         metricHash: METRICS.DSC,
         flawlessRecordHash: RECORDS.DSC_FLAWLESS,
         exoticItemHash: 2392655682, // Eyes of Tomorrow

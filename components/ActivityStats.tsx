@@ -2,8 +2,12 @@ import { ActivityDefinition } from "@/lib/activityDefinitions";
 import { ActivityHistoryItem } from "@/hooks/useActivityHistory";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getInvalidInstanceIds, addInvalidInstanceId, purgeInvalidInstancesFromCache } from "@/lib/activityCache";
+
+// Track which instances we've already checked
+const checkedInstances = new Set<string>();
 
 interface ActivityStatsProps {
     activity: ActivityDefinition;
@@ -14,14 +18,70 @@ interface ActivityStatsProps {
     isDayOneCompleted?: boolean;
     isEpicCompleted?: boolean;
     weekOneCompletion?: { completed: boolean; date?: Date; instanceId?: string } | null;
+    onMarkInvalid?: (instanceId: string) => void;
 }
 
-export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMasterCompleted, isDayOneCompleted, isEpicCompleted, weekOneCompletion }: ActivityStatsProps) {
+export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMasterCompleted, isDayOneCompleted, isEpicCompleted, weekOneCompletion, onMarkInvalid }: ActivityStatsProps) {
+    // Local state for invalid instances discovered during background checks
+    const [localInvalidIds, setLocalInvalidIds] = useState<Set<string>>(() => getInvalidInstanceIds());
+    
     // Filter history for this specific activity (matching primary hash OR any related hashes)
+    // Also filter out known invalid instances
     const activityRuns = useMemo(() => history.filter(h => 
-        h.activityDetails.referenceId === activity.activityHash || 
-        activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)
-    ), [history, activity]);
+        (h.activityDetails.referenceId === activity.activityHash || 
+        activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)) &&
+        !localInvalidIds.has(h.activityDetails.instanceId)
+    ), [history, activity, localInvalidIds]);
+    
+    // Background check for solo DNFs in failed runs
+    useEffect(() => {
+        const failedRuns = activityRuns.filter(h => h.values.completed.basic.value === 0);
+        
+        // Check failed runs for solo DNFs (batch with small delay to avoid rate limiting)
+        const checkRuns = async () => {
+            for (const run of failedRuns) {
+                const instanceId = run.activityDetails.instanceId;
+                
+                // Skip if already checked or already known invalid
+                if (checkedInstances.has(instanceId) || localInvalidIds.has(instanceId)) {
+                    continue;
+                }
+                
+                checkedInstances.add(instanceId);
+                
+                try {
+                    // Use server proxy (required due to CORS restrictions on Bungie's PGCR endpoint)
+                    const res = await fetch(`/api/pgcr/${instanceId}`);
+                    const data = await res.json();
+                    const pgcr = data.Response;
+                    
+                    if (pgcr) {
+                        const playerCount = pgcr.entries?.length || 0;
+                        const isCompleted = pgcr.entries?.some((e: any) => e.values.completed.basic.value === 1) || false;
+                        const isSoloFailed = playerCount === 1 && !isCompleted;
+                        const hasTooManyPlayers = playerCount > 15;
+                        
+                        if (isSoloFailed || hasTooManyPlayers) {
+                            addInvalidInstanceId(instanceId);
+                            setLocalInvalidIds(prev => new Set([...prev, instanceId]));
+                            // Purge from IndexedDB cache as well
+                            purgeInvalidInstancesFromCache();
+                            if (onMarkInvalid) {
+                                onMarkInvalid(instanceId);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    // Ignore fetch errors, will try again next time
+                }
+                
+                // Small delay between requests to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        };
+        
+        checkRuns();
+    }, [activityRuns.length]); // Re-run when runs change
     
     // Navigation state for paginating through runs
     const [runOffset, setRunOffset] = useState(0);
