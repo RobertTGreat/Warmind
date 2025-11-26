@@ -145,9 +145,9 @@ export default function QuestsPage() {
                             <span className="w-2 h-2 bg-destiny-gold rounded-full animate-pulse"/> Tracked Quests
                         </h2>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {trackedQuests.map(({ item, def }: any) => (
+                            {trackedQuests.map(({ item, def }: any, idx: number) => (
                                 <QuestItemCard 
-                                    key={item.itemInstanceId}
+                                    key={item.itemInstanceId || `${item.itemHash}-${idx}`}
                                     itemHash={item.itemHash}
                                     instanceData={item}
                                     definition={def}
@@ -175,9 +175,9 @@ export default function QuestsPage() {
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {quests.map(({ item, def }: any) => (
+                            {quests.map(({ item, def }: any, idx: number) => (
                                 <QuestItemCard 
-                                    key={item.itemInstanceId}
+                                    key={item.itemInstanceId || `${item.itemHash}-${idx}`}
                                     itemHash={item.itemHash}
                                     instanceData={item}
                                     definition={def}
@@ -200,9 +200,9 @@ export default function QuestsPage() {
                             <span className="w-2 h-2 bg-destiny-gold rounded-full animate-pulse"/> Tracked
                         </h2>
                         <div className="grid grid-cols-3 gap-1.5">
-                            {trackedBounties.map(({ item, def }: any) => (
+                            {trackedBounties.map(({ item, def }: any, idx: number) => (
                                 <DestinyItemCard 
-                                    key={item.itemInstanceId}
+                                    key={item.itemInstanceId || `${item.itemHash}-${idx}`}
                                     itemHash={item.itemHash}
                                     itemInstanceId={item.itemInstanceId}
                                     instanceData={item}
@@ -232,9 +232,9 @@ export default function QuestsPage() {
                         </div>
                     ) : (
                         <div className="grid grid-cols-3 gap-1.5">
-                            {bounties.map(({ item, def }: any) => (
+                            {bounties.map(({ item, def }: any, idx: number) => (
                                 <DestinyItemCard 
-                                    key={item.itemInstanceId}
+                                    key={item.itemInstanceId || `${item.itemHash}-${idx}`}
                                     itemHash={item.itemHash}
                                     itemInstanceId={item.itemInstanceId}
                                     instanceData={item}

@@ -46,14 +46,22 @@ export const PRESENTATION_NODES = {
 };
 
 // Armor Stat Hashes (Primary use - these are the canonical hashes for armor)
+// Armor 3.0 (Edge of Fate) renamed stats but hashes remain the same:
+// - MOBILITY (2996146975) → Weapons: reload, handling, damage
+// - RESILIENCE (392767087) → Health: shields, flinch resistance  
+// - RECOVERY (1943323491) → Class: class ability cooldown
+// - DISCIPLINE (1735777505) → Grenade: grenade cooldown
+// - INTELLECT (144602215) → Super: super energy gain
+// - STRENGTH (4244567218) → Melee: melee cooldown
+// Stats now cap at 200 (T20) - T10+ (100+) unlocks enhanced effects
 export const STAT_HASHES = {
-    // Armor Stats - Unique identifiers for each armor stat
-    MOBILITY: 2996146975,
-    RESILIENCE: 392767087,
-    RECOVERY: 1943323491,
-    DISCIPLINE: 1735777505,
-    INTELLECT: 144602215,
-    STRENGTH: 4244567218
+    // Legacy names kept for API compatibility - map to new names in UI
+    MOBILITY: 2996146975,    // Now "Weapons"
+    RESILIENCE: 392767087,   // Now "Health"
+    RECOVERY: 1943323491,    // Now "Class"
+    DISCIPLINE: 1735777505,  // Now "Grenade"
+    INTELLECT: 144602215,    // Now "Super"
+    STRENGTH: 4244567218     // Now "Melee"
 };
 
 // Array of armor stat hashes for iteration (no duplicates)
@@ -172,12 +180,13 @@ export function getItemTier(
     // Check if item has stats in instance data (Armor always has stats)
     if (instanceData?.stats && itemDef.itemType === 2) {
         // Artifice/Trade-off mod hashes (only usable on Artificer armor)
+        // Armor 3.0 stats: Weapons, Health, Class, Grenade, Super, Melee
         const ARTIFICE_MOD_HASHES = [
-            4030660414, // +Class / -Health
-            455024236,  // +Grenade / -Health
-            4164883102, // +Melee / -Health
-            4026414261, // +Super / -Health
-            3121760799  // +Weapons / -Health
+            4030660414, // +Class / -Health (was Recovery/Resilience)
+            455024236,  // +Grenade / -Health (was Discipline/Resilience)
+            4164883102, // +Melee / -Health (was Strength/Resilience)
+            4026414261, // +Super / -Health (was Intellect/Resilience)
+            3121760799  // +Weapons / -Health (was Mobility/Resilience)
         ];
         
         // Collect active plugs to find mods and check for Artifice slot

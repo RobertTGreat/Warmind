@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { loginWithBungie } from "@/lib/bungie";
-import { ArrowRight, Newspaper } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { NewsFeed } from "@/components/NewsFeed";
 import { ClanBrowser } from "@/components/ClanBrowser";
@@ -56,11 +56,10 @@ export default function Home() {
 
   // Dashboard State (Logged In)
   return (
-    <div className="flex flex-col items-center pt-8 min-h-screen pb-20">
-      {/* Dashboard Content */}
-      <div className="w-full px-4 sm:px-8 space-y-12 max-w-[1600px]">
-          
-          {/* Top: News Feed (replacing previous Clan Banner area) */}
+    <div className="flex justify-center pt-8 min-h-screen pb-20">
+      {/* Main Dashboard Content - Center */}
+      <div className="flex-1 px-4 sm:px-8 space-y-12 max-w-[1400px]">
+          {/* News Feed */}
           <div className="space-y-6">
             <div className="w-full">
                 <NewsFeed />

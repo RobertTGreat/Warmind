@@ -137,6 +137,18 @@ export const endpoints = {
   getLoadoutColorDefinition: (hash: number | string) =>
     `/Destiny2/Manifest/DestinyLoadoutColorDefinition/${hash}/`,
   getDestinyManifest: () => '/Destiny2/Manifest/',
+  // Character Activities (component 204) - contains availableActivities
+  getCharacterActivities: (membershipType: number, destinyMembershipId: string, characterId: string) =>
+    `/Destiny2/${membershipType}/Profile/${destinyMembershipId}/Character/${characterId}/?components=204`,
+  // Destination definition
+  getDestinationDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyDestinationDefinition/${hash}/`,
+  // Activity Graph definition
+  getActivityGraphDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyActivityGraphDefinition/${hash}/`,
+  // Activity Modifier definition (for bonus drops, daily focus, etc.)
+  getActivityModifierDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyActivityModifierDefinition/${hash}/`,
 };
 
 

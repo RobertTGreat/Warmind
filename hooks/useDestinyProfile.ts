@@ -1,7 +1,7 @@
 import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import Cookies from 'js-cookie';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -18,6 +18,21 @@ export interface DestinyStats {
   characterProgressions?: any;
   currentSeasonHash?: number;
 }
+
+export interface CharacterInfo {
+  characterId: string;
+  classType: number;
+  light: number;
+  emblemPath: string;
+  emblemBackgroundPath: string;
+  dateLastPlayed: string;
+}
+
+export const CLASS_NAMES: Record<number, string> = {
+  0: 'Titan',
+  1: 'Hunter',
+  2: 'Warlock',
+};
 
 export function useDestinyProfile() {
   // Initialize to false to match server-side rendering and prevent hydration mismatch
@@ -101,19 +116,56 @@ export function useDestinyProfile() {
   );
   const seasonPassDef = seasonPassDefData?.Response;
 
+  // Track selected character (persisted in localStorage)
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('selectedCharacterId');
+    }
+    return null;
+  });
+
+  // Build list of all characters
+  let allCharacters: CharacterInfo[] = [];
+  
   if (profile) {
     const characters = profile.characters?.data;
     const characterIds = profile.profile?.data?.characterIds || [];
     const characterProgressions = profile.characterProgressions?.data;
     
-    // Find last played character
-    let activeCharacterId = characterIds[0];
+    // Build all characters list
     if (characters) {
-        activeCharacterId = Object.keys(characters).sort((a, b) => {
-            const dateA = new Date(characters[a].dateLastPlayed).getTime();
-            const dateB = new Date(characters[b].dateLastPlayed).getTime();
-            return dateB - dateA; // Descending
-        })[0];
+      allCharacters = Object.keys(characters)
+        .map(charId => {
+          const char = characters[charId];
+          return {
+            characterId: charId,
+            classType: char.classType,
+            light: char.light,
+            emblemPath: getBungieImage(char.emblemPath),
+            emblemBackgroundPath: getBungieImage(char.emblemBackgroundPath),
+            dateLastPlayed: char.dateLastPlayed,
+          };
+        })
+        .sort((a, b) => {
+          const dateA = new Date(a.dateLastPlayed).getTime();
+          const dateB = new Date(b.dateLastPlayed).getTime();
+          return dateB - dateA; // Most recently played first
+        });
+    }
+    
+    // Determine active character: selected > last played > first
+    let activeCharacterId = characterIds[0];
+    
+    // Check if selected character is valid
+    if (selectedCharacterId && characters?.[selectedCharacterId]) {
+      activeCharacterId = selectedCharacterId;
+    } else if (characters) {
+      // Fall back to last played
+      activeCharacterId = Object.keys(characters).sort((a, b) => {
+        const dateA = new Date(characters[a].dateLastPlayed).getTime();
+        const dateB = new Date(characters[b].dateLastPlayed).getTime();
+        return dateB - dateA;
+      })[0];
     }
 
     const activeChar = characters?.[activeCharacterId];
@@ -152,6 +204,14 @@ export function useDestinyProfile() {
     }
   }
 
+  // Callback to select a character
+  const selectCharacter = useCallback((characterId: string) => {
+    setSelectedCharacterId(characterId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('selectedCharacterId', characterId);
+    }
+  }, []);
+
   return {
     profile,
     stats,
@@ -164,6 +224,9 @@ export function useDestinyProfile() {
     membershipInfo: primaryMembership ? {
         membershipType,
         membershipId: destinyMembershipId
-    } : null
+    } : null,
+    // Character selection
+    allCharacters,
+    selectCharacter,
   };
 }

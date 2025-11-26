@@ -20,7 +20,8 @@ export function NewsFeed() {
     const [error, setError] = useState(false);
     const [page, setPage] = useState(0);
     const [direction, setDirection] = useState(0);
-    const itemsPerPage = 5;
+    const itemsPerPage = 4;
+    const maxItems = 24;
 
     useEffect(() => {
         async function fetchNews() {
@@ -61,9 +62,10 @@ export function NewsFeed() {
         );
     }
 
+    const limitedNews = news.slice(0, maxItems);
     const startIndex = page * itemsPerPage;
-    const visibleNews = news.slice(startIndex, startIndex + itemsPerPage);
-    const hasNext = startIndex + itemsPerPage < news.length;
+    const visibleNews = limitedNews.slice(startIndex, startIndex + itemsPerPage);
+    const hasNext = startIndex + itemsPerPage < limitedNews.length;
     const hasPrev = page > 0;
 
     return (
@@ -72,12 +74,12 @@ export function NewsFeed() {
             <div className="w-full flex justify-between items-end gap-2 pb-2 border-b border-white/10">
                 <h2 className="text-2xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
                     <Newspaper className="w-6 h-6 text-destiny-gold" />
-                    Latest Intel
+                    <p className="text-lg font-bold text-white uppercase tracking-wider">Latest Intel</p>
                 </h2>
                 
                 <div className="flex items-center gap-4">
                     <div className="text-xs text-slate-500 uppercase tracking-wider hidden sm:block">
-                        {startIndex + 1}-{Math.min(startIndex + itemsPerPage, news.length)} of {news.length}
+                        {startIndex + 1}-{Math.min(startIndex + itemsPerPage, limitedNews.length)} of {limitedNews.length}
                     </div>
                     <div className="flex gap-1">
                         <button 
@@ -101,7 +103,7 @@ export function NewsFeed() {
             </div>
 
             {/* Grid */}
-            <div className="w-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 min-h-[300px] overflow-hidden">
+            <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 min-h-[300px] overflow-hidden">
                 <AnimatePresence initial={false} mode="popLayout" custom={direction}>
                     {visibleNews.map((item, i) => {
                         // Handle Bungie relative links
@@ -122,7 +124,7 @@ export function NewsFeed() {
                                     ease: [0.32, 0.72, 0, 1],
                                     delay: i * 0.05 
                                 }}
-                                className="group relative flex flex-col overflow-hidden border border-white/5 hover:border-white/20 transition-colors duration-300 bg-gray-900/40 h-full"
+                                className="group relative flex flex-col overflow-hidden border border-white/5 hover:border-white/20 transition-colors duration-300 h-full"
                             >
                                 {/* Image */}
                                 <div className="relative aspect-video w-full overflow-hidden bg-slate-900">

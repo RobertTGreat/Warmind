@@ -117,7 +117,7 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
                     {specialTags && (
                          <div className="flex flex-wrap gap-1">
                              {specialTags.map((tag) => (
-                                <span key={tag.label} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-bold tracking-wide uppercase whitespace-nowrap", tag.className)}>
+                                <span key={tag.label} className={cn("text-[10px] px-1.5 py-0.5 border font-bold tracking-wide uppercase whitespace-nowrap", tag.className)}>
                                     {tag.label}
                                 </span>
                              ))}
@@ -127,7 +127,7 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
                 
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
                      {guardianRank !== undefined && guardianRank > 0 && (
-                        <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded border border-white/10" title={`Guardian Rank ${guardianRank}`}>
+                        <div className="flex items-center gap-1 px-1.5 py-0.5" title={`Guardian Rank ${guardianRank}`}>
                             <span className="w-2 h-2 rounded-full bg-destiny-gold/80" />
                             <span className="font-mono text-white font-bold">{guardianRank}</span>
                         </div>

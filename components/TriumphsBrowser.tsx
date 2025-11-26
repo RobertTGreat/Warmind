@@ -143,7 +143,7 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
                        <input 
                            type="text"
                            placeholder="Search triumphs..."
-                           className="w-full bg-black/20 border border-white/10 py-2 pl-10 pr-10 text-white placeholder:text-slate-500 focus:outline-none focus:border-destiny-gold transition-colors rounded-none"
+                           className="w-full border border-white/10 py-2 pl-10 pr-10 text-white placeholder:text-slate-500 focus:outline-none focus:border-destiny-gold transition-colors rounded-none"
                            value={searchQuery}
                            onChange={(e) => setSearchQuery(e.target.value)}
                        />
@@ -167,7 +167,7 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
                    )}
                >
                    <div className={cn("w-2 h-2 rounded-full", showCompleted ? "bg-destiny-gold" : "bg-slate-600")} />
-                   <span className="text-sm font-bold uppercase tracking-wider">
+                   <span className="text-sm font-bold uppercase tracking-wider hover:cursor-pointer">
                        {showCompleted ? "All Triumphs" : "Incomplete Only"}
                    </span>
                </button>
@@ -283,7 +283,7 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
 
 function BreadcrumbItem({ hash, onClick, isLast }: { hash: number, onClick: () => void, isLast: boolean }) {
     const { node } = usePresentationNode(hash);
-    if (!node) return <span className="animate-pulse w-12 h-4 bg-slate-800 rounded" />;
+    if (!node) return <span className="animate-pulse w-12 h-4" />;
     
     return (
         <button 
@@ -336,7 +336,7 @@ function PresentationNodeCard({ hash, onClick, profile }: { hash: number, onClic
     return (
         <div 
             onClick={() => onClick(hash)}
-            className="group relative flex items-center gap-4 p-4 bg-gray-800/40 border border-white/10 hover:bg-gray-700/60 hover:border-destiny-gold/30 transition-all cursor-pointer rounded-none"
+            className="group relative flex items-center gap-4 p-4 border border-white/10 hover:bg-linear-to-r from-destiny-gold/5 to-transparent hover:border-destiny-gold/30 transition-all cursor-pointer rounded-none"
         >
             {node.displayProperties?.hasIcon && (
                 <div className="w-14 h-14 shrink-0 bg-black/30 p-1 border border-white/5 rounded-none overflow-hidden relative">
@@ -344,7 +344,7 @@ function PresentationNodeCard({ hash, onClick, profile }: { hash: number, onClic
                         src={getBungieImage(node.displayProperties.icon)} 
                         fill 
                         sizes="56px"
-                        className="object-contain group-hover:scale-110 transition-transform" 
+                        className="object-contain transition-transform" 
                         alt="" 
                     />
                 </div>
@@ -412,10 +412,10 @@ function RecordItem({ hash, profile, showCompleted }: { hash: number, profile: a
     return (
         <div className={cn(
             "relative flex flex-col sm:flex-row gap-4 p-4 border transition-all rounded-none",
-            isCompleted ? "bg-gray-800/60 border-destiny-gold/20" : "bg-gray-800/20 border-white/5"
+            isCompleted ? "bg-linear-to-r from-destiny-gold/5 to-transparent border-destiny-gold/20" : "bg-none border-white/5"
         )}>
             {/* Icon */}
-            <div className="shrink-0 w-12 h-12 bg-slate-900 border border-white/10 flex items-center justify-center rounded-none self-start">
+            <div className="shrink-0 w-12 h-12 flex items-center justify-center self-start">
                 {record.displayProperties?.hasIcon ? (
                     <Image 
                         src={getBungieImage(record.displayProperties.icon)} 
@@ -469,7 +469,7 @@ function RecordItem({ hash, profile, showCompleted }: { hash: number, profile: a
                                          <span>{current} / {total}</span>
                                          <span>{Math.floor(percent)}%</span>
                                      </div>
-                                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                     <div className="h-1.5 rounded-full overflow-hidden">
                                          <div 
                                             className={cn("h-full transition-all", complete ? "bg-destiny-gold" : "bg-blue-500")} 
                                             style={{ width: `${percent}%` }} 

@@ -3,7 +3,8 @@
 import { useDestinyProfile, DestinyStats } from "@/hooks/useDestinyProfile";
 import { BUCKETS, CURRENCIES, MATERIALS, calculateBasePowerLevel, getBestItemsPerSlot } from "@/lib/destinyUtils";
 import { DestinyItemCard } from "@/components/DestinyItemCard";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { VaultGrid, GroupedVaultGrid } from "@/components/VaultGrid";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { getBungieImage, moveItem, equipItem, equipLoadout } from "@/lib/bungie";
 import { PageHeader } from "@/components/PageHeader";
@@ -218,12 +219,28 @@ export default function CharacterPage() {
     // Search Logic
     const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
 
-    const checkMatch = (item: any) => {
+    const checkMatch = useCallback((item: any) => {
         if (!searchQuery) return true;
         const def = allDefs[item.itemHash];
         const instance = profile?.itemComponents?.instances?.data?.[item.itemInstanceId];
         return checkItemMatch(item, def, parsedQuery, instance, fullInventoryList);
-    };
+    }, [searchQuery, allDefs, profile, parsedQuery, fullInventoryList]);
+
+    // Data accessor callbacks for VaultGrid
+    const getInstanceData = useCallback((itemInstanceId: string) => {
+        const instance = profile?.itemComponents?.instances?.data?.[itemInstanceId];
+        const itemStats = profile?.itemComponents?.stats?.data?.[itemInstanceId]?.stats;
+        if (!instance) return undefined;
+        return { ...instance, stats: itemStats };
+    }, [profile]);
+
+    const getSocketsData = useCallback((itemInstanceId: string) => {
+        return profile?.itemComponents?.sockets?.data?.[itemInstanceId];
+    }, [profile]);
+
+    const getReusablePlugs = useCallback((itemInstanceId: string) => {
+        return profile?.itemComponents?.reusablePlugs?.data?.[itemInstanceId]?.plugs;
+    }, [profile]);
 
     // Default to active character from stats
     const activeCharacterId = selectedCharacterId || stats?.characterId;
@@ -703,262 +720,143 @@ export default function CharacterPage() {
                                     >
                                          <h3 className="text-xs text-slate-500 uppercase font-bold mb-2">{section.name}</h3>
                                          
-                                         {/* Rendering Logic based on toggles */}
+                                         {/* Virtualized Vault Grid with grouping support */}
                                          {(() => {
-                                             // 1. No grouping
-                                             if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                             const tierNames: Record<number, string> = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
+                                             const tierColors: Record<number, string> = { 
+                                                 6: 'text-yellow-400', 
+                                                 5: 'text-purple-400', 
+                                                 4: 'text-blue-400',
+                                                 3: 'text-slate-500',
+                                                 2: 'text-slate-500'
+                                             };
+                                             const classNames: Record<number, string> = { 0: 'Titan', 1: 'Hunter', 2: 'Warlock', 3: 'General' };
+
+                                             // 1. No grouping - use VaultGrid directly
+                                             if (!vaultGrouping.byRarity && !vaultGrouping.byClass && !vaultGrouping.byTier) {
                                                  return (
-                                                     <div className="flex flex-wrap gap-2 gap-y-8 content-start">
-                                                         {vault.map((item: any) => (
-                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
-                                                                <ItemCardWrapper 
-                                                                    item={item} 
-                                                                    profile={profile} 
-                                                                    basePower={basePowerLevel} 
-                                                                    classFilter={activeClassType}
-                                                                    ownerId="VAULT"
-                                                                    isHighlighted={checkMatch(item)}
-                                                                />
-                                                            </div>
-                                                         ))}
-                                                         {vault.length === 0 && (
-                                                            <div className="w-full text-xs text-slate-600 italic p-2">
-                                                                Vault empty
-                                                            </div>
-                                                         )}
-                                                     </div>
+                                                     <VaultGrid
+                                                         items={vault}
+                                                         iconSize={iconSize}
+                                                         ownerId="VAULT"
+                                                         checkMatch={checkMatch}
+                                                         getInstanceData={getInstanceData}
+                                                         getSocketsData={getSocketsData}
+                                                         getReusablePlugs={getReusablePlugs}
+                                                         gap={8}
+                                                         maxHeight={350}
+                                                     />
                                                  );
                                              }
 
                                              // 2. Group by Rarity ONLY
                                              if (vaultGrouping.byRarity && !vaultGrouping.byClass) {
+                                                 const groups = [6, 5, 4, 3, 2].map(tier => ({
+                                                     key: tier,
+                                                     label: tierNames[tier],
+                                                     labelClassName: tierColors[tier],
+                                                     items: vault.filter((item: any) => 
+                                                         (vaultDefs[item.itemHash]?.inventory?.tierType || 0) === tier
+                                                     )
+                                                 })).filter(g => g.items.length > 0);
+
                                                  return (
-                                                    <div className="flex flex-col gap-8">
-                                                        {[6, 5, 4, 3, 2].map(tier => {
-                                                            const tierItems = vault.filter((item: any) => (vaultDefs[item.itemHash]?.inventory?.tierType || 0) === tier);
-                                                            if (tierItems.length === 0) return null;
-                                                            const tierNames: any = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
-                                                            return (
-                                                                <div key={tier}>
-                                                                    {/* Removed Text but kept structural block if needed, though gap-8 handles main spacing */}
-                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
-                                                                        {tierItems.map((item: any) => (
-                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
-                                                                <ItemCardWrapper 
-                                                                    item={item} 
-                                                                    profile={profile} 
-                                                                    basePower={basePowerLevel} 
-                                                                    classFilter={activeClassType}
-                                                                    ownerId="VAULT"
-                                                                    isHighlighted={checkMatch(item)}
-                                                                />
-                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                        {vault.length === 0 && <div className="text-xs text-slate-600 italic">Vault empty</div>}
-                                                    </div>
+                                                     <GroupedVaultGrid
+                                                         groups={groups}
+                                                         iconSize={iconSize}
+                                                         ownerId="VAULT"
+                                                         checkMatch={checkMatch}
+                                                         getInstanceData={getInstanceData}
+                                                         getSocketsData={getSocketsData}
+                                                         getReusablePlugs={getReusablePlugs}
+                                                         gap={8}
+                                                     />
                                                  );
                                              }
 
                                              // 3. Group by Class ONLY
                                              if (!vaultGrouping.byRarity && vaultGrouping.byClass) {
+                                                 const groups = [0, 1, 2, 3].map(cls => ({
+                                                     key: cls,
+                                                     label: classNames[cls],
+                                                     labelClassName: 'text-slate-500',
+                                                     items: vault.filter((item: any) => {
+                                                         const def = vaultDefs[item.itemHash];
+                                                         return (def?.classType ?? 3) === cls;
+                                                     })
+                                                 })).filter(g => g.items.length > 0);
+
                                                  return (
-                                                    <div className="flex flex-col gap-4">
-                                                        {[0, 1, 2, 3].map(cls => {
-                                                            const clsItems = vault.filter((item: any) => {
-                                                                const def = vaultDefs[item.itemHash];
-                                                                return (def?.classType ?? 3) === cls;
-                                                            });
-                                                            if (clsItems.length === 0) return null;
-                                                            return (
-                                                                <div key={cls}>
-                                                                    <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-2">
-                                                                        {cls === 0 ? 'Titan' : cls === 1 ? 'Hunter' : cls === 2 ? 'Warlock' : 'General'}
-                                                                    </h4>
-                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
-                                                                        {clsItems.map((item: any) => (
-                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
-                                                                <ItemCardWrapper 
-                                                                    item={item} 
-                                                                    profile={profile} 
-                                                                    basePower={basePowerLevel} 
-                                                                    classFilter={activeClassType}
-                                                                    ownerId="VAULT"
-                                                                    isHighlighted={checkMatch(item)}
-                                                                />
-                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                        {vault.length === 0 && <div className="text-xs text-slate-600 italic">Vault empty</div>}
-                                                    </div>
+                                                     <GroupedVaultGrid
+                                                         groups={groups}
+                                                         iconSize={iconSize}
+                                                         ownerId="VAULT"
+                                                         checkMatch={checkMatch}
+                                                         getInstanceData={getInstanceData}
+                                                         getSocketsData={getSocketsData}
+                                                         getReusablePlugs={getReusablePlugs}
+                                                         gap={8}
+                                                     />
                                                  );
                                              }
 
-                                             // 5. Group by Tier (New)
-                                             if (vaultGrouping.byTier && !vaultGrouping.byClass && !vaultGrouping.byRarity) {
-                                                 return (
-                                                    <div className="flex flex-col gap-8">
-                                                        {[5, 4, 3, 2, 1].map(tierNum => {
-                                                            const tierItems = vault.filter((item: any) => {
-                                                                // We need calculated tier.
-                                                                // HACK: We aren't calculating tier here efficiently.
-                                                                // `checkMatch` might have access but we need to GROUP.
-                                                                // We need to calculate tier for every vault item.
-                                                                // This is expensive inside render loop.
-                                                                // Ideally `vault` items should be enriched with tier data before this block.
-                                                                
-                                                                // For now, let's use a helper or cache if possible.
-                                                                // But we don't have easy access to plugs here without `socketsData`.
-                                                                // `vault` items are just `DestinyItemComponent`.
-                                                                // We need to fetch sockets for them to determine tier.
-                                                                
-                                                                // BUT! `checkMatch` uses `checkItemMatch` which supports `tier:X` filter 
-                                                                // IF `item.calculatedTier` is present.
-                                                                // Currently `vault` items don't have it.
-                                                                
-                                                                // We need to augment `vault` list with tier info.
-                                                                // Let's do a "best effort" grouping based on what we know or 
-                                                                // just skip if we can't calculate.
-                                                                // Realistically, we need to lift the socket/plug data fetching for vault items 
-                                                                // to the parent level to support this fully.
-                                                                
-                                                                // However, `DestinyItemCard` calculates tier internally.
-                                                                // We can't easily group by something only the child knows.
-                                                                
-                                                                // Workaround: Use `checkMatch` with `tier:X` filter logic?
-                                                                // No, that's for search.
-                                                                
-                                                                // We need access to profile.itemComponents.sockets...
-                                                                const sockets = profile?.itemComponents?.sockets?.data?.[item.itemInstanceId];
-                                                                // We also need plug definitions... we have `vaultDefs` (item definitions) but NOT plug definitions for all vault items!
-                                                                // `useItemDefinitions` only fetched item hashes.
-                                                                // To calculate tier, we need plug definitions.
-                                                                // This is a blocker for purely client-side tier grouping of 600 items without massive pre-fetching.
-                                                                
-                                                                // Option: Only group by "known" tiers (maybe Masterwork/Rarity as proxy?)
-                                                                // OR: Just group by what we can search?
-                                                                
-                                                                // If we can't group effectively, maybe we show a warning or only group simple properties.
-                                                                // But user asked for "Tier Grouping".
-                                                                
-                                                                // Let's assume we won't implement full Tier calculation here yet 
-                                                                // and instead group by "Tier Type" (Rarity) renamed? 
-                                                                // No, user explicitly meant the Custom Tiers (1-5).
-                                                                
-                                                                // If we want to support this, we need to fetch plugs.
-                                                                // That's a lot of data.
-                                                                
-                                                                // Placeholder: Group by "Unknown Tier" for now or try to check simple things?
-                                                                // Let's skip implementation of actual logic here and put a placeholder
-                                                                // or use a simpler property if "byTier" is selected until we solve the data issue.
-                                                                
-                                                                return false;
-                                                            });
-                                                            
-                                                            if (tierItems.length === 0) return null;
-                                                            
-                                                            return (
-                                                                <div key={tierNum}>
-                                                                    <h4 className="text-[10px] uppercase font-bold text-destiny-gold mb-2">
-                                                                        Tier {tierNum}
-                                                                    </h4>
-                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
-                                                                        {tierItems.map((item: any) => (
-                                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
-                                                                                <ItemCardWrapper 
-                                                                                    item={item} 
-                                                                                    profile={profile} 
-                                                                                    basePower={basePowerLevel} 
-                                                                                    classFilter={activeClassType}
-                                                                                    ownerId="VAULT"
-                                                                                    isHighlighted={checkMatch(item)}
-                                                                                />
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                        {/* Fallback for items we couldn't tier group (rest of vault) */}
-                                                        <div className="mt-4 pt-4 border-t border-white/10">
-                                                            <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-2">Ungrouped / Calculating...</h4>
-                                                            <div className="flex flex-wrap gap-2 gap-y-8">
-                                                                {vault.map((item: any) => (
-                                                                    <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
-                                                                        <ItemCardWrapper 
-                                                                            item={item} 
-                                                                            profile={profile} 
-                                                                            basePower={basePowerLevel} 
-                                                                            classFilter={activeClassType}
-                                                                            ownerId="VAULT"
-                                                                            isHighlighted={checkMatch(item)}
-                                                                        />
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                 );
-                                             }
-
-                                             // 4. Group by BOTH (Class -> Rarity)
+                                             // 4. Group by BOTH (Class -> Rarity) - nested structure
                                              if (vaultGrouping.byRarity && vaultGrouping.byClass) {
                                                  return (
-                                                    <div className="flex flex-col gap-8">
-                                                        {[0, 1, 2, 3].map(cls => {
-                                                            const clsItems = vault.filter((item: any) => {
-                                                                const def = vaultDefs[item.itemHash];
-                                                                return (def?.classType ?? 3) === cls;
-                                                            });
-                                                            
-                                                            if (clsItems.length === 0) return null;
+                                                     <div className="flex flex-col gap-8 min-h-[60px]">
+                                                         {[0, 1, 2, 3].map(cls => {
+                                                             const clsItems = vault.filter((item: any) => {
+                                                                 const def = vaultDefs[item.itemHash];
+                                                                 return (def?.classType ?? 3) === cls;
+                                                             });
+                                                             
+                                                             if (clsItems.length === 0) return null;
 
-                                                            return (
-                                                                <div key={cls} className="pl-2 border-l border-white/5">
-                                                                    <h4 className="text-[10px] uppercase font-bold text-slate-300 mb-3">
-                                                                        {cls === 0 ? 'Titan' : cls === 1 ? 'Hunter' : cls === 2 ? 'Warlock' : 'General'}
-                                                                    </h4>
-                                                                    
-                                                                    <div className="flex flex-col gap-6">
-                                                                        {[6, 5, 4, 3, 2].map(tier => {
-                                                                            const tierItems = clsItems.filter((item: any) => (vaultDefs[item.itemHash]?.inventory?.tierType || 0) === tier);
-                                                                            if (tierItems.length === 0) return null;
-                                                                            const tierNames: any = { 6: 'Exotic', 5: 'Legendary', 4: 'Rare', 3: 'Common', 2: 'Basic' };
-                                                                            
-                                                                            return (
-                                                                                <div key={tier}>
-                                                                                     {/* Removed Text */}
-                                                                                    <div className="flex flex-wrap gap-2 gap-y-8">
-                                                                                        {tierItems.map((item: any) => (
-                                                            <div key={item.itemInstanceId} className={cn(sizeConfig.class, "border border-slate-800/50")}>
-                                                                <ItemCardWrapper 
-                                                                    item={item} 
-                                                                    profile={profile} 
-                                                                    basePower={basePowerLevel} 
-                                                                    classFilter={activeClassType}
-                                                                    ownerId="VAULT"
-                                                                    isHighlighted={checkMatch(item)}
-                                                                />
-                                                            </div>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                        {vault.length === 0 && <div className="text-xs text-slate-600 italic">Vault empty</div>}
-                                                    </div>
+                                                             const tierGroups = [6, 5, 4, 3, 2].map(tier => ({
+                                                                 key: `${cls}-${tier}`,
+                                                                 label: tierNames[tier],
+                                                                 labelClassName: tierColors[tier],
+                                                                 items: clsItems.filter((item: any) => 
+                                                                     (vaultDefs[item.itemHash]?.inventory?.tierType || 0) === tier
+                                                                 )
+                                                             })).filter(g => g.items.length > 0);
+
+                                                             return (
+                                                                 <div key={cls} className="pl-2 border-l border-white/5">
+                                                                     <h4 className="text-[10px] uppercase font-bold text-slate-300 mb-2">
+                                                                         {classNames[cls]}
+                                                                     </h4>
+                                                                     <GroupedVaultGrid
+                                                                         groups={tierGroups}
+                                                                         iconSize={iconSize}
+                                                                         ownerId="VAULT"
+                                                                         checkMatch={checkMatch}
+                                                                         getInstanceData={getInstanceData}
+                                                                         getSocketsData={getSocketsData}
+                                                                         getReusablePlugs={getReusablePlugs}
+                                                                         gap={8}
+                                                                     />
+                                                                 </div>
+                                                             );
+                                                         })}
+                                                     </div>
                                                  );
                                              }
+
+                                             // Fallback for byTier (not fully implemented)
+                                             return (
+                                                 <VaultGrid
+                                                     items={vault}
+                                                     iconSize={iconSize}
+                                                     ownerId="VAULT"
+                                                     checkMatch={checkMatch}
+                                                     getInstanceData={getInstanceData}
+                                                     getSocketsData={getSocketsData}
+                                                     getReusablePlugs={getReusablePlugs}
+                                                     gap={8}
+                                                     maxHeight={350}
+                                                 />
+                                             );
                                          })()}
                                     </div>
                                 </div>

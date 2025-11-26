@@ -1,10 +1,11 @@
 'use client';
 
 import { DestinyItemCard } from "@/components/DestinyItemCard";
+import { VaultGrid } from "@/components/VaultGrid";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { Loader2, Search, Settings } from "lucide-react";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { loginWithBungie } from "@/lib/bungie";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -84,6 +85,25 @@ export default function InventoryPage() {
       'medium': 'w-20 h-20',
       'large': 'w-24 h-24'
   }[iconSize];
+
+  // Data accessors for VaultGrid
+  const getInstanceData = useCallback((itemInstanceId: string) => {
+      const instance = profile?.itemComponents?.instances?.data?.[itemInstanceId];
+      const itemStats = profile?.itemComponents?.stats?.data?.[itemInstanceId]?.stats;
+      if (!instance) return undefined;
+      return { ...instance, stats: itemStats };
+  }, [profile]);
+
+  const getSocketsData = useCallback((itemInstanceId: string) => {
+      return profile?.itemComponents?.sockets?.data?.[itemInstanceId];
+  }, [profile]);
+
+  const getReusablePlugs = useCallback((itemInstanceId: string) => {
+      return profile?.itemComponents?.reusablePlugs?.data?.[itemInstanceId]?.plugs;
+  }, [profile]);
+
+  // Check match callback for search (always true since we pre-filter)
+  const checkMatchCallback = useCallback(() => true, []);
 
   if (!mounted) return null;
 
@@ -187,51 +207,51 @@ export default function InventoryPage() {
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-20 px-4">
             <div className="space-y-8">
-                {/* Consumables */}
+                {/* Consumables - Virtualized Grid */}
                 {visibleConsumables.length > 0 && (
                     <div>
                         <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2 sticky top-0 z-10 py-2 backdrop-blur-sm">
-                            Consumables
+                            Consumables ({visibleConsumables.length})
                         </h3>
-                        <div className="flex flex-wrap gap-2">
-                            {visibleConsumables.map((item: any, idx: number) => (
-                                <DestinyItemCard 
-                                    key={`cons-${item.itemHash}-${idx}`} 
-                                    itemHash={item.itemHash}
-                                    instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                    className={iconSizeClass}
-                                    itemInstanceId={item.itemInstanceId}
-                                    quantity={item.quantity}
-                                    isHighlighted={true} // Search handled by filter
-                                    ownerId="PROFILE"
-                                    size={iconSize}
-                                />
-                            ))}
-                        </div>
+                        <VaultGrid
+                            items={visibleConsumables.map((item: any) => ({
+                                itemHash: item.itemHash,
+                                itemInstanceId: item.itemInstanceId,
+                                quantity: item.quantity
+                            }))}
+                            iconSize={iconSize}
+                            ownerId="PROFILE"
+                            checkMatch={checkMatchCallback}
+                            getInstanceData={getInstanceData}
+                            getSocketsData={getSocketsData}
+                            getReusablePlugs={getReusablePlugs}
+                            gap={8}
+                            maxHeight={400}
+                        />
                     </div>
                 )}
 
-                {/* Modifications */}
+                {/* Modifications - Virtualized Grid */}
                 {visibleMods.length > 0 && (
                     <div>
-                        <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2 sticky top-0 z-10 py-2 backdrop-blur-sm ">
-                            Modifications
+                        <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2 sticky top-0 z-10 py-2 backdrop-blur-sm">
+                            Modifications ({visibleMods.length})
                         </h3>
-                        <div className="flex flex-wrap gap-2">
-                            {visibleMods.map((item: any, idx: number) => (
-                                <DestinyItemCard 
-                                    key={`mod-${item.itemHash}-${idx}`} 
-                                    itemHash={item.itemHash}
-                                    instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                    className={iconSizeClass}
-                                    itemInstanceId={item.itemInstanceId}
-                                    quantity={item.quantity}
-                                    isHighlighted={true}
-                                    ownerId="PROFILE"
-                                    size={iconSize}
-                                />
-                            ))}
-                        </div>
+                        <VaultGrid
+                            items={visibleMods.map((item: any) => ({
+                                itemHash: item.itemHash,
+                                itemInstanceId: item.itemInstanceId,
+                                quantity: item.quantity
+                            }))}
+                            iconSize={iconSize}
+                            ownerId="PROFILE"
+                            checkMatch={checkMatchCallback}
+                            getInstanceData={getInstanceData}
+                            getSocketsData={getSocketsData}
+                            getReusablePlugs={getReusablePlugs}
+                            gap={8}
+                            maxHeight={400}
+                        />
                     </div>
                 )}
             </div>

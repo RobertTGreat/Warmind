@@ -10,6 +10,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",
     "@tailwindcss/postcss": "^4.1.17",
+    "@vercel/analytics": "^1.5.0",
+    "@vercel/speed-insights": "^1.2.0",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -21,6 +23,7 @@
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-virtuoso": "^4.15.0",
     "sonner": "^2.0.7",
     "swr": "^2.3.6",
     "tailwind-merge": "^3.4.0",

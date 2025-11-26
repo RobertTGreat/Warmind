@@ -179,7 +179,7 @@ export function ClanBrowser() {
                     <h2 className="text-lg font-bold text-white uppercase tracking-wider">Clan Roster</h2>
                 </div>
                 {isLoadingStats && (
-                    <div className="flex items-center gap-2 text-xs text-destiny-gold animate-pulse bg-destiny-gold/10 px-2 py-1 rounded">
+                    <div className="flex items-center gap-2 text-xs text-destiny-gold animate-pulse bg-destiny-gold/10 px-2 py-1">
                         <Loader2 className="w-3 h-3 animate-spin" />
                         <span>Loading Stats...</span>
                     </div>
@@ -194,7 +194,7 @@ export function ClanBrowser() {
                         placeholder="Search..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50"
+                        className="w-full bg-gray-900/50 border border-white/10 py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50"
                     />
                 </div>
 
@@ -203,7 +203,7 @@ export function ClanBrowser() {
                      <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as SortOption)}
-                        className="appearance-none bg-gray-900/50 border border-white/10 rounded-sm py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:border-destiny-gold/50 cursor-pointer min-w-[120px]"
+                        className="appearance-none bg-gray-900/50 border border-white/10 py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:border-destiny-gold/50 cursor-pointer min-w-[120px]"
                      >
                          <option value="online">Online</option>
                          <option value="power_desc">Power</option>
@@ -215,7 +215,7 @@ export function ClanBrowser() {
                 <button 
                     onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                     className={cn(
-                        "p-2 rounded-sm border border-white/10 transition-colors",
+                        "p-2 border border-white/10 transition-colors",
                         showFavoritesOnly ? "bg-destiny-gold/20 border-destiny-gold/50 text-destiny-gold" : "bg-gray-900/50 text-slate-400 hover:text-white"
                     )}
                     title="Toggle Favorites Only"
@@ -257,7 +257,7 @@ export function ClanBrowser() {
                         <button
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
-                            className="p-2 rounded border border-white/10 bg-gray-800/20 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="p-2 hover:scale-120 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:cursor-pointer"
                         >
                             <ChevronLeft className="w-5 h-5 text-white" />
                         </button>
@@ -269,7 +269,7 @@ export function ClanBrowser() {
                         <button
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage === totalPages}
-                            className="p-2 rounded border border-white/10 bg-gray-800/20 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="p-2 hover:scale-120 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:cursor-pointer"
                         >
                             <ChevronRight className="w-5 h-5 text-white" />
                         </button>

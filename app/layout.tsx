@@ -5,6 +5,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { Toaster } from "sonner";
 import { FirstLoadWarning } from "@/components/FirstLoadWarning";
 import { ClientManifestManager } from "@/components/ClientManifestManager";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://warmind.app'), // Replace with your actual domain
@@ -141,6 +143,8 @@ export default function RootLayout({
         <FirstLoadWarning />
         <ClientManifestManager />
         <Toaster position="bottom-center" theme="system" closeButton />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

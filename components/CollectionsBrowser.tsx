@@ -81,10 +81,10 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                 <button 
                     onClick={handleToggleShowAll}
                     className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-sm transition-all border whitespace-nowrap ml-4",
+                        "flex items-center gap-2 px-4 py-2 transition-all border whitespace-nowrap ml-4",
                         !showAll 
-                            ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold" 
-                            : "bg-gray-800/40 border-white/10 text-slate-400 hover:bg-gray-700/50 hover:text-white"
+                            ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold hover:cursor-pointer" 
+                            : " border-white/10 text-slate-400 hover:border-white/70 hover:text-white hover:cursor-pointer"
                     )}
                 >
                     {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -151,10 +151,10 @@ function TopLevelTab({ hash, isSelected, onClick }: { hash: number, isSelected: 
         <button
             onClick={onClick}
             className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-sm transition-all border whitespace-nowrap",
+                "flex items-center gap-2 px-4 py-2 transition-all border whitespace-nowrap",
                 isSelected 
                     ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold" 
-                    : "bg-gray-800/40 border-white/10 text-slate-400 hover:bg-gray-700/50 hover:text-white"
+                    : "border-white/10 text-slate-400 hover:border-white/70 hover:text-white cursor-pointer"
             )}
         >
              {node.displayProperties?.hasIcon && (
@@ -222,10 +222,10 @@ function Tier2Button({ hash, isSelected, onClick }: { hash: number, isSelected: 
             <button
                 onClick={onClick}
                 className={cn(
-                    "w-full h-10 flex items-center justify-center rounded-sm transition-all border shrink-0",
+                    "w-full h-10 flex items-center justify-center transition-all border shrink-0",
                     isSelected 
                         ? "bg-destiny-gold text-slate-900 border-destiny-gold" 
-                        : "bg-gray-800/40 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
+                        : " border-white/10 text-slate-400 hover:border-white/70 hover:text-white hover:cursor-pointer"
                 )}
             >
                     {node.displayProperties?.hasIcon ? (
@@ -293,10 +293,10 @@ function Tier3Button({ hash, isSelected, onClick }: { hash: number, isSelected: 
         <button
             onClick={onClick}
             className={cn(
-                "text-left px-3 py-2.5 rounded-sm transition-all text-sm font-medium flex items-center justify-between group w-full border border-transparent",
+                "text-left px-3 py-2.5 transition-all text-sm font-medium flex items-center justify-between group w-full border border-transparent",
                 isSelected 
-                    ? "bg-white/10 text-white border-l-destiny-gold border-l-2 border-y-transparent border-r-transparent" 
-                    : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    ? "bg-linear-to-r from-destiny-gold/10 to-transparent text-white border-l-destiny-gold border-l-2 border-y-transparent border-r-transparent" 
+                    : "text-slate-400 hover:bg-linear-to-r from-white/5 to-transparent hover:text-white hover:cursor-pointer hover:border-l-white/70 border-l-2"
             )}
         >
             <div className="flex items-center gap-3 truncate">

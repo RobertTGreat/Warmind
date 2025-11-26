@@ -44,7 +44,7 @@ export default function TriumphsPage() {
       <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
           <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 items-start sm:items-center w-full md:w-auto">
              {/* Tab Switcher */}
-             <div className="flex bg-gray-800/20 p-1 rounded-lg border border-white/10 self-start sm:self-auto">
+             <div className="flex p-1 rounded-lg border border-white/10 self-start sm:self-auto">
                  <button
                     onClick={() => setActiveTab('triumphs')}
                     className={cn(
@@ -81,7 +81,7 @@ export default function TriumphsPage() {
           </div>
       </div>
 
-      <div className="bg-gray-800/20 border border-white/5 p-6 min-h-[80vh] rounded-none shadow-2xl backdrop-blur-sm">
+      <div className="border border-white/5 p-6 min-h-[80vh] shadow-2xl backdrop-blur-sm">
          {!isLoading ? (
              <TriumphsBrowser 
                 rootHash={activeTab === 'triumphs' ? triumphsRoot! : sealsRoot} 

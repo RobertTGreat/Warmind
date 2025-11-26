@@ -111,7 +111,7 @@ export function FireteamList() {
                 <Users className="w-5 h-5 text-destiny-gold" />
                 <h2 className="text-lg font-bold text-white uppercase tracking-wider">Fireteam</h2>
                 {partyMembers && (
-                    <span className="text-xs text-slate-500 bg-white/5 px-2 py-0.5 rounded">
+                    <span className="text-xs text-slate-500 bg-white/5 px-2 py-0.5">
                         {partyMembers.length} / {transitoryData?.partyMembers?.length || 0}
                     </span>
                 )}
@@ -174,7 +174,7 @@ export function FireteamList() {
                                     
                                     <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
                                         {member.guardianRank !== undefined && member.guardianRank > 0 && (
-                                            <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded border border-white/10" title={`Guardian Rank ${member.guardianRank}`}>
+                                            <div className="flex items-center gap-1 px-1.5 py-0.5 border border-white/10" title={`Guardian Rank ${member.guardianRank}`}>
                                                 <span className="w-2 h-2 rounded-full bg-destiny-gold/80" />
                                                 <span className="font-mono text-white font-bold">{member.guardianRank}</span>
                                             </div>
@@ -210,7 +210,7 @@ export function FireteamList() {
                         );
                     })
                 ) : (
-                    <div className="p-4 text-center border border-white/5 rounded bg-white/5 h-20 flex items-center justify-center">
+                    <div className="p-4 text-center border border-dashed border-white/10 h-20 flex items-center justify-center">
                         <div className="text-slate-500 text-sm">No Fireteam Detected</div>
                     </div>
                 )}
