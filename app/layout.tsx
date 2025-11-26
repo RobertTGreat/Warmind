@@ -1,13 +1,36 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Barlow_Condensed } from "next/font/google";
+import dynamic from "next/dynamic";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
-import { Toaster } from "sonner";
-import { FirstLoadWarning } from "@/components/FirstLoadWarning";
-import { ClientManifestManager } from "@/components/ClientManifestManager";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+
+// Lazy load non-critical components to reduce main-thread work
+const Toaster = dynamic(
+  () => import("sonner").then((mod) => mod.Toaster),
+  { ssr: false }
+);
+
+const FirstLoadWarning = dynamic(
+  () => import("@/components/FirstLoadWarning").then((mod) => mod.FirstLoadWarning),
+  { ssr: false }
+);
+
+const ClientManifestManager = dynamic(
+  () => import("@/components/ClientManifestManager").then((mod) => mod.ClientManifestManager),
+  { ssr: false }
+);
+
+// Defer analytics to after page load
+const Analytics = dynamic(
+  () => import("@vercel/analytics/react").then((mod) => mod.Analytics),
+  { ssr: false }
+);
+
+const SpeedInsights = dynamic(
+  () => import("@vercel/speed-insights/next").then((mod) => mod.SpeedInsights),
+  { ssr: false }
+);
 
 // Primary font - clean and modern
 const inter = Inter({
@@ -128,6 +151,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`dark ${inter.variable} ${barlowCondensed.variable}`}>
+      <head>
+        {/* Preconnect to external domains for faster resource loading */}
+        <link rel="preconnect" href="https://www.bungie.net" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://images.contentstack.io" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://www.bungie.net" />
+        <link rel="dns-prefetch" href="https://images.contentstack.io" />
+      </head>
       <body
         className={`antialiased min-h-screen flex flex-col font-sans`}
       >

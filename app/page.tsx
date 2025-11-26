@@ -1,12 +1,35 @@
 'use client';
 
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
 import { loginWithBungie } from "@/lib/bungie";
 import { ArrowRight } from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
-import { NewsFeed } from "@/components/NewsFeed";
-import { ClanBrowser } from "@/components/ClanBrowser";
-import { FireteamList } from "@/components/FireteamList";
+
+// Lazy load heavy components to reduce initial JS bundle
+const NewsFeed = dynamic(
+  () => import("@/components/NewsFeed").then((mod) => mod.NewsFeed),
+  { 
+    ssr: false,
+    loading: () => <div className="h-[300px] animate-pulse bg-white/5 rounded-sm" />
+  }
+);
+
+const ClanBrowser = dynamic(
+  () => import("@/components/ClanBrowser").then((mod) => mod.ClanBrowser),
+  { 
+    ssr: false,
+    loading: () => <div className="h-[400px] animate-pulse bg-white/5 rounded-sm" />
+  }
+);
+
+const FireteamList = dynamic(
+  () => import("@/components/FireteamList").then((mod) => mod.FireteamList),
+  { 
+    ssr: false,
+    loading: () => <div className="h-[400px] animate-pulse bg-white/5 rounded-sm" />
+  }
+);
 
 export default function Home() {
   const { isLoggedIn } = useDestinyProfile();

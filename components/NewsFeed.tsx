@@ -5,6 +5,7 @@ import { Newspaper, ExternalLink, Calendar, Loader2, ChevronRight, ChevronLeft }
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 
 interface NewsItem {
     title: string;
@@ -129,10 +130,16 @@ export function NewsFeed() {
                                 {/* Image */}
                                 <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
                                     {item.image ? (
-                                        <img 
+                                        <Image 
                                             src={item.image} 
                                             alt={item.title}
-                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                            fill
+                                            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                                            className="object-cover transition-transform duration-700 group-hover:scale-105"
+                                            // First image on first page is LCP - prioritize it
+                                            priority={page === 0 && i === 0}
+                                            fetchPriority={page === 0 && i === 0 ? "high" : "auto"}
+                                            loading={page === 0 && i === 0 ? "eager" : "lazy"}
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-slate-700">
