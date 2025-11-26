@@ -732,22 +732,21 @@ export default function CharacterPage() {
                                              };
                                              const classNames: Record<number, string> = { 0: 'Titan', 1: 'Hunter', 2: 'Warlock', 3: 'General' };
 
-                                             // 1. No grouping - use VaultGrid directly
-                                             if (!vaultGrouping.byRarity && !vaultGrouping.byClass && !vaultGrouping.byTier) {
-                                                 return (
-                                                     <VaultGrid
-                                                         items={vault}
-                                                         iconSize={iconSize}
-                                                         ownerId="VAULT"
-                                                         checkMatch={checkMatch}
-                                                         getInstanceData={getInstanceData}
-                                                         getSocketsData={getSocketsData}
-                                                         getReusablePlugs={getReusablePlugs}
-                                                         gap={8}
-                                                         maxHeight={350}
-                                                     />
-                                                 );
-                                             }
+                                            // 1. No grouping - use VaultGrid directly
+                                            if (!vaultGrouping.byRarity && !vaultGrouping.byClass && !vaultGrouping.byTier) {
+                                                return (
+                                                    <VaultGrid
+                                                        items={vault}
+                                                        iconSize={iconSize}
+                                                        ownerId="VAULT"
+                                                        checkMatch={checkMatch}
+                                                        getInstanceData={getInstanceData}
+                                                        getSocketsData={getSocketsData}
+                                                        getReusablePlugs={getReusablePlugs}
+                                                        gap={8}
+                                                    />
+                                                );
+                                            }
 
                                              // 2. Group by Rarity ONLY
                                              if (vaultGrouping.byRarity && !vaultGrouping.byClass) {
@@ -843,20 +842,19 @@ export default function CharacterPage() {
                                                  );
                                              }
 
-                                             // Fallback for byTier (not fully implemented)
-                                             return (
-                                                 <VaultGrid
-                                                     items={vault}
-                                                     iconSize={iconSize}
-                                                     ownerId="VAULT"
-                                                     checkMatch={checkMatch}
-                                                     getInstanceData={getInstanceData}
-                                                     getSocketsData={getSocketsData}
-                                                     getReusablePlugs={getReusablePlugs}
-                                                     gap={8}
-                                                     maxHeight={350}
-                                                 />
-                                             );
+                                            // Fallback for byTier (not fully implemented)
+                                            return (
+                                                <VaultGrid
+                                                    items={vault}
+                                                    iconSize={iconSize}
+                                                    ownerId="VAULT"
+                                                    checkMatch={checkMatch}
+                                                    getInstanceData={getInstanceData}
+                                                    getSocketsData={getSocketsData}
+                                                    getReusablePlugs={getReusablePlugs}
+                                                    gap={8}
+                                                />
+                                            );
                                          })()}
                                     </div>
                                 </div>

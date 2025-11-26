@@ -629,19 +629,18 @@ export default function VaultPage() {
 
                                          // 1. No grouping - use VaultGrid directly
                                          if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
-                                             return (
-                                                 <VaultGrid
-                                                     items={sortedVItems}
-                                                     iconSize={iconSize}
-                                                     ownerId="VAULT"
-                                                     checkMatch={checkMatch}
-                                                     getInstanceData={getInstanceData}
-                                                     getSocketsData={getSocketsData}
-                                                     getReusablePlugs={getReusablePlugs}
-                                                     gap={1}
-                                                     maxHeight={350}
-                                                 />
-                                             );
+                                            return (
+                                                <VaultGrid
+                                                    items={sortedVItems}
+                                                    iconSize={iconSize}
+                                                    ownerId="VAULT"
+                                                    checkMatch={checkMatch}
+                                                    getInstanceData={getInstanceData}
+                                                    getSocketsData={getSocketsData}
+                                                    getReusablePlugs={getReusablePlugs}
+                                                    gap={1}
+                                                />
+                                            );
                                          }
 
                                          // 2. Group by Rarity ONLY

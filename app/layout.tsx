@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
@@ -7,6 +8,21 @@ import { FirstLoadWarning } from "@/components/FirstLoadWarning";
 import { ClientManifestManager } from "@/components/ClientManifestManager";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+
+// Primary font - clean and modern
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+// Condensed font - for headers and labels (industrial feel)
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-condensed",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://warmind.app'), // Replace with your actual domain
@@ -111,12 +127,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <head>
-        <link rel="stylesheet" href="https://use.typekit.net/uvz3adx.css" />
-      </head>
+    <html lang="en" className={`dark ${inter.variable} ${barlowCondensed.variable}`}>
       <body
-        className={`antialiased min-h-screen flex flex-col`}
+        className={`antialiased min-h-screen flex flex-col font-sans`}
       >
         <Header />
         <div className="flex flex-1">

@@ -5,8 +5,7 @@
   --foreground: #e2e8f0;
   --accent-gold: #e3ce62; /* D2 Gold */
   --card-bg: rgba(30, 41, 59, 0.7);
-  --font-sans: "helvetica-neue-lt-pro", sans-serif;
-  --font-condensed: "helvetica-neue-lt-pro-cond", sans-serif;
+  /* Fonts are set via Next.js font optimization (Inter + Barlow Condensed) */
 }
 
 @theme inline {
@@ -14,8 +13,7 @@
   --color-foreground: var(--foreground);
   --color-destiny-gold: var(--accent-gold);
   --color-destiny-dark: #181a21;
-  --font-sans: var(--font-sans);
-  --font-condensed: var(--font-condensed);
+  /* Font families use Next.js CSS variables: --font-sans, --font-condensed */
 }
 
 @keyframes marquee {
@@ -52,6 +50,11 @@ body {
     radial-gradient(circle at 0% 0%, rgba(227, 206, 98, 0.05) 0%, transparent 30%);
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* Condensed font utility - use for headers, labels, compact UI */
+.font-condensed {
+  font-family: var(--font-condensed), sans-serif;
 }
 
 /* Custom Scrollbar */
