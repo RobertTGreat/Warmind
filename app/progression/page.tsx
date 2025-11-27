@@ -2,8 +2,9 @@
 
 import dynamic from 'next/dynamic';
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
-import { Loader2, Swords, Shield, Grid3X3 } from "lucide-react";
-import { useState } from "react";
+import { useItemDefinitions } from "@/hooks/useItemDefinitions";
+import { Loader2, Swords, Shield, Grid3X3, Search, CheckCircle2 } from "lucide-react";
+import { useState, useMemo, Fragment } from "react";
 import { cn } from "@/lib/utils";
 
 // Lazy load the heavy PageHeader
@@ -124,9 +125,9 @@ export default function ProgressionPage() {
 function ExoticClassItemChecker({ profile }: { profile: any }) {
     const allItems = useAllItems(profile);
     
-    const titanItems = allItems.filter(item => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.TITAN);
-    const hunterItems = allItems.filter(item => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.HUNTER);
-    const warlockItems = allItems.filter(item => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.WARLOCK);
+    const titanItems = allItems.filter((item: any) => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.TITAN);
+    const hunterItems = allItems.filter((item: any) => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.HUNTER);
+    const warlockItems = allItems.filter((item: any) => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.WARLOCK);
 
     return (
         <div className="space-y-12">
@@ -166,7 +167,7 @@ function ExoticClassItemChecker({ profile }: { profile: any }) {
 
 function ErgoSumChecker({ profile }: { profile: any }) {
     const allItems = useAllItems(profile);
-    const swords = allItems.filter(item => String(item.itemHash) === String(ERGO_SUM_HASH));
+    const swords = allItems.filter((item: any) => String(item.itemHash) === String(ERGO_SUM_HASH));
 
     return (
         <div className="space-y-6">
@@ -216,7 +217,7 @@ function ArmorSetChecker({ profile }: { profile: any }) {
 
     // 1. Filter for Armor items
     const armorItems = useMemo(() => {
-        return allItems.filter(item => item.bucketHash && ARMOR_BUCKETS.includes(item.bucketHash));
+        return allItems.filter((item: any) => item.bucketHash && ARMOR_BUCKETS.includes(item.bucketHash));
     }, [allItems]);
 
     // 2. Get definitions

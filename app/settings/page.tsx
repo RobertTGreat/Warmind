@@ -428,7 +428,7 @@ export default function SettingsPage() {
                     <SettingRow label="Theme" description="Choose your preferred color scheme">
                         <Dropdown 
                             value={settings.theme} 
-                            onChange={settings.setTheme}
+                            onChange={(v) => settings.setTheme(v as Theme)}
                             options={themeOptions}
                         />
                     </SettingRow>
@@ -458,14 +458,14 @@ export default function SettingsPage() {
                     <SettingRow label="Icon Size" description="Size of item icons">
                         <Dropdown 
                             value={settings.iconSize} 
-                            onChange={settings.setIconSize}
+                            onChange={(v) => settings.setIconSize(v as IconSize)}
                             options={iconSizeOptions}
                         />
                     </SettingRow>
                     <SettingRow label="Default Sort" description="How items are sorted by default">
                         <Dropdown 
                             value={settings.sortMethod} 
-                            onChange={settings.setSortMethod}
+                            onChange={(v) => settings.setSortMethod(v as SortMethod)}
                             options={sortOptions}
                         />
                     </SettingRow>
@@ -494,7 +494,7 @@ export default function SettingsPage() {
                     <SettingRow label="Default Tab" description="Which activities to show first">
                         <Dropdown 
                             value={settings.defaultActivityTab} 
-                            onChange={settings.setDefaultActivityTab}
+                            onChange={(v) => settings.setDefaultActivityTab(v as DefaultTab)}
                             options={activityTabOptions}
                         />
                     </SettingRow>
@@ -507,7 +507,7 @@ export default function SettingsPage() {
                     <SettingRow label="Failed Runs Display" description="How to show incomplete activities">
                         <Dropdown 
                             value={settings.showFailedRuns} 
-                            onChange={settings.setShowFailedRuns}
+                            onChange={(v) => settings.setShowFailedRuns(v as FailedRunsDisplay)}
                             options={failedRunsOptions}
                         />
                     </SettingRow>
@@ -518,14 +518,14 @@ export default function SettingsPage() {
                     <SettingRow label="Time Format">
                         <Dropdown 
                             value={settings.timeFormat} 
-                            onChange={settings.setTimeFormat}
+                            onChange={(v) => settings.setTimeFormat(v as TimeFormat)}
                             options={timeFormatOptions}
                         />
                     </SettingRow>
                     <SettingRow label="Date Format">
                         <Dropdown 
                             value={settings.dateFormat} 
-                            onChange={settings.setDateFormat}
+                            onChange={(v) => settings.setDateFormat(v as DateFormat)}
                             options={dateFormatOptions}
                         />
                     </SettingRow>

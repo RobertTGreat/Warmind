@@ -1,36 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Barlow_Condensed } from "next/font/google";
-import dynamic from "next/dynamic";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
-
-// Lazy load non-critical components to reduce main-thread work
-const Toaster = dynamic(
-  () => import("sonner").then((mod) => mod.Toaster),
-  { ssr: false }
-);
-
-const FirstLoadWarning = dynamic(
-  () => import("@/components/FirstLoadWarning").then((mod) => mod.FirstLoadWarning),
-  { ssr: false }
-);
-
-const ClientManifestManager = dynamic(
-  () => import("@/components/ClientManifestManager").then((mod) => mod.ClientManifestManager),
-  { ssr: false }
-);
-
-// Defer analytics to after page load
-const Analytics = dynamic(
-  () => import("@vercel/analytics/react").then((mod) => mod.Analytics),
-  { ssr: false }
-);
-
-const SpeedInsights = dynamic(
-  () => import("@vercel/speed-insights/next").then((mod) => mod.SpeedInsights),
-  { ssr: false }
-);
+import { ClientProviders } from "@/components/ClientProviders";
 
 // Primary font - clean and modern
 const inter = Inter({
@@ -183,11 +156,7 @@ export default function RootLayout({
               {children}
             </main>
         </div>
-        <FirstLoadWarning />
-        <ClientManifestManager />
-        <Toaster position="bottom-center" theme="system" closeButton />
-        <Analytics />
-        <SpeedInsights />
+        <ClientProviders />
       </body>
     </html>
   );
