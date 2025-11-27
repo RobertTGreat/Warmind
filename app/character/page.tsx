@@ -1,13 +1,11 @@
 "use client";
 
+import dynamic from 'next/dynamic';
 import { useDestinyProfile, DestinyStats } from "@/hooks/useDestinyProfile";
 import { BUCKETS, CURRENCIES, MATERIALS, calculateBasePowerLevel, getBestItemsPerSlot } from "@/lib/destinyUtils";
-import { DestinyItemCard } from "@/components/DestinyItemCard";
-import { VaultGrid, GroupedVaultGrid } from "@/components/VaultGrid";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { getBungieImage, moveItem, equipItem, equipLoadout } from "@/lib/bungie";
-import { PageHeader } from "@/components/PageHeader";
 import { useTransferStore } from "@/store/transferStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
@@ -17,8 +15,32 @@ import useSWR from 'swr';
 import { bungieApi, endpoints } from '@/lib/bungie';
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { Search, Settings } from "lucide-react";
-import { ItemDetailsOverlay } from "@/components/ItemDetailsOverlay";
-import { LoadoutButton } from "@/components/LoadoutButton";
+
+// Lazy load heavy components
+const DestinyItemCard = dynamic(
+  () => import("@/components/DestinyItemCard").then((mod) => mod.DestinyItemCard),
+  { ssr: false }
+);
+
+const VaultGrid = dynamic(
+  () => import("@/components/VaultGrid").then((mod) => mod.VaultGrid),
+  { ssr: false }
+);
+
+const GroupedVaultGrid = dynamic(
+  () => import("@/components/VaultGrid").then((mod) => mod.GroupedVaultGrid),
+  { ssr: false }
+);
+
+const ItemDetailsOverlay = dynamic(
+  () => import("@/components/ItemDetailsOverlay").then((mod) => mod.ItemDetailsOverlay),
+  { ssr: false }
+);
+
+const LoadoutButton = dynamic(
+  () => import("@/components/LoadoutButton").then((mod) => mod.LoadoutButton),
+  { ssr: false }
+);
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 

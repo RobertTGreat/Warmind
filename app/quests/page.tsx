@@ -1,14 +1,23 @@
 'use client';
 
-import { PageHeader } from "@/components/PageHeader";
+import dynamic from 'next/dynamic';
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
-import { DestinyItemCard } from "@/components/DestinyItemCard";
-import { QuestItemCard } from "@/components/QuestItemCard";
 import { loginWithBungie } from "@/lib/bungie";
 import { Loader2, Filter } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { cn } from "@/lib/utils";
+
+// Lazy load heavy components
+const DestinyItemCard = dynamic(
+  () => import("@/components/DestinyItemCard").then((mod) => mod.DestinyItemCard),
+  { ssr: false }
+);
+
+const QuestItemCard = dynamic(
+  () => import("@/components/QuestItemCard").then((mod) => mod.QuestItemCard),
+  { ssr: false, loading: () => <div className="h-24 animate-pulse bg-white/5 rounded" /> }
+);
 
 type FilterType = 'All' | 'Exotic' | 'New Light' | 'Seasonal';
 

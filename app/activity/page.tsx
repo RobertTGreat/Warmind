@@ -1,16 +1,30 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { useActivityHistory } from '@/hooks/useActivityHistory';
 import { useOtherUserProfile } from '@/hooks/useOtherUserProfile';
 import { useOtherUserActivityHistory } from '@/hooks/useOtherUserActivityHistory';
 import { ACTIVITIES } from '@/lib/activityDefinitions';
-import { ActivityReportCard } from '@/components/ActivityReportCard';
-import { PGCRViewer } from '@/components/PGCRViewer';
-import { UserSearch } from '@/components/UserSearch';
 import { Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { useState, useMemo } from 'react';
+
+// Lazy load heavy components
+const ActivityReportCard = dynamic(
+  () => import('@/components/ActivityReportCard').then((mod) => mod.ActivityReportCard),
+  { ssr: false, loading: () => <div className="h-48 animate-pulse bg-white/5 rounded" /> }
+);
+
+const PGCRViewer = dynamic(
+  () => import('@/components/PGCRViewer').then((mod) => mod.PGCRViewer),
+  { ssr: false }
+);
+
+const UserSearch = dynamic(
+  () => import('@/components/UserSearch').then((mod) => mod.UserSearch),
+  { ssr: false }
+);
 
 const CLASS_NAMES = {
     0: 'Titan',

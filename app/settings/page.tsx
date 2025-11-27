@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from 'next/dynamic';
 import { 
     useSettingsStore, 
     useSyncSettings,
@@ -15,7 +16,6 @@ import {
 } from "@/store/settingsStore";
 import { clearCache } from "@/lib/activityCache";
 import { cn } from "@/lib/utils";
-import { Dropdown } from "@/components/Dropdown";
 import { 
     Palette, 
     Clock, 
@@ -35,6 +35,12 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+
+// Lazy load dropdown component
+const Dropdown = dynamic(
+  () => import("@/components/Dropdown").then((mod) => mod.Dropdown),
+  { ssr: false }
+);
 
 // ===== Setting Components =====
 

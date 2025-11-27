@@ -1,12 +1,24 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { PageHeader } from "@/components/PageHeader";
-import { TriumphsBrowser } from "@/components/TriumphsBrowser";
+import dynamic from 'next/dynamic';
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
+
+// Lazy load heavy component
+const TriumphsBrowser = dynamic(
+  () => import("@/components/TriumphsBrowser").then((mod) => mod.TriumphsBrowser),
+  { 
+    ssr: false, 
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-2 border-destiny-gold border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+);
 
 export default function TriumphsPage() {
   const { profile, recordCategoriesRootNodeHash, recordSealsRootNodeHash, isLoading, isError } = useDestinyProfile();

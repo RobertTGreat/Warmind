@@ -1,12 +1,16 @@
 'use client';
 
-import { PageHeader } from "@/components/PageHeader";
+import dynamic from 'next/dynamic';
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
-import { Loader2, Swords, Shield, Grid3X3, CheckCircle2, Search, SlidersHorizontal } from "lucide-react";
-import { useState, useMemo, Fragment } from "react";
-import { bungieApi } from "@/lib/bungie";
+import { Loader2, Swords, Shield, Grid3X3 } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { useItemDefinitions } from "@/hooks/useItemDefinitions";
+
+// Lazy load the heavy PageHeader
+const PageHeader = dynamic(
+  () => import("@/components/PageHeader").then((mod) => mod.PageHeader),
+  { ssr: false }
+);
 
 // Known Hashes
 const EXOTIC_CLASS_ITEM_HASHES = {

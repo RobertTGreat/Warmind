@@ -1,8 +1,6 @@
 'use client';
 
-import { DestinyItemCard } from "@/components/DestinyItemCard";
-import { VaultGrid, GroupedVaultGrid } from "@/components/VaultGrid";
-import { CharacterHeader } from "@/components/CharacterHeader";
+import dynamic from 'next/dynamic';
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { useItemDefinitions, ItemDefinition } from "@/hooks/useItemDefinitions";
 import { Loader2, Search, Settings, Archive } from "lucide-react";
@@ -10,6 +8,27 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { moveItem } from "@/lib/bungie";
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
+
+// Lazy load heavy components
+const DestinyItemCard = dynamic(
+  () => import("@/components/DestinyItemCard").then((mod) => mod.DestinyItemCard),
+  { ssr: false }
+);
+
+const VaultGrid = dynamic(
+  () => import("@/components/VaultGrid").then((mod) => mod.VaultGrid),
+  { ssr: false }
+);
+
+const GroupedVaultGrid = dynamic(
+  () => import("@/components/VaultGrid").then((mod) => mod.GroupedVaultGrid),
+  { ssr: false }
+);
+
+const CharacterHeader = dynamic(
+  () => import("@/components/CharacterHeader").then((mod) => mod.CharacterHeader),
+  { ssr: false }
+);
 
 // --- Constants & Helpers ---
 

@@ -1,7 +1,6 @@
 'use client';
 
-import { DestinyItemCard } from "@/components/DestinyItemCard";
-import { VaultGrid } from "@/components/VaultGrid";
+import dynamic from 'next/dynamic';
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { Loader2, Search, Settings } from "lucide-react";
@@ -9,6 +8,12 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { loginWithBungie } from "@/lib/bungie";
 import { useSettingsStore } from "@/store/settingsStore";
+
+// Lazy load heavy grid component
+const VaultGrid = dynamic(
+  () => import("@/components/VaultGrid").then((mod) => mod.VaultGrid),
+  { ssr: false, loading: () => <div className="h-48 animate-pulse bg-white/5 rounded" /> }
+);
 
 export default function InventoryPage() {
   const { profile, isLoggedIn, isLoading: profileLoading } = useDestinyProfile();

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { 
@@ -18,8 +19,13 @@ import {
     decodeLoadoutShareCode,
     getLoadoutShareUrl,
 } from '@/store/loadoutStore';
-import { DestinyItemCard } from '@/components/DestinyItemCard';
 import { getBungieImage, moveItem, equipItem, insertSocketPlugFree } from '@/lib/bungie';
+
+// Lazy load heavy item card component
+const DestinyItemCard = dynamic(
+  () => import('@/components/DestinyItemCard').then((mod) => mod.DestinyItemCard),
+  { ssr: false }
+);
 import { BUCKETS } from '@/lib/destinyUtils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
