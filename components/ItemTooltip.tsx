@@ -42,6 +42,15 @@ const STAT_ORDER = [
     STAT_HASHES.STRENGTH!
 ];
 
+export interface WishListInfo {
+    isWishListed: boolean;
+    isTrash: boolean;
+    notes?: string;
+    tags?: string[];
+    matchType: 'exact' | 'partial' | 'item' | 'none';
+    matchedPerkHashes: number[];
+}
+
 interface ItemTooltipProps {
   name: string;
   itemType: string;
@@ -77,6 +86,8 @@ interface ItemTooltipProps {
     armorQuality?: ArmorQuality | null;
     socketsData?: any; // Socket data to check for archetype
     plugDefs?: Record<number, any>; // Plug definitions for archetype lookup
+    wishListInfo?: WishListInfo; // Wish list match info
+    showWishListSection?: boolean; // Only show wish list section when true (context menu)
 }
 
 import { ScrollingText } from "@/components/ScrollingText";
@@ -111,7 +122,9 @@ export function ItemTooltip({
     containerRef,
     armorQuality,
     socketsData,
-    plugDefs
+    plugDefs,
+    wishListInfo,
+    showWishListSection = false
 }: ItemTooltipProps) {
   const [position, setPosition] = useState<{x: number, y: number} | null>(initialPosition || null);
 
@@ -698,6 +711,152 @@ export function ItemTooltip({
                         </div>
                     </div>
                 )}
+
+                {/* Wishlist Status Section - Always shown when item is wishlisted */}
+                {wishListInfo && wishListInfo.isWishListed && !wishListInfo.isTrash && (
+                    <div className={cn(
+                        "pt-2 border-t mt-2",
+                        wishListInfo.matchType === 'exact' ? "border-destiny-gold/30" : "border-green-500/30"
+                    )}>
+                        {/* Wishlist Status Header */}
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <div className="flex items-center gap-px">
+                                {Array.from({ 
+                                    length: wishListInfo.matchType === 'exact' ? 3 : 
+                                            wishListInfo.matchType === 'partial' ? 2 : 1 
+                                }).map((_, i) => (
+                                    <span 
+                                        key={i}
+                                        className={cn(
+                                            "text-sm drop-shadow-sm",
+                                            wishListInfo.matchType === 'exact' ? "text-destiny-gold" : "text-green-400"
+                                        )}
+                                    >
+                                        ★
+                                    </span>
+                                ))}
+                            </div>
+                            <span className={cn(
+                                "text-xs font-bold uppercase tracking-wider",
+                                wishListInfo.matchType === 'exact' ? "text-destiny-gold" : "text-green-400"
+                            )}>
+                                {wishListInfo.matchType === 'exact' ? 'God Roll' : 
+                                 wishListInfo.matchType === 'partial' ? 'Wish List' : 'Keep'}
+                            </span>
+                            {wishListInfo.tags && wishListInfo.tags.length > 0 && (
+                                <div className="flex gap-1">
+                                    {wishListInfo.tags.slice(0, 2).map((tag, i) => (
+                                        <span 
+                                            key={i}
+                                            className={cn(
+                                                "px-1.5 py-0.5 text-[9px] uppercase font-medium rounded",
+                                                tag.toLowerCase().includes('pvp') ? "bg-red-500/20 text-red-300" :
+                                                tag.toLowerCase().includes('pve') ? "bg-blue-500/20 text-blue-300" :
+                                                "bg-slate-700 text-slate-300"
+                                            )}
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Notes */}
+                        {wishListInfo.notes && (
+                            <p className="text-[10px] text-slate-400 leading-relaxed mb-2 line-clamp-2">
+                                {wishListInfo.notes}
+                            </p>
+                        )}
+
+                        {/* Wishlisted Perks - only if there are matched perks */}
+                        {wishListInfo.matchedPerkHashes && wishListInfo.matchedPerkHashes.length > 0 && plugDefs && (
+                            <>
+                                <p className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">
+                                    Matched Perks
+                                </p>
+                                <div className="flex flex-wrap gap-1">
+                                    {wishListInfo.matchedPerkHashes.map((perkHash) => {
+                                        const perkDef = plugDefs[perkHash];
+                                        if (!perkDef) return null;
+                                        
+                                        // Check if this perk is currently equipped
+                                        const isEquipped = socketsData?.sockets?.some((s: any) => s.plugHash === perkHash);
+                                        
+                                        return (
+                                            <div 
+                                                key={perkHash}
+                                                className="relative group/wishperk z-0 hover:z-50"
+                                            >
+                                                <div className={cn(
+                                                    "w-7 h-7 rounded-full overflow-hidden border-2 transition-all",
+                                                    isEquipped 
+                                                        ? "border-destiny-gold bg-destiny-gold/20 ring-1 ring-destiny-gold/30" 
+                                                        : "border-green-400/60 bg-black/30 opacity-70 hover:opacity-100"
+                                                )}>
+                                                    <Image 
+                                                        src={getBungieImage(perkDef.displayProperties?.icon)} 
+                                                        width={28}
+                                                        height={28}
+                                                        className="object-cover"
+                                                        alt=""
+                                                    />
+                                                    {isEquipped && (
+                                                        <div className="absolute -top-0.5 -right-0.5 text-[7px] text-destiny-gold drop-shadow-md">★</div>
+                                                    )}
+                                                </div>
+                                                
+                                                {/* Hover Tooltip */}
+                                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-44 bg-[#0f0f0f] border border-white/20 p-2.5 rounded shadow-2xl pointer-events-none opacity-0 group-hover/wishperk:opacity-100 transition-opacity z-1000 backdrop-blur-md">
+                                                    <div className="flex items-center gap-1.5 mb-1">
+                                                        <p className="text-xs font-bold text-destiny-gold leading-tight">{perkDef.displayProperties?.name}</p>
+                                                        <span className="text-destiny-gold text-[10px]">★</span>
+                                                    </div>
+                                                    <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-1.5">{perkDef.itemTypeDisplayName}</p>
+                                                    <p className="text-[10px] text-slate-300 leading-relaxed line-clamp-3">{perkDef.displayProperties?.description}</p>
+                                                    {isEquipped && (
+                                                        <p className="text-[9px] text-green-400 mt-1.5 uppercase font-medium">✓ Currently Equipped</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
+
+                {/* Trash Roll Section - Shown when item is in trash list */}
+                {wishListInfo && wishListInfo.isTrash && (
+                    <div className="pt-2 border-t mt-2 border-red-500/30">
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-5 h-5 rounded flex items-center justify-center bg-red-500/20 text-red-400 text-sm font-bold">
+                                ✕
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-wider text-red-400">
+                                Trash Roll
+                            </span>
+                            {wishListInfo.tags && wishListInfo.tags.length > 0 && (
+                                <div className="flex gap-1">
+                                    {wishListInfo.tags.slice(0, 2).map((tag, i) => (
+                                        <span 
+                                            key={i}
+                                            className="px-1.5 py-0.5 text-[9px] uppercase font-medium rounded bg-slate-700 text-slate-300"
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {wishListInfo.notes && (
+                            <p className="text-[10px] text-slate-400 leading-relaxed line-clamp-2">
+                                {wishListInfo.notes}
+                            </p>
+                        )}
+                    </div>
+                )}
                 
 
 
@@ -852,6 +1011,7 @@ export function ItemTooltip({
                                                 socket.options.map((plug: any, i: number) => {
                                                    const isSelected = plug.hash === socket.activePlug?.hash;
                                                    const isEnhanced = plug.displayProperties?.name?.includes("Enhanced");
+                                                   const isWishListedPerk = wishListInfo?.matchedPerkHashes?.includes(plug.hash);
                                                    const uniqueKey = `${plug.hash}-${i}`; // Ensure unique key
                                                    return (
                                                        <div 
@@ -868,7 +1028,11 @@ export function ItemTooltip({
                                                         >
                                                              <div className={cn(
                                                                  "w-8 h-8 rounded-full overflow-hidden relative transition-all border",
-                                                                 "border-gray-500",
+                                                                 isWishListedPerk && isSelected
+                                                                    ? "border-destiny-gold ring-1 ring-destiny-gold/50" 
+                                                                    : isWishListedPerk
+                                                                    ? "border-green-400"
+                                                                    : "border-gray-500",
                                                                  isSelected 
                                                                     ? "bg-[#5b94be] opacity-100" 
                                                                     : "bg-black/20 opacity-40 hover:opacity-100"
@@ -884,13 +1048,31 @@ export function ItemTooltip({
                                                                  {isEnhanced && (
                                                                      <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[5px] border-b-destiny-gold" />
                                                                  )}
+
+                                                                 {/* Wish List Star Indicator */}
+                                                                 {isWishListedPerk && (
+                                                                     <div className={cn(
+                                                                         "absolute -top-0.5 -right-0.5 text-[8px] drop-shadow-md",
+                                                                         isSelected ? "text-destiny-gold" : "text-green-400"
+                                                                     )}>
+                                                                         ★
+                                                                     </div>
+                                                                 )}
                                                              </div>
                                                              
                                                              {/* Hover Tooltip for Icon */}
                                                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-[#0f0f0f] border border-white/20 p-3 rounded shadow-2xl pointer-events-none opacity-0 group-hover/perkicon:opacity-100 transition-opacity z-1000 backdrop-blur-md">
-                                                                 <p className="text-sm font-bold text-destiny-gold mb-0.5 leading-tight">{plug.displayProperties?.name}</p>
+                                                                 <div className="flex items-center gap-1.5 mb-0.5">
+                                                                     <p className="text-sm font-bold text-destiny-gold leading-tight">{plug.displayProperties?.name}</p>
+                                                                     {isWishListedPerk && (
+                                                                         <span className="text-destiny-gold text-xs">★</span>
+                                                                     )}
+                                                                 </div>
                                                                  <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">{plug.itemTypeDisplayName}</p>
                                                                  <p className="text-xs text-slate-300 leading-relaxed">{plug.displayProperties?.description}</p>
+                                                                 {isWishListedPerk && (
+                                                                     <p className="text-[10px] text-destiny-gold mt-2 uppercase font-medium">Wish List Perk</p>
+                                                                 )}
                                                              </div>
                                                         </div>
                                                     );

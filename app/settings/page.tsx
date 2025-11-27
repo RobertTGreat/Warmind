@@ -31,10 +31,44 @@ import {
     RefreshCw,
     Crown,
     Loader2,
-    AlertCircle
+    AlertCircle,
+    Star,
+    Plus,
+    X,
+    ExternalLink,
+    ThumbsDown
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useWishListStore, DEFAULT_WISH_LIST_URL, PRESET_WISH_LISTS, PresetWishList } from "@/store/wishlistStore";
+
+// Fallback in case the import fails (Turbopack issue)
+const PRESET_WISH_LISTS_FALLBACK: PresetWishList[] = [
+    {
+        id: 'voltron',
+        name: 'Voltron (Default)',
+        description: 'The default DIM wish list - a compilation of god rolls from top community minds.',
+        url: 'https://raw.githubusercontent.com/48klocs/dim-wish-list-sources/master/voltron.txt',
+        author: '48klocs & Community'
+    },
+    {
+        id: 'choosy-voltron',
+        name: 'Choosy Voltron',
+        description: 'Voltron with additional opinionated trash rolls added in.',
+        url: 'https://raw.githubusercontent.com/48klocs/dim-wish-list-sources/master/choosy_voltron.txt',
+        author: '48klocs & Community'
+    },
+    {
+        id: 'justanotherteam',
+        name: 'Just Another Team',
+        description: 'Roll recommendations from Azared, Alpharius and BeenLab.',
+        url: 'https://raw.githubusercontent.com/dsf000z/JAT-wishlists-bundler/main/bundles/DIM-strict/just-another-team-mnk.txt',
+        author: 'Azared, Alpharius & BeenLab'
+    },
+];
+
+// Use fallback if import is undefined (Turbopack hot reload issue)
+const safePresetWishLists = PRESET_WISH_LISTS ?? PRESET_WISH_LISTS_FALLBACK;
 
 // Lazy load dropdown component
 const Dropdown = dynamic(
@@ -308,6 +342,385 @@ function SyncSection() {
     );
 }
 
+// ===== Wish List Section Component =====
+
+function WishListSection() {
+    const {
+        wishLists,
+        isLoading,
+        loadingUrl,
+        error,
+        showWishListIndicators,
+        showTrashIndicators,
+        addWishList,
+        removeWishList,
+        toggleWishList,
+        refreshWishList,
+        refreshAllWishLists,
+        setShowWishListIndicators,
+        setShowTrashIndicators,
+    } = useWishListStore();
+    
+    const [newUrl, setNewUrl] = useState('');
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [showPresets, setShowPresets] = useState(false);
+    
+    const handleAddWishList = useCallback(async () => {
+        if (!newUrl.trim()) return;
+        
+        await addWishList(newUrl.trim());
+        setNewUrl('');
+        setShowAddForm(false);
+        
+        if (!useWishListStore.getState().error) {
+            toast.success('Wish list added successfully');
+        }
+    }, [newUrl, addWishList]);
+    
+    const handleAddPreset = useCallback(async (url: string, name: string) => {
+        await addWishList(url);
+        if (!useWishListStore.getState().error) {
+            toast.success(`${name} added`);
+        }
+    }, [addWishList]);
+    
+    const handleRefreshAll = useCallback(async () => {
+        await refreshAllWishLists();
+        toast.success('All wish lists refreshed');
+    }, [refreshAllWishLists]);
+    
+    const totalRolls = wishLists.reduce((acc, wl) => acc + wl.rollCount, 0);
+    const totalTrash = wishLists.reduce((acc, wl) => acc + wl.trashRollCount, 0);
+    
+    // Check which presets are already added
+    const isPresetAdded = (url: string) => wishLists.some(wl => wl.url === url);
+    
+    return (
+        <SettingSection title="Wish Lists" icon={Star}>
+            <div className="text-xs text-slate-400 mb-4">
+                Import community-curated weapon roll recommendations from DIM wish lists.
+                Items matching wish list rolls will be highlighted in your inventory.
+            </div>
+            
+            <SettingRow label="Show Wish List Indicators" description="Highlight god rolls with a thumbs up">
+                <Toggle 
+                    checked={showWishListIndicators} 
+                    onChange={setShowWishListIndicators} 
+                />
+            </SettingRow>
+            
+            <SettingRow label="Show Trash Indicators" description="Mark trash rolls with a thumbs down">
+                <Toggle 
+                    checked={showTrashIndicators} 
+                    onChange={setShowTrashIndicators} 
+                />
+            </SettingRow>
+            
+            {/* Wish List Stats */}
+            {wishLists.length > 0 && (
+                <div className="flex items-center gap-4 py-3 border-b border-white/5">
+                    <div className="flex items-center gap-2">
+                        <Star className="w-8 h-8 text-green-400" />
+                        <span className="text-sm text-slate-300">{totalRolls.toLocaleString()} wish list rolls</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <ThumbsDown className="w-4 h-4 text-red-400" />
+                        <span className="text-sm text-slate-300">{totalTrash.toLocaleString()} trash rolls</span>
+                    </div>
+                </div>
+            )}
+            
+            {/* Error Display */}
+            {error && (
+                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                </div>
+            )}
+            
+            {/* Preset Wish Lists */}
+            <div className="pt-2 border-t border-white/5">
+                <button
+                    onClick={() => setShowPresets(!showPresets)}
+                    className="flex items-center justify-between w-full text-left py-2"
+                >
+                    <span className="text-sm font-medium text-slate-300">Community Wish Lists</span>
+                    <span className={cn(
+                        "text-xs text-slate-500 transition-transform",
+                        showPresets ? "rotate-180" : ""
+                    )}>
+                        ▼
+                    </span>
+                </button>
+                
+                {showPresets && (
+                    <div className="space-y-2 mt-2">
+                        {safePresetWishLists.map(preset => {
+                            const isAdded = isPresetAdded(preset.url);
+                            const addedList = wishLists.find(wl => wl.url === preset.url);
+                            const isCurrentlyLoading = loadingUrl === preset.url;
+                            
+                            return (
+                                <div 
+                                    key={preset.id}
+                                    className={cn(
+                                        "p-3 rounded-lg border transition-colors",
+                                        isAdded 
+                                            ? addedList?.enabled 
+                                                ? "bg-destiny-gold/5 border-destiny-gold/20" 
+                                                : "bg-slate-800/30 border-white/5 opacity-60"
+                                            : "bg-slate-800/30 border-white/5"
+                                    )}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className={cn(
+                                                    "font-medium truncate",
+                                                    isAdded ? "text-destiny-gold" : "text-white"
+                                                )}>
+                                                    {preset.name}
+                                                </h4>
+                                                {isCurrentlyLoading && (
+                                                    <Loader2 className="w-3 h-3 text-destiny-gold animate-spin shrink-0" />
+                                                )}
+                                                {isAdded && addedList && (
+                                                    <span className="text-[10px] text-green-400 bg-green-500/20 px-1.5 py-0.5 rounded uppercase font-medium">
+                                                        Added
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{preset.description}</p>
+                                            {preset.author && (
+                                                <p className="text-[10px] text-slate-600 mt-1">By {preset.author}</p>
+                                            )}
+                                            {isAdded && addedList && (
+                                                <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-500">
+                                                    <span className="flex items-center gap-1">
+                                                        <Star className="w-2.5 h-2.5 text-green-400" />
+                                                        {addedList.rollCount.toLocaleString()}
+                                                    </span>
+                                                    <span className="flex items-center gap-1">
+                                                        <ThumbsDown className="w-2.5 h-2.5 text-red-400" />
+                                                        {addedList.trashRollCount.toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            {isAdded && addedList ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => toggleWishList(addedList.id)}
+                                                        className={cn(
+                                                            "p-1.5 rounded transition-colors",
+                                                            addedList.enabled 
+                                                                ? "text-green-400 hover:bg-green-500/20" 
+                                                                : "text-slate-500 hover:bg-slate-700"
+                                                        )}
+                                                        title={addedList.enabled ? "Disable" : "Enable"}
+                                                    >
+                                                        <Check className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            removeWishList(addedList.id);
+                                                            toast.success('Wish list removed');
+                                                        }}
+                                                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/20 rounded transition-colors"
+                                                        title="Remove"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleAddPreset(preset.url, preset.name)}
+                                                    disabled={isLoading}
+                                                    className="px-3 py-1.5 bg-destiny-gold/10 hover:bg-destiny-gold/20 border border-destiny-gold/30 text-destiny-gold rounded text-xs font-medium transition-colors disabled:opacity-50"
+                                                >
+                                                    {isCurrentlyLoading ? (
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                    ) : (
+                                                        <Plus className="w-3 h-3" />
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* User's Wish Lists */}
+            <div className="space-y-2 pt-4">
+                <h4 className="text-xs uppercase tracking-wider text-slate-500 font-medium">Your Wish Lists</h4>
+                {wishLists.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-white/10 rounded-lg">
+                        <Star className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500 mb-3">No wish lists added yet</p>
+                        <p className="text-xs text-slate-600">Add a preset above or add a custom URL below</p>
+                    </div>
+                ) : (
+                    <>
+                        {wishLists.map(wishList => (
+                            <div 
+                                key={wishList.id}
+                                className={cn(
+                                    "p-3 rounded-lg border transition-colors",
+                                    wishList.enabled 
+                                        ? "bg-slate-800/50 border-white/10" 
+                                        : "bg-slate-900/50 border-white/5 opacity-60"
+                                )}
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="font-medium text-white truncate">{wishList.title}</h4>
+                                            {loadingUrl === wishList.url && (
+                                                <Loader2 className="w-3 h-3 text-destiny-gold animate-spin shrink-0" />
+                                            )}
+                                        </div>
+                                        {wishList.description && (
+                                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{wishList.description}</p>
+                                        )}
+                                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                                            <span className="flex items-center gap-1">
+                                                <Star className="w-3 h-3 text-green-400" />
+                                                {wishList.rollCount.toLocaleString()}
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <ThumbsDown className="w-3 h-3 text-red-400" />
+                                                {wishList.trashRollCount.toLocaleString()}
+                                            </span>
+                                            <span>
+                                                Updated {new Date(wishList.lastUpdated).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            onClick={() => toggleWishList(wishList.id)}
+                                            className={cn(
+                                                "p-1.5 rounded transition-colors",
+                                                wishList.enabled 
+                                                    ? "text-green-400 hover:bg-green-500/20" 
+                                                    : "text-slate-500 hover:bg-slate-700"
+                                            )}
+                                            title={wishList.enabled ? "Disable" : "Enable"}
+                                        >
+                                            <Check className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => refreshWishList(wishList.id)}
+                                            disabled={isLoading}
+                                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors disabled:opacity-50"
+                                            title="Refresh"
+                                        >
+                                            <RefreshCw className={cn("w-4 h-4", loadingUrl === wishList.url && "animate-spin")} />
+                                        </button>
+                                        <a
+                                            href={wishList.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                                            title="View Source"
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                        <button
+                                            onClick={() => {
+                                                removeWishList(wishList.id);
+                                                toast.success('Wish list removed');
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/20 rounded transition-colors"
+                                            title="Remove"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </>
+                )}
+            </div>
+            
+            {/* Add Custom Wish List */}
+            <div className="pt-4 border-t border-white/5 mt-4">
+                <h4 className="text-xs uppercase tracking-wider text-slate-500 font-medium mb-3">Custom Wish List</h4>
+                {showAddForm ? (
+                    <div className="space-y-3">
+                        <input
+                            type="url"
+                            value={newUrl}
+                            onChange={(e) => setNewUrl(e.target.value)}
+                            placeholder="Enter wish list URL (e.g., raw GitHub URL)"
+                            className="w-full px-3 py-2 bg-slate-800 border border-white/10 rounded-lg text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-destiny-gold/50"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleAddWishList();
+                                if (e.key === 'Escape') setShowAddForm(false);
+                            }}
+                            autoFocus
+                        />
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleAddWishList}
+                                disabled={isLoading || !newUrl.trim()}
+                                className="flex items-center gap-2 px-4 py-2 bg-destiny-gold/10 hover:bg-destiny-gold/20 border border-destiny-gold/30 text-destiny-gold rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                            >
+                                {isLoading ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-4 h-4" />
+                                        Add
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowAddForm(false);
+                                    setNewUrl('');
+                                }}
+                                className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowAddForm(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-white/10 text-white rounded text-xs font-medium transition-colors"
+                        >
+                            <Plus className="w-3 h-3" />
+                            Add Custom URL
+                        </button>
+                        {wishLists.length > 0 && (
+                            <button
+                                onClick={handleRefreshAll}
+                                disabled={isLoading}
+                                className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-white transition-colors text-xs disabled:opacity-50"
+                            >
+                                <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} />
+                                Refresh All
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        </SettingSection>
+    );
+}
+
 // ===== Main Settings Page =====
 
 export default function SettingsPage() {
@@ -419,6 +832,11 @@ export default function SettingsPage() {
             {/* Cloud Sync - Premium Feature (Full width) */}
             <div className="mb-6">
                 <SyncSection />
+            </div>
+
+            {/* Wish Lists (Full width) */}
+            <div className="mb-6">
+                <WishListSection />
             </div>
 
             {/* 2-Column Grid */}

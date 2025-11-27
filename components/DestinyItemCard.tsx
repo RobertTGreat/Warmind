@@ -8,6 +8,7 @@ import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useTransferStore } from '@/store/transferStore';
 import { getItemTier, getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils';
+import { useWishListStore } from '@/store/wishlistStore';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -387,6 +388,25 @@ export function DestinyItemCard({
       return getArmorQuality(baseStats, def);
   }, [def, instanceData, socketsData, plugDefs]);
 
+  // Extract perk hashes for wish list matching
+  const perkHashes = useMemo(() => {
+      if (!socketsData?.sockets) return [];
+      const hashes: number[] = [];
+      socketsData.sockets.forEach((socket: any) => {
+          if (socket.plugHash) {
+              hashes.push(socket.plugHash);
+          }
+      });
+      return hashes;
+  }, [socketsData]);
+
+  // Wish List Integration
+  const getWishListInfo = useWishListStore(state => state.getWishListInfo);
+  const wishListInfo = useMemo(() => {
+      if (!itemHash) return { isWishListed: false, isTrash: false, matchType: 'none' as const, matchedPerkHashes: [] };
+      return getWishListInfo(itemHash, perkHashes.length > 0 ? perkHashes : undefined);
+  }, [itemHash, perkHashes, getWishListInfo]);
+
   // Handlers
   const handleContextMenu = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -520,6 +540,16 @@ export function DestinyItemCard({
                     </div>
                 )}
 
+                {/* Trash Indicator - Only show on icon for trash rolls */}
+                {wishListInfo.isTrash && (
+                    <div className={cn(
+                        "absolute bottom-0.5 right-0.5 z-20 flex items-center justify-center rounded-sm shadow-lg bg-red-500/90 text-white font-bold",
+                        size === 'small' ? "w-3.5 h-3.5 text-[7px]" : "w-4 h-4 text-[8px]"
+                    )}>
+                        ✕
+                    </div>
+                )}
+
                 {/* Tier Indicator Overlay (Stars) - Weapons and Armor */}
                 {(def.itemType === 3 || def.itemType === 2) && tierNumber > 1 && (
                     <div className={cn(
@@ -545,10 +575,10 @@ export function DestinyItemCard({
             </div>
 
             {/* Bottom Section */}
-            {(!minimal && !hidePower && (instanceData?.primaryStat?.value || elementIcon || quantity || (objectives && objectives.length > 0) || timeLeft)) && (
+            {(!minimal && !hidePower && (instanceData?.primaryStat?.value || elementIcon || quantity || (objectives && objectives.length > 0) || timeLeft || wishListInfo.isWishListed)) && (
                 <div className="mt-1 w-full flex flex-col gap-1 bg-slate-900/90 border border-white/10 px-1.5 py-0.5 rounded-sm backdrop-blur-sm">
                     {/* Stats/Quantity/Expiration Row */}
-                    {(instanceData?.primaryStat?.value || elementIcon || quantity || timeLeft) && (
+                    {(instanceData?.primaryStat?.value || elementIcon || quantity || timeLeft || wishListInfo.isWishListed) && (
                         <div className="flex items-center justify-between w-full">
                             {quantity ? (
                                 <span className="text-[10px] font-bold leading-none text-white">
@@ -574,6 +604,26 @@ export function DestinyItemCard({
                                             {powerDiff > 0 ? '+' : ''}{powerDiff}
                                         </span>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Wish List Star Rating System */}
+                            {wishListInfo.isWishListed && !wishListInfo.isTrash && (
+                                <div className="flex items-center gap-px">
+                                    {Array.from({ 
+                                        length: wishListInfo.matchType === 'exact' ? 3 : 
+                                                wishListInfo.matchType === 'partial' ? 2 : 1 
+                                    }).map((_, i) => (
+                                        <span 
+                                            key={i}
+                                            className={cn(
+                                                "text-[8px] drop-shadow-sm leading-none",
+                                                wishListInfo.matchType === 'exact' ? "text-destiny-gold" : "text-green-400"
+                                            )}
+                                        >
+                                            ★
+                                        </span>
+                                    ))}
                                 </div>
                             )}
                             
@@ -641,6 +691,7 @@ export function DestinyItemCard({
                 armorQuality={armorQuality}
                 socketsData={socketsData}
                 plugDefs={plugDefs}
+                wishListInfo={wishListInfo}
             />
         )}
 
@@ -658,6 +709,9 @@ export function DestinyItemCard({
                 sockets={resolvedSockets}
                 instanceData={instanceData}
                 detailedPerks={detailedPerks}
+                wishListInfo={wishListInfo}
+                socketsData={socketsData}
+                plugDefs={plugDefs}
             />
         )}
     </>

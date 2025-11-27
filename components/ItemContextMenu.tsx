@@ -6,7 +6,7 @@ import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlug
 import { toast } from 'sonner';
 import { useTransferStore } from '@/store/transferStore';
 import { useUIStore } from '@/store/uiStore';
-import { ItemTooltip } from './ItemTooltip';
+import { ItemTooltip, WishListInfo } from './ItemTooltip';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 
 interface ItemContextMenuProps {
@@ -20,12 +20,16 @@ interface ItemContextMenuProps {
     itemDef?: any;
     sockets?: { socket: any, def: any }[];
     instanceData?: any;
+    detailedPerks?: any[];
+    wishListInfo?: WishListInfo;
+    socketsData?: any;
+    plugDefs?: Record<number, any>;
 }
 
 export function ItemContextMenu({ 
     x, y, onClose, itemHash, itemInstanceId, ownerId, isLocked, 
-    itemDef, sockets, instanceData, detailedPerks 
-}: ItemContextMenuProps & { detailedPerks?: any[] }) {
+    itemDef, sockets, instanceData, detailedPerks, wishListInfo, socketsData, plugDefs
+}: ItemContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const { profile, stats, membershipInfo } = useDestinyProfile();
@@ -138,9 +142,12 @@ export function ItemContextMenu({
             killEffects,
             killTrackers,
             enhancementTier: undefined, 
-            tier: undefined 
+            tier: undefined,
+            wishListInfo,
+            socketsData,
+            plugDefs
         };
-    }, [itemDef, sockets, instanceData, detailedPerks]);
+    }, [itemDef, sockets, instanceData, detailedPerks, wishListInfo, socketsData, plugDefs]);
     
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -256,6 +263,7 @@ export function ItemContextMenu({
                     itemDef={itemDef}
                     onPlugClick={(socketIndex, plugHash) => handleEquipPlug(socketIndex, plugHash)}
                     containerRef={tooltipRef}
+                    showWishListSection={true}
                 />
             )}
 
