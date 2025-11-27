@@ -3,7 +3,7 @@ import { bungieApi, endpoints } from '@/lib/bungie';
 import { getFromDB, setInDB } from '@/lib/indexedDB';
 
 const CACHE_KEY_PREFIX = 'destiny_manifest_item_';
-const CACHE_VERSION = 'v1'; 
+const CACHE_VERSION = 'v2'; // Bumped to force refetch of updated material hashes 
 
 // Global in-memory cache to avoid refetching/re-reading DB on every hover
 const globalCache: Record<number, ItemDefinition> = {};

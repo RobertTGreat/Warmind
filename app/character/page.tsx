@@ -897,21 +897,55 @@ export default function CharacterPage() {
                          </span>
                     </div>
                     <div className="flex-1">
-                        <div className="grid grid-cols-5 gap-1">
+                        <div className="grid grid-cols-5 gap-2">
                             {Array.from({ length: 10 }).map((_, i) => {
                                 const item = engrams[i];
                                 return (
-                                    <div key={i} className="aspect-square rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
-                                        {item && (
-                                            <DestinyItemCard
-                                                itemHash={item.itemHash}
-                                                itemInstanceId={item.itemInstanceId}
-                                                instanceData={profile.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                                reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
-                                                className="w-full h-full"
-                                                size={iconSize}
+                                    <div key={i} className="relative" style={{ aspectRatio: '1 / 0.866' }}>
+                                        {/* SVG Hexagon Border (flat-top, rounded corners) */}
+                                        <svg 
+                                            className="absolute inset-0 w-full h-full" 
+                                            viewBox="0 0 100 86.6"
+                                        >
+                                            <path 
+                                                d="M 32,2 
+                                                   L 68,2 
+                                                   Q 75,2 80,10 
+                                                   L 92,36 
+                                                   Q 98,43.3 92,50.6 
+                                                   L 80,76.6 
+                                                   Q 75,84.6 68,84.6 
+                                                   L 32,84.6 
+                                                   Q 25,84.6 20,76.6 
+                                                   L 8,50.6 
+                                                   Q 2,43.3 8,36 
+                                                   L 20,10 
+                                                   Q 25,2 32,2 
+                                                   Z" 
+                                                fill="none" 
+                                                stroke="rgb(30 41 59)" 
+                                                strokeWidth="2"
                                             />
-                                        )}
+                                        </svg>
+                                        {/* Content clipped to hexagon */}
+                                        <div 
+                                            className="absolute inset-0 overflow-hidden flex items-center justify-center"
+                                            style={{ 
+                                                clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
+                                            }}
+                                        >
+                                            {item && (
+                                                <DestinyItemCard
+                                                    itemHash={item.itemHash}
+                                                    itemInstanceId={item.itemInstanceId}
+                                                    instanceData={profile.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                    reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
+                                                    className="w-full h-full"
+                                                    size={iconSize}
+                                                    hideBorder={true}
+                                                />
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })}

@@ -30,11 +30,11 @@ export const CURRENCIES = {
 // Material Item Hashes
 export const MATERIALS = {
     ENHANCEMENT_CORE: 3853748946,
-    ENHANCEMENT_PRISM: 4257549241,
-    ASCENDANT_SHARD: 4257549242,
-    ASCENDANT_ALLOY: 3581008036, // Updated active hash
-    STRANGE_COIN: 3702027550, // 30th Anni
-    STRANGE_COIN_XUR: 2949235560, // Final Shape Rework
+    ENHANCEMENT_PRISM: 4257549984,
+    ASCENDANT_SHARD: 4257549985,
+    ASCENDANT_ALLOY: 353704689,
+    STRANGE_COIN: 800069450, // 30th Anni (Redeemable)
+    STRANGE_COIN_XUR: 2569113415, // Current Xur Strange Coin (Currency)
 };
 
 // Presentation Node Hashes
