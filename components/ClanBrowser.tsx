@@ -65,8 +65,8 @@ export function ClanBrowser() {
               const chunk = membersToFetch.slice(i, i + CHUNK_SIZE);
               
               await Promise.all(chunk.map(async (member: any) => {
+                  const user = member.destinyUserInfo;
                   try {
-                      const user = member.destinyUserInfo;
                       const res = await bungieApi.get(
                           endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])
                       );
@@ -93,8 +93,13 @@ export function ClanBrowser() {
                               }
                           }));
                       }
-                  } catch (e) {
-                      // Fail silently for individual member
+                  } catch {
+                      // Expected for private profiles, inactive accounts, or cross-save issues
+                      // Mark as attempted so we don't retry
+                      setMemberStats(prev => ({
+                          ...prev,
+                          [user.membershipId]: { power: 0, guardianRank: 0, emblemPath: '' }
+                      }));
                   }
               }));
               

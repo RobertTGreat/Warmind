@@ -1,9 +1,19 @@
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { loginWithBungie } from "@/lib/bungie";
-import { ArrowRight } from "lucide-react";
+import { 
+  ArrowRight, 
+  Shield, 
+  Users, 
+  Trophy, 
+  Newspaper, 
+  Package, 
+  BarChart3,
+  Sparkles
+} from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 
 // Lazy load heavy components to reduce initial JS bundle
@@ -31,50 +41,68 @@ const FireteamList = dynamic(
   }
 );
 
+const features = [
+  {
+    icon: Newspaper,
+    title: "Live News Feed",
+    description: "Latest TWAB posts and patch notes"
+  },
+  {
+    icon: Users,
+    title: "Clan Roster",
+    description: "Track members' online status in real-time"
+  },
+  {
+    icon: Package,
+    title: "Inventory Manager",
+    description: "Manage vault and transfer items"
+  },
+  {
+    icon: Trophy,
+    title: "Triumphs & Collections",
+    description: "Track seals and collectibles"
+  },
+  {
+    icon: BarChart3,
+    title: "Activity History",
+    description: "Review raids, Crucible, and Nightfalls"
+  },
+  {
+    icon: Shield,
+    title: "Character Loadouts",
+    description: "Save and equip builds instantly"
+  }
+];
+
 export default function Home() {
   const { isLoggedIn } = useDestinyProfile();
+  const [mounted, setMounted] = useState(false);
+
+  // Always call useEffect unconditionally to prevent hook order issues
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-    // Hide scrollbar on home page
-    document.documentElement.classList.add('no-scrollbar');
-    document.body.classList.add('no-scrollbar');
+    // Hide scrollbar on home page when logged out
+    if (mounted && !isLoggedIn) {
+      document.documentElement.classList.add('no-scrollbar');
+      document.body.classList.add('no-scrollbar');
+    }
 
     return () => {
       document.documentElement.classList.remove('no-scrollbar');
       document.body.classList.remove('no-scrollbar');
     };
-  }, []);
+  }, [mounted, isLoggedIn]);
+
+  // Show nothing during hydration to prevent mismatch
+  if (!mounted) {
+    return null;
+  }
 
   if (!isLoggedIn) {
-    // Login Overlay State
-    return (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900/80 backdrop-blur-xl">
-            <div className="flex flex-col items-center space-y-8 p-8 animate-in fade-in zoom-in duration-500">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 bg-white/5 rounded-sm flex items-center justify-center border border-white/10 shadow-2xl">
-                        <div className="w-8 h-8 bg-destiny-gold rotate-45" />
-                    </div>
-                    <h1 className="text-4xl font-bold tracking-[0.2em] text-white uppercase">
-                        WARMIND
-                    </h1>
-                </div>
-                
-                <p className="text-slate-400 max-w-sm text-center text-sm leading-relaxed">
-                    Sign in with your Bungie account to access your personalized dashboard.
-                </p>
-
-                <button
-                    onClick={() => loginWithBungie()}
-                    className="group relative px-8 py-4 bg-destiny-gold/90 hover:bg-destiny-gold text-slate-900 font-bold text-lg uppercase tracking-widest rounded-sm transition-all hover:shadow-[0_0_30px_rgba(227,206,98,0.3)]"
-                >
-                    <span className="flex items-center gap-2">
-                        Login with Bungie
-                        <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                    </span>
-                </button>
-            </div>
-        </div>
-    );
+    return <LandingPage />;
   }
 
   // Dashboard State (Logged In)
@@ -102,6 +130,139 @@ export default function Home() {
               </div>
           </div>
       </div>
+    </div>
+  );
+}
+
+function LandingPage() {
+  return (
+    <div className="min-h-screen flex flex-col relative">
+      {/* Background Image */}
+      <div className="fixed inset-0 -z-10">
+        <Image
+          src="/Renegades-Background.jpg"
+          alt=""
+          fill
+          className="object-cover blur-md"
+          priority
+        />
+        {/* Dark overlay */}
+        <div className="absolute inset-0 bg-black/70" />
+      </div>
+
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center px-6 lg:px-10 py-12 lg:py-0">
+        <div className="w-full max-w-[1600px] grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-12 items-center">
+          
+          {/* Left Side - Branding & Features */}
+          <div className="space-y-8">
+            {/* Logo & Title */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="relative w-14 h-14">
+                  <Image
+                    src="/icon-512.png"
+                    alt="Warmind Logo"
+                    fill
+                    className="object-contain drop-shadow-[0_0_20px_rgba(227,206,98,0.3)]"
+                    priority
+                  />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-[0.2em] text-white uppercase">
+                    WARMIND
+                  </h1>
+                  <p className="text-destiny-gold/80 text-xs tracking-[0.3em] uppercase">
+                    Destiny 2 Companion
+                  </p>
+                </div>
+              </div>
+              
+              <p className="text-slate-400 leading-relaxed max-w-md">
+                Your personal command center for Destiny 2. Track progress, manage inventory, 
+                and stay connected with your fireteam.
+              </p>
+            </div>
+
+            {/* Feature List */}
+            <ul className="space-y-3">
+              {features.map((feature) => (
+                <li key={feature.title} className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-destiny-gold/10 rounded flex items-center justify-center shrink-0">
+                    <feature.icon className="w-4 h-4 text-destiny-gold" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-white font-medium text-sm">{feature.title}</span>
+                    <span className="text-slate-300 text-sm">— {feature.description}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* CTA Button */}
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={() => loginWithBungie()}
+                className="group px-8 py-4 bg-destiny-gold hover:bg-destiny-gold/90 text-slate-900 font-bold uppercase tracking-widest rounded-sm transition-all duration-300 hover:shadow-[0_0_40px_rgba(227,206,98,0.3)]"
+              >
+                <span className="flex items-center gap-3">
+                  <Sparkles className="w-4 h-4" />
+                  Sign in with Bungie
+                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </span>
+              </button>
+
+              {/* Trust Badges */}
+              <div className="flex items-center gap-4 text-xs text-slate-500 uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5" />
+                  Secure OAuth
+                </span>
+                <span className="text-slate-600">•</span>
+                <span>No Password Stored</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Side - Screenshot */}
+          <div className="hidden lg:block">
+            {/* Screenshot Container */}
+            <div className="rounded-lg overflow-hidden border border-white/10 shadow-2xl shadow-black/50">
+              {/* Browser Frame */}
+              <div className="bg-slate-800/90 px-4 py-2.5 flex items-center gap-2 border-b border-white/10">
+                <div className="flex gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
+                </div>
+                <div className="flex-1 flex justify-center">
+                  <div className="bg-slate-900/80 px-3 py-0.5 rounded text-xs text-slate-400">
+                    warmind.app
+                  </div>
+                </div>
+              </div>
+
+              {/* Screenshot */}
+              <Image
+                src="/screenshot-desktop.png"
+                alt="Warmind dashboard interface"
+                width={1920}
+                height={1080}
+                className="w-full h-auto"
+              />
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="relative px-6 py-4 border-t border-white/5">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+          <span>© 2024 WARMIND</span>
+          <p>Not affiliated with Bungie. Destiny is a registered trademark of Bungie, Inc.</p>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -133,13 +133,13 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
                         </div>
                     )}
                     
-                    {power !== undefined && (
+                    {power !== undefined && power > 0 && (
                         <div className="text-destiny-gold font-bold flex items-center gap-1" title="Power Level">
                            <span>✧</span> {power}
                         </div>
                     )}
 
-                    {!power && !guardianRank && (
+                    {(!power || power === 0) && (!guardianRank || guardianRank === 0) && (
                          <span className={cn(
                             "font-medium uppercase tracking-wider",
                             member.memberType === 5 ? "text-destiny-gold" : 
