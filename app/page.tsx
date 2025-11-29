@@ -108,28 +108,28 @@ export default function Home() {
   // Dashboard State (Logged In)
   return (
     <div className="flex justify-center pt-8 min-h-screen pb-20">
-      {/* Main Dashboard Content - Center */}
-      <div className="flex-1 px-4 sm:px-8 space-y-12 max-w-[1400px]">
-          {/* News Feed */}
-          <div className="space-y-6">
-            <div className="w-full">
-                <NewsFeed />
+        {/* Main Dashboard Content - Center */}
+        <div className="flex-1 px-4 sm:px-8 space-y-12 max-w-[1400px]">
+            {/* News Feed */}
+            <div className="space-y-6">
+              <div className="w-full">
+                  <NewsFeed />
+              </div>
             </div>
-          </div>
 
-          {/* Bottom Grid: Clan Roster (2 cols) + Fireteam (1 col) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Clan Roster */}
-              <div className="lg:col-span-2">
-                  <ClanBrowser />
-              </div>
+            {/* Bottom Grid: Clan Roster (2 cols) + Fireteam (1 col) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Clan Roster */}
+                <div className="lg:col-span-2">
+                    <ClanBrowser />
+                </div>
 
-              {/* Fireteam Widget */}
-              <div className="lg:col-span-1 h-full">
-                   <FireteamList />
-              </div>
-          </div>
-      </div>
+                {/* Fireteam Widget */}
+                <div className="lg:col-span-1 h-full">
+                     <FireteamList />
+                </div>
+            </div>
+        </div>
     </div>
   );
 }

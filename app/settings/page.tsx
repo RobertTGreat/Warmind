@@ -36,11 +36,14 @@ import {
     Plus,
     X,
     ExternalLink,
-    ThumbsDown
+    ThumbsDown,
+    ChevronRight,
+    Heart
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useWishListStore, DEFAULT_WISH_LIST_URL, PRESET_WISH_LISTS, PresetWishList } from "@/store/wishlistStore";
+import { EXPANSIONS, getCurrentExpansion } from "@/data/d2/expansions";
 
 // Fallback in case the import fails (Turbopack issue)
 const PRESET_WISH_LISTS_FALLBACK: PresetWishList[] = [
@@ -984,6 +987,24 @@ export default function SettingsPage() {
                             onChange={settings.setPostmasterWarning} 
                         />
                     </SettingRow>
+                </SettingSection>
+
+                {/* Support */}
+                <SettingSection title="Support Warmind" icon={Heart}>
+                    <div className="space-y-4">
+                        <p className="text-sm text-slate-400">
+                            Warmind is free and open source. If you find it useful, consider supporting development!
+                        </p>
+                        <a
+                            href="https://ko-fi.com/warmind"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-5 py-2.5 font-medium transition-all bg-[#FF5E5B] text-white hover:bg-[#FF5E5B]/90 hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                            <Heart className="w-5 h-5 fill-current" />
+                            <span>Support on Ko-fi</span>
+                        </a>
+                    </div>
                 </SettingSection>
 
             </div>

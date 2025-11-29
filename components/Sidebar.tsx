@@ -16,10 +16,12 @@ import {
     Globe,
     Activity,
     Layers,
-    Target
+    Target,
+    Sparkles
 } from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { transferItem } from "@/lib/bungie";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 type SubNavItem = {
     name: string;
@@ -52,6 +54,7 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
     ],
     '/activity': [
         { name: 'Activity', href: '/activity', icon: Activity },
+        { name: 'Wrapped', href: '/activity/wrapped', icon: Sparkles },
     ],
 };
 
@@ -106,31 +109,36 @@ export function Sidebar() {
                     const isDropTarget = item.name === 'Vault' || item.name === 'Inventory';
                     
                     return (
-                        <Link
-                            key={item.name}
-                            href={item.href}
-                            title={item.name}
-                            className={cn(
-                                "w-10 h-10 flex items-center justify-center rounded-sm transition-all duration-200",
-                                isActive 
-                                    ? "bg-destiny-gold text-slate-900 shadow-[0_0_15px_rgba(227,206,98,0.4)]"
-                                    : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/5"
-                            )}
-                            onDragOver={(e) => {
-                                if (isDropTarget) {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = "move";
-                                }
-                            }}
-                            onDrop={(e) => {
-                                if (isDropTarget) {
-                                    handleDrop(e, item.name);
-                                }
-                            }}
+                        <Tooltip 
+                            key={item.name} 
+                            content={item.name} 
+                            side="right"
+                            delay={150}
                         >
-                            <Icon className="w-5 h-5" />
-                            <span className="sr-only">{item.name}</span>
-                        </Link>
+                            <Link
+                                href={item.href}
+                                className={cn(
+                                    "w-10 h-10 flex items-center justify-center rounded-sm transition-all duration-200",
+                                    isActive 
+                                        ? "bg-destiny-gold text-slate-900 shadow-[0_0_15px_rgba(227,206,98,0.4)]"
+                                        : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/5"
+                                )}
+                                onDragOver={(e) => {
+                                    if (isDropTarget) {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = "move";
+                                    }
+                                }}
+                                onDrop={(e) => {
+                                    if (isDropTarget) {
+                                        handleDrop(e, item.name);
+                                    }
+                                }}
+                            >
+                                <Icon className="w-5 h-5" />
+                                <span className="sr-only">{item.name}</span>
+                            </Link>
+                        </Tooltip>
                     );
                 })}
             </nav>

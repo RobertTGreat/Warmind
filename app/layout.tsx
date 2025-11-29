@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { ClientProviders } from "@/components/ClientProviders";
+import { DestinyWrapped } from "@/components/Wrapped";
 
 // Primary font - clean and modern
 const inter = Inter({
@@ -157,6 +158,7 @@ export default function RootLayout({
             </main>
         </div>
         <ClientProviders />
+        <DestinyWrapped />
       </body>
     </html>
   );

@@ -24,7 +24,8 @@ import {
     Users,
     Swords,
     ChevronDown,
-    Check
+    Check,
+    Heart
 } from 'lucide-react';
 import { useDestinyProfile, CLASS_NAMES } from '@/hooks/useDestinyProfile';
 import { logout, getBungieImage } from '@/lib/bungie';
@@ -543,6 +544,24 @@ export function Header() {
                     );
                   })}
                 </div>
+
+                {/* Ko-fi Support Link */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="flex justify-center mt-4 pt-3 border-t border-white/5"
+                >
+                  <a
+                    href="https://ko-fi.com/roberttgreat"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-[#FF5E5B] transition-colors"
+                  >
+                    <Heart className="w-3 h-3" />
+                    <span>Support on Ko-fi</span>
+                  </a>
+                </motion.div>
               </div>
             </motion.div>
           </>
