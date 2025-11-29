@@ -67,6 +67,22 @@ export const setInDB = async (key: string, value: any): Promise<void> => {
     }
 };
 
+export const deleteFromDB = async (key: string): Promise<void> => {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.delete(key);
+
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.warn('IndexedDB Delete Error', error);
+    }
+};
+
 export const clearDB = async (): Promise<void> => {
     try {
         const db = await openDB();

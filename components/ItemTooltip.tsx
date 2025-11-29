@@ -794,13 +794,21 @@ export function ItemTooltip({
                                                         ? "border-destiny-gold bg-destiny-gold/20 ring-1 ring-destiny-gold/30" 
                                                         : "border-green-400/60 bg-black/30 opacity-70 hover:opacity-100"
                                                 )}>
-                                                    <Image 
-                                                        src={getBungieImage(perkDef.displayProperties?.icon)} 
-                                                        width={28}
-                                                        height={28}
-                                                        className="object-cover"
-                                                        alt=""
-                                                    />
+                                                    {perkDef.displayProperties?.icon ? (
+                                                        <Image 
+                                                            src={getBungieImage(perkDef.displayProperties.icon)} 
+                                                            width={28}
+                                                            height={28}
+                                                            className="object-cover"
+                                                            alt=""
+                                                            onError={(e) => {
+                                                                // Fallback if image fails to load
+                                                                (e.target as HTMLImageElement).style.display = 'none';
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full bg-slate-700" />
+                                                    )}
                                                     {isEquipped && (
                                                         <div className="absolute -top-0.5 -right-0.5 text-[7px] text-destiny-gold drop-shadow-md">★</div>
                                                     )}

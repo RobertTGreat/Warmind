@@ -18,6 +18,11 @@ const ClientManifestManager = dynamic(
   { ssr: false }
 );
 
+const WishListInitializer = dynamic(
+  () => import("@/components/WishListInitializer").then((mod) => mod.WishListInitializer),
+  { ssr: false }
+);
+
 // Defer analytics to after page load
 const Analytics = dynamic(
   () => import("@vercel/analytics/react").then((mod) => mod.Analytics),
@@ -34,6 +39,7 @@ export function ClientProviders() {
     <>
       <FirstLoadWarning />
       <ClientManifestManager />
+      <WishListInitializer />
       <Toaster position="bottom-center" theme="system" closeButton />
       <Analytics />
       <SpeedInsights />

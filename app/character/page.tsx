@@ -9,6 +9,7 @@ import { getBungieImage, moveItem, equipItem, equipLoadout } from "@/lib/bungie"
 import { useTransferStore } from "@/store/transferStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
+import { useWishListStore } from "@/store/wishlistStore";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import useSWR from 'swr';
@@ -208,8 +209,39 @@ export default function CharacterPage() {
         large: { class: 'w-24 h-24', containerWidth: 'w-[304px]' }
     }[iconSize] || { class: 'w-20 h-20', containerWidth: 'w-[256px]' }), [iconSize]);
 
+    // Ensure wishlists are loaded from IndexedDB
+    const wishLists = useWishListStore(state => state.wishLists);
+    const isLoadingWishLists = useWishListStore(state => state.isLoading);
+
     useEffect(() => {
         setMounted(true);
+        
+        // Load wishlists from IndexedDB if they're enabled but missing rolls
+        const enabledWishLists = wishLists.filter(wl => wl.enabled);
+        const needsLoading = enabledWishLists.some(wl => !wl.rolls || wl.rolls.size === 0);
+        
+        if (needsLoading && !isLoadingWishLists && typeof window !== 'undefined') {
+            // Use requestIdleCallback to load in background
+            const scheduleLoad = (callback: () => void) => {
+                if ('requestIdleCallback' in window) {
+                    (window as any).requestIdleCallback(callback, { timeout: 2000 });
+                } else {
+                    setTimeout(callback, 1000);
+                }
+            };
+            
+            scheduleLoad(() => {
+                const store = useWishListStore.getState();
+                enabledWishLists.forEach(wl => {
+                    if (!wl.rolls || wl.rolls.size === 0) {
+                        // Only refresh this specific wishlist
+                        store.refreshWishList(wl.id).catch(err => {
+                            console.warn(`Failed to load wishlist ${wl.title}:`, err);
+                        });
+                    }
+                });
+            });
+        }
         
         const handleClickOutside = (event: MouseEvent) => {
             if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
@@ -218,7 +250,7 @@ export default function CharacterPage() {
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    }, [wishLists, isLoadingWishLists]);
 
     // 1. Gather all Item Hashes for Definitions & Dupe Check
     const { allItemHashes, fullInventoryList } = useMemo(() => {

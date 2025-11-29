@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { useWishListStore } from './wishlistStore';
 
 // ===== Type Definitions =====
 
@@ -60,6 +61,11 @@ export interface SyncableSettings {
     
     // Privacy
     profileVisibility: 'public' | 'clan' | 'private';
+    
+    // Wish Lists (URLs only - rolls are fetched on demand)
+    wishListUrls: string[];
+    showWishListIndicators: boolean;
+    showTrashIndicators: boolean;
 }
 
 // ===== Full Settings State =====
@@ -121,7 +127,7 @@ export interface SettingsActions {
     // Utility
     resetToDefaults: () => void;
     getSyncableSettings: () => SyncableSettings;
-    applySyncedSettings: (settings: Partial<SyncableSettings>) => void;
+    applySyncedSettings: (settings: Partial<SyncableSettings>) => Promise<void>;
 }
 
 type SettingsStore = SettingsState & SettingsActions;
@@ -164,6 +170,11 @@ const defaultSyncableSettings: SyncableSettings = {
     
     // Privacy
     profileVisibility: 'public',
+    
+    // Wish Lists
+    wishListUrls: [],
+    showWishListIndicators: true,
+    showTrashIndicators: true,
 };
 
 const defaultSettings: SettingsState = {
@@ -423,7 +434,7 @@ export const useSettingsStore = create<SettingsStore>()(
                     const cloudSettings = await pullSettingsFromCloud(state.bungieId);
                     
                     if (cloudSettings) {
-                        get().applySyncedSettings(cloudSettings);
+                        await get().applySyncedSettings(cloudSettings);
                         set({ 
                             lastSyncedAt: new Date().toISOString(),
                             syncEnabled: true 
@@ -445,6 +456,9 @@ export const useSettingsStore = create<SettingsStore>()(
             
             getSyncableSettings: () => {
                 const state = get();
+                // Get wishlist settings from wishlist store
+                const wishlistState = useWishListStore.getState();
+                
                 return {
                     theme: state.theme,
                     accentColor: state.accentColor,
@@ -466,14 +480,44 @@ export const useSettingsStore = create<SettingsStore>()(
                     postmasterWarning: state.postmasterWarning,
                     favoriteMembers: state.favoriteMembers,
                     profileVisibility: state.profileVisibility,
+                    // Wishlist settings from wishlist store
+                    wishListUrls: wishlistState.wishLists.filter(wl => wl.enabled).map(wl => wl.url),
+                    showWishListIndicators: wishlistState.showWishListIndicators,
+                    showTrashIndicators: wishlistState.showTrashIndicators,
                 };
             },
             
-            applySyncedSettings: (settings) => {
+            applySyncedSettings: async (settings) => {
+                // Apply main settings
                 set((state) => ({
                     ...state,
                     ...settings,
+                    // Remove wishlist fields from main state (they're in wishlist store)
+                    wishListUrls: undefined,
+                    showWishListIndicators: undefined,
+                    showTrashIndicators: undefined,
                 }));
+                
+                // Apply wishlist settings to wishlist store
+                if (settings.showWishListIndicators !== undefined) {
+                    useWishListStore.getState().setShowWishListIndicators(settings.showWishListIndicators);
+                }
+                if (settings.showTrashIndicators !== undefined) {
+                    useWishListStore.getState().setShowTrashIndicators(settings.showTrashIndicators);
+                }
+                
+                // Sync wishlist URLs - add any missing ones
+                if (settings.wishListUrls && settings.wishListUrls.length > 0) {
+                    const wishlistStore = useWishListStore.getState();
+                    const existingUrls = wishlistStore.wishLists.map(wl => wl.url);
+                    
+                    for (const url of settings.wishListUrls) {
+                        if (!existingUrls.includes(url)) {
+                            // Add missing wishlist
+                            await wishlistStore.addWishList(url);
+                        }
+                    }
+                }
             },
         }),
         {

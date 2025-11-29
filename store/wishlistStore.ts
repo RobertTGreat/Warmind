@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { getFromDB, setInDB, deleteFromDB } from '@/lib/indexedDB';
 
 // ===== Type Definitions =====
 
@@ -44,10 +45,11 @@ export interface WishListState {
 export interface WishListActions {
     // Wish list management
     addWishList: (url: string) => Promise<void>;
-    removeWishList: (id: string) => void;
+    removeWishList: (id: string) => Promise<void>;
     toggleWishList: (id: string) => void;
     refreshWishList: (id: string) => Promise<void>;
     refreshAllWishLists: () => Promise<void>;
+    updateWishListRolls: (id: string, rolls: Map<number, WishListRoll[]>) => void;
     
     // Settings
     setShowWishListIndicators: (show: boolean) => void;
@@ -146,6 +148,26 @@ export const PRESET_WISH_LISTS: PresetWishList[] = [
         author: 'Azared, Alpharius & BeenLab'
     },
 ];
+
+// ===== IndexedDB Helpers for Wishlist Rolls =====
+
+const WISHLIST_ROLLS_PREFIX = 'wishlist_rolls_';
+
+async function saveRollsToIndexedDB(wishListId: string, rolls: Map<number, WishListRoll[]>): Promise<void> {
+    // Convert Map to array for serialization
+    const rollsArray = Array.from(rolls.entries());
+    await setInDB(`${WISHLIST_ROLLS_PREFIX}${wishListId}`, rollsArray);
+}
+
+async function loadRollsFromIndexedDB(wishListId: string): Promise<Map<number, WishListRoll[]> | null> {
+    const rollsArray = await getFromDB<[number, WishListRoll[]][]>(`${WISHLIST_ROLLS_PREFIX}${wishListId}`);
+    if (!rollsArray) return null;
+    return new Map(rollsArray);
+}
+
+async function deleteRollsFromIndexedDB(wishListId: string): Promise<void> {
+    await deleteFromDB(`${WISHLIST_ROLLS_PREFIX}${wishListId}`);
+}
 
 // ===== Safe Storage Wrapper =====
 
@@ -413,6 +435,9 @@ export const useWishListStore = create<WishListStore>()(
                         trashRollCount: trashCount,
                     };
                     
+                    // Save rolls to IndexedDB
+                    await saveRollsToIndexedDB(wishList.id, rollsMap);
+                    
                     set(state => ({
                         wishLists: [...state.wishLists, wishList],
                         isLoading: false,
@@ -429,7 +454,10 @@ export const useWishListStore = create<WishListStore>()(
                 }
             },
             
-            removeWishList: (id: string) => {
+            removeWishList: async (id: string) => {
+                // Delete rolls from IndexedDB
+                await deleteRollsFromIndexedDB(id);
+                
                 set(state => ({
                     wishLists: state.wishLists.filter(wl => wl.id !== id)
                 }));
@@ -471,6 +499,9 @@ export const useWishListStore = create<WishListStore>()(
                         rollsMap.set(roll.itemHash, existing);
                         if (roll.isTrash) trashCount++;
                     }
+                    
+                    // Save rolls to IndexedDB
+                    await saveRollsToIndexedDB(id, rollsMap);
                     
                     set(state => ({
                         wishLists: state.wishLists.map(wl => 
@@ -640,15 +671,28 @@ export const useWishListStore = create<WishListStore>()(
                 return { isWishListed, isTrash, notes, tags, matchType, matchedPerkHashes };
             },
             
+            updateWishListRolls: (id: string, rolls: Map<number, WishListRoll[]>) => {
+                set(state => ({
+                    wishLists: state.wishLists.map(wl => 
+                        wl.id === id ? { ...wl, rolls } : wl
+                    )
+                }));
+                // Rebuild lookups after updating rolls
+                get().rebuildLookups();
+                console.log(`[Wishlist] Updated rolls for wishlist ${id}, rebuilt lookups`);
+            },
+            
             rebuildLookups: () => {
                 const state = get();
                 const wishListLookup = new Map<number, WishListRoll[]>();
                 const trashListLookup = new Map<number, WishListRoll[]>();
                 
+                let totalRolls = 0;
                 for (const wishList of state.wishLists) {
                     if (!wishList.enabled) continue;
                     
                     for (const [itemHash, rolls] of wishList.rolls) {
+                        totalRolls += rolls.length;
                         for (const roll of rolls) {
                             if (roll.isTrash) {
                                 const existing = trashListLookup.get(itemHash) || [];
@@ -663,6 +707,7 @@ export const useWishListStore = create<WishListStore>()(
                     }
                 }
                 
+                console.log(`[Wishlist] Rebuilt lookups: ${wishListLookup.size} wishlisted items, ${trashListLookup.size} trash items (${totalRolls} total rolls)`);
                 set({ wishListLookup, trashListLookup });
             },
         }),
@@ -670,24 +715,93 @@ export const useWishListStore = create<WishListStore>()(
             name: 'warmind-wishlists',
             storage: createJSONStorage(() => safeLocalStorage),
             partialize: (state) => ({
-                // Only persist these fields
-                wishLists: state.wishLists.map(wl => ({
-                    ...wl,
-                    // Convert Map to array for serialization
-                    rolls: Array.from(wl.rolls.entries()),
-                })),
+                // Only persist ENABLED wishlist URLs and metadata - rolls stored in IndexedDB
+                enabledWishListUrls: state.wishLists
+                    .filter(wl => wl.enabled)
+                    .map(wl => ({
+                        id: wl.id,
+                        url: wl.url,
+                        title: wl.title,
+                        description: wl.description,
+                        lastUpdated: wl.lastUpdated,
+                        rollCount: wl.rollCount,
+                        trashRollCount: wl.trashRollCount,
+                    })),
+                // Also save disabled wishlists so user can re-enable them
+                disabledWishListUrls: state.wishLists
+                    .filter(wl => !wl.enabled)
+                    .map(wl => wl.url),
                 showWishListIndicators: state.showWishListIndicators,
                 showTrashIndicators: state.showTrashIndicators,
             }),
             onRehydrateStorage: () => (state) => {
-                if (state) {
-                    // Convert rolls back to Map after rehydration
-                    state.wishLists = state.wishLists.map(wl => ({
-                        ...wl,
-                        rolls: new Map(wl.rolls as any),
-                    }));
-                    // Rebuild lookups after rehydration
-                    state.rebuildLookups();
+                if (state && typeof window !== 'undefined') {
+                    // Load enabled wishlist metadata from localStorage
+                    const enabledUrls = (state as any).enabledWishListUrls || [];
+                    const disabledUrls = (state as any).disabledWishListUrls || [];
+                    
+                    // Initialize wishlists with empty rolls first
+                    const wishLists: WishList[] = [];
+                    
+                    // Load enabled wishlists (synchronously initialize, async load rolls)
+                    for (const wlData of enabledUrls) {
+                        wishLists.push({
+                            id: wlData.id,
+                            url: wlData.url,
+                            title: wlData.title,
+                            description: wlData.description,
+                            lastUpdated: wlData.lastUpdated,
+                            enabled: true,
+                            rollCount: wlData.rollCount || 0,
+                            trashRollCount: wlData.trashRollCount || 0,
+                            rolls: new Map<number, WishListRoll[]>(), // Start empty, load async
+                        });
+                    }
+                    
+                    // Add disabled wishlists (just URLs, no rolls)
+                    for (const url of disabledUrls) {
+                        // Check if already added as enabled
+                        if (!wishLists.some(wl => wl.url === url)) {
+                            wishLists.push({
+                                id: crypto.randomUUID(),
+                                url,
+                                title: 'Disabled Wish List',
+                                lastUpdated: new Date().toISOString(),
+                                enabled: false,
+                                rollCount: 0,
+                                trashRollCount: 0,
+                                rolls: new Map<number, WishListRoll[]>(),
+                            });
+                        }
+                    }
+                    
+                    state.wishLists = wishLists;
+                    state.rebuildLookups(); // Rebuild with empty data first
+                    
+                    // Load rolls from IndexedDB asynchronously and update store
+                    if (enabledUrls.length > 0) {
+                        // Use setTimeout to ensure store is fully initialized
+                        setTimeout(async () => {
+                            const store = useWishListStore;
+                            
+                            for (const wlData of enabledUrls) {
+                                // Try to load rolls from IndexedDB
+                                const rolls = await loadRollsFromIndexedDB(wlData.id);
+                                
+                                if (rolls && rolls.size > 0) {
+                                    // Rolls found in IndexedDB - update the wishlist in store
+                                    console.log(`[Wishlist] Loaded ${rolls.size} items from IndexedDB for ${wlData.title}`);
+                                    store.getState().updateWishListRolls(wlData.id, rolls);
+                                } else {
+                                    // No rolls in IndexedDB - refresh from URL (will save to IndexedDB)
+                                    console.log(`[Wishlist] No rolls in IndexedDB for ${wlData.title}, refreshing from URL...`);
+                                    store.getState().refreshWishList(wlData.id).catch(error => {
+                                        console.warn(`Failed to refresh wishlist ${wlData.title}:`, error);
+                                    });
+                                }
+                            }
+                        }, 100);
+                    }
                 }
             },
         }

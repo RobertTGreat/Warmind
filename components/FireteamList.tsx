@@ -56,13 +56,30 @@ export function FireteamList() {
             // Fetch in parallel
             await Promise.all(partyMembers.map(async (member: any) => {
                 try {
-                    // Fetch full profile
+                    // First, look up the member's actual memberships using BungieNext type (254)
+                    // This handles cross-platform players
+                    const membershipRes = await bungieApi.get(
+                        `/User/GetMembershipsById/${member.membershipId}/254/`
+                    );
+                    
+                    const membershipData = membershipRes.data.Response;
+                    if (!membershipData?.destinyMemberships?.length) {
+                        throw new Error('No destiny memberships found');
+                    }
+                    
+                    // Get the primary or most recently played membership
+                    // Prefer the one with cross-save override, otherwise take the first one
+                    const destinyMembership = membershipData.primaryMembershipId 
+                        ? membershipData.destinyMemberships.find((m: any) => m.membershipId === membershipData.primaryMembershipId) || membershipData.destinyMemberships[0]
+                        : membershipData.destinyMemberships[0];
+                    
+                    // Now fetch their Destiny profile with the correct membership type
                     const res = await bungieApi.get(
-                        endpoints.getProfile(membershipInfo!.membershipType, member.membershipId, [100, 200])
+                        endpoints.getProfile(destinyMembership.membershipType, destinyMembership.membershipId, [100, 200])
                     );
                     
                     const p = res.data.Response;
-                    if (!p) return;
+                    if (!p) throw new Error('No profile data');
 
                     const profile = p.profile.data;
                     const characters = p.characters.data;
@@ -88,9 +105,10 @@ export function FireteamList() {
 
                 } catch (e) {
                     console.error(`Failed to load member ${member.membershipId}`, e);
+                    // Use the displayName from partyMembers if available
                     details.push({
                         membershipId: member.membershipId,
-                        displayName: "Unknown Guardian",
+                        displayName: member.displayName || "Unknown Guardian",
                         isOnline: true
                     });
                 }

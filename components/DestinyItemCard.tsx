@@ -402,10 +402,23 @@ export function DestinyItemCard({
 
   // Wish List Integration
   const getWishListInfo = useWishListStore(state => state.getWishListInfo);
+  const wishListLookup = useWishListStore(state => state.wishListLookup);
   const wishListInfo = useMemo(() => {
       if (!itemHash) return { isWishListed: false, isTrash: false, matchType: 'none' as const, matchedPerkHashes: [] };
-      return getWishListInfo(itemHash, perkHashes.length > 0 ? perkHashes : undefined);
-  }, [itemHash, perkHashes, getWishListInfo]);
+      const info = getWishListInfo(itemHash, perkHashes.length > 0 ? perkHashes : undefined);
+      
+      // Debug logging for wishlist matches
+      if (info.isWishListed && process.env.NODE_ENV === 'development') {
+          console.log(`[Wishlist Debug] Item ${itemHash} is wishlisted:`, {
+              matchType: info.matchType,
+              matchedPerks: info.matchedPerkHashes.length,
+              hasNotes: !!info.notes,
+              hasTags: !!info.tags
+          });
+      }
+      
+      return info;
+  }, [itemHash, perkHashes, getWishListInfo, wishListLookup]);
 
   // Handlers
   const handleContextMenu = (e: React.MouseEvent) => {
