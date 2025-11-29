@@ -9,18 +9,18 @@ import { STAT_HASHES, ARMOR_STAT_HASHES, getArmorBaseStats, ArmorQuality } from 
 import { STAT_NAMES_BY_HASH, StatHashes } from '@/lib/dim-stats';
 import { PlugCategoryHashes } from '@/data/d2/generated-enums';
 
-// Map common stat hashes to readable names
+// Map common stat hashes to readable names (Edge of Fate / Armor 3.0 names)
 const STAT_NAMES: Record<number, string> = {
     ...STAT_NAMES_BY_HASH,
-    [STAT_HASHES.MOBILITY!]: 'Mobility',
-    [STAT_HASHES.RESILIENCE!]: 'Resilience',
-    [STAT_HASHES.RECOVERY!]: 'Recovery',
-    [STAT_HASHES.DISCIPLINE!]: 'Discipline',
-    [STAT_HASHES.INTELLECT!]: 'Intellect',
-    [STAT_HASHES.STRENGTH!]: 'Strength'
+    [STAT_HASHES.MOBILITY!]: 'Weapons',
+    [STAT_HASHES.RESILIENCE!]: 'Health',
+    [STAT_HASHES.RECOVERY!]: 'Class',
+    [STAT_HASHES.DISCIPLINE!]: 'Grenade',
+    [STAT_HASHES.INTELLECT!]: 'Super',
+    [STAT_HASHES.STRENGTH!]: 'Melee'
 };
 
-// Order in which stats should appear
+// Order in which stats should appear (Armor stats use Edge of Fate order: Health, Melee, Grenade, Super, Class, Weapons)
 const STAT_ORDER = [
     StatHashes.Impact,
     StatHashes.Range,
@@ -34,12 +34,12 @@ const STAT_ORDER = [
     StatHashes.Zoom,
     StatHashes.RecoilDirection,
     StatHashes.AirborneEffectiveness,
-    STAT_HASHES.MOBILITY!,
-    STAT_HASHES.RESILIENCE!,
-    STAT_HASHES.RECOVERY!,
-    STAT_HASHES.DISCIPLINE!,
-    STAT_HASHES.INTELLECT!,
-    STAT_HASHES.STRENGTH!
+    STAT_HASHES.RESILIENCE!,  // Health
+    STAT_HASHES.STRENGTH!,    // Melee
+    STAT_HASHES.DISCIPLINE!,  // Grenade
+    STAT_HASHES.INTELLECT!,   // Super
+    STAT_HASHES.RECOVERY!,    // Class
+    STAT_HASHES.MOBILITY!,    // Weapons
 ];
 
 export interface WishListInfo {
@@ -406,8 +406,8 @@ export function ItemTooltip({
               if (a.isArmorStat && !b.isArmorStat) return -1;
               if (!a.isArmorStat && b.isArmorStat) return 1;
               if (a.isArmorStat && b.isArmorStat) {
-                  // Sort armor stats in order: Mobility, Resilience, Recovery, Discipline, Intellect, Strength
-                  const armorOrder = [STAT_HASHES.MOBILITY, STAT_HASHES.RESILIENCE, STAT_HASHES.RECOVERY, STAT_HASHES.DISCIPLINE, STAT_HASHES.INTELLECT, STAT_HASHES.STRENGTH];
+                  // Sort armor stats in Edge of Fate order: Health, Melee, Grenade, Super, Class, Weapons
+                  const armorOrder = [STAT_HASHES.RESILIENCE, STAT_HASHES.STRENGTH, STAT_HASHES.DISCIPLINE, STAT_HASHES.INTELLECT, STAT_HASHES.RECOVERY, STAT_HASHES.MOBILITY];
                   return armorOrder.indexOf(a.hash) - armorOrder.indexOf(b.hash);
               }
           }
@@ -449,7 +449,8 @@ export function ItemTooltip({
         }
         return null;
       }).filter((s): s is NonNullable<typeof s> => s !== null).sort((a, b) => {
-        const armorOrder = [STAT_HASHES.MOBILITY, STAT_HASHES.RESILIENCE, STAT_HASHES.RECOVERY, STAT_HASHES.DISCIPLINE, STAT_HASHES.INTELLECT, STAT_HASHES.STRENGTH];
+        // Edge of Fate order: Health, Melee, Grenade, Super, Class, Weapons
+        const armorOrder = [STAT_HASHES.RESILIENCE, STAT_HASHES.STRENGTH, STAT_HASHES.DISCIPLINE, STAT_HASHES.INTELLECT, STAT_HASHES.RECOVERY, STAT_HASHES.MOBILITY];
         return armorOrder.indexOf(a.hash) - armorOrder.indexOf(b.hash);
       });
       

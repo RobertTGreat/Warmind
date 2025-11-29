@@ -585,15 +585,15 @@ function SubclassSlot({ plugHash, label, size = 'small', damageType, showTooltip
     );
 }
 
-// Helper to get stat name from hash
+// Helper to get stat name from hash (Edge of Fate / Armor 3.0 names)
 function getStatName(statHash: number): string {
     const STAT_NAMES: Record<number, string> = {
-        2996146975: 'Mobility',
-        392767087: 'Resilience',
-        1943323491: 'Recovery',
-        1735777505: 'Discipline',
-        144602215: 'Intellect',
-        4244567218: 'Strength',
+        2996146975: 'Weapons',   // Was Mobility
+        392767087: 'Health',     // Was Resilience
+        1943323491: 'Class',     // Was Recovery
+        1735777505: 'Grenade',   // Was Discipline
+        144602215: 'Super',      // Was Intellect
+        4244567218: 'Melee',     // Was Strength
     };
     return STAT_NAMES[statHash] || 'Stat';
 }
