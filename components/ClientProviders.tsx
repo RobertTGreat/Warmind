@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { DatabaseProvider } from "@/components/DatabaseProvider";
 
 // Lazy load non-critical components to reduce main-thread work
 const Toaster = dynamic(
@@ -34,16 +35,17 @@ const SpeedInsights = dynamic(
   { ssr: false }
 );
 
-export function ClientProviders() {
+export function ClientProviders({ children }: { children?: React.ReactNode }) {
   return (
-    <>
+    <DatabaseProvider>
+      {children}
       <FirstLoadWarning />
       <ClientManifestManager />
       <WishListInitializer />
       <Toaster position="bottom-center" theme="system" closeButton />
       <Analytics />
       <SpeedInsights />
-    </>
+    </DatabaseProvider>
   );
 }
 

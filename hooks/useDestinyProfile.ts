@@ -1,7 +1,25 @@
+/**
+ * useDestinyProfile Hook
+ * 
+ * Fetches and manages the current user's Destiny profile data.
+ * Implements stale-while-revalidate pattern:
+ * 1. Show cached profile immediately (from IndexedDB)
+ * 2. Fetch fresh data in background
+ * 3. Update display when fresh data arrives
+ */
+
 import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import Cookies from 'js-cookie';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+    getCachedProfile,
+    cacheProfile,
+    isProfileFresh,
+    isProfileStale,
+    getProfileAgeString,
+} from '@/lib/profileCache';
+import type { CachedProfile } from '@/lib/db';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -34,10 +52,29 @@ export const CLASS_NAMES: Record<number, string> = {
   2: 'Warlock',
 };
 
+export interface ProfileCacheInfo {
+  isCached: boolean;
+  isFresh: boolean;
+  isStale: boolean;
+  lastUpdated: number | null;
+  ageString: string | null;
+}
+
 export function useDestinyProfile() {
   // Initialize to false to match server-side rendering and prevent hydration mismatch
   const [hasToken, setHasToken] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Cache state
+  const [cachedProfileData, setCachedProfileData] = useState<any>(null);
+  const [cacheInfo, setCacheInfo] = useState<ProfileCacheInfo>({
+    isCached: false,
+    isFresh: false,
+    isStale: false,
+    lastUpdated: null,
+    ageString: null,
+  });
+  const cacheLoadedRef = useRef(false);
 
   // Check for token on mount (client-side only)
   useEffect(() => {
@@ -83,12 +120,63 @@ export function useDestinyProfile() {
   const displayName = userMemberships?.Response?.bungieNetUser?.uniqueName || 
                       primaryMembership?.bungieGlobalDisplayName;
 
+  // Load cached profile when we have membership info
+  useEffect(() => {
+    if (destinyMembershipId && !cacheLoadedRef.current) {
+      cacheLoadedRef.current = true;
+      
+      getCachedProfile(destinyMembershipId).then((cached) => {
+        if (cached) {
+          console.log('[useDestinyProfile] Loaded cached profile from IndexedDB');
+          setCachedProfileData(cached.data);
+          setCacheInfo({
+            isCached: true,
+            isFresh: isProfileFresh(cached),
+            isStale: isProfileStale(cached),
+            lastUpdated: cached.lastUpdated,
+            ageString: getProfileAgeString(cached),
+          });
+        }
+      });
+    }
+  }, [destinyMembershipId]);
+
   const { data: profileResponse, error: profileError, isLoading: profileLoading } = useSWR(
     membershipType && destinyMembershipId ? endpoints.getProfile(membershipType, destinyMembershipId) : null,
-    fetcher
+    fetcher,
+    {
+      // Keep stale data while revalidating
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      dedupingInterval: 30000, // 30 seconds
+    }
   );
 
-  const profile = profileResponse?.Response;
+  // Cache the fresh profile data when it arrives
+  useEffect(() => {
+    if (profileResponse?.Response && destinyMembershipId && membershipType) {
+      console.log('[useDestinyProfile] Caching fresh profile to IndexedDB');
+      cacheProfile(
+        destinyMembershipId,
+        membershipType,
+        profileResponse.Response,
+        displayName
+      );
+      
+      // Update cache info to show fresh
+      setCacheInfo({
+        isCached: true,
+        isFresh: true,
+        isStale: false,
+        lastUpdated: Date.now(),
+        ageString: 'just now',
+      });
+    }
+  }, [profileResponse, destinyMembershipId, membershipType, displayName]);
+
+  // Use fresh data if available, otherwise fall back to cached
+  const profile = profileResponse?.Response || cachedProfileData;
+  const isUsingCachedData = !profileResponse?.Response && !!cachedProfileData;
 
   // Derived State
   let stats: DestinyStats | null = null;
@@ -98,10 +186,6 @@ export function useDestinyProfile() {
   const recordSealsRootNodeHash = profile?.profileRecords?.data?.recordSealsRootNodeHash;
   
   // Fallback: Hardcode Season 27 Hash (Season of the Heresy/Current) if 0 or missing
-  // 2956006050 is Season 27 (Revenant / Act I usually, let's try to get it right or fallback to profile)
-  // Actually, let's use a known good logic. If profile.profile.data.currentSeasonHash is 0, it might be due to API lag or unset.
-  // We can try to fetch the latest season from a public endpoint or just hardcode a fallback for "Current".
-  // But let's stick to what the profile says first.
   const currentSeasonHash = profile?.profile?.data?.currentSeasonHash || 2956006050; // Fallback to Season 27 (Revenant)
 
   const { data: seasonDefData } = useSWR(
@@ -212,6 +296,21 @@ export function useDestinyProfile() {
     }
   }, []);
 
+  // Force refresh function
+  const forceRefresh = useCallback(async () => {
+    if (membershipType && destinyMembershipId) {
+      const response = await bungieApi.get(endpoints.getProfile(membershipType, destinyMembershipId));
+      if (response.data?.Response) {
+        await cacheProfile(
+          destinyMembershipId,
+          membershipType,
+          response.data.Response,
+          displayName
+        );
+      }
+    }
+  }, [membershipType, destinyMembershipId, displayName]);
+
   return {
     profile,
     stats,
@@ -228,5 +327,9 @@ export function useDestinyProfile() {
     // Character selection
     allCharacters,
     selectCharacter,
+    // Cache info for stale-while-revalidate UI
+    cacheInfo,
+    isUsingCachedData,
+    forceRefresh,
   };
 }

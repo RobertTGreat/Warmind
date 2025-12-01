@@ -1002,6 +1002,7 @@ export default function CharacterPage() {
                                                     itemHash={item.itemHash}
                                                     itemInstanceId={item.itemInstanceId}
                                                     instanceData={profile.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                    socketsData={profile.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                     reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                     className="w-full h-full"
                                                     size={iconSize}
@@ -1118,6 +1119,7 @@ export default function CharacterPage() {
                                                 itemHash={item.itemHash}
                                                 itemInstanceId={item.itemInstanceId}
                                                 instanceData={profile.itemComponents?.instances?.data?.[item.itemInstanceId]}
+                                                socketsData={profile.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                 reusablePlugs={profile.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
                                                 className="w-full h-full"
                                                 size={iconSize}

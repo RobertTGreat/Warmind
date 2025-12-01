@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
@@ -110,7 +111,7 @@ function ShareDialog({ loadout, onClose }: ShareDialogProps) {
     return (
         <div className="fixed inset-0 bg-black/80 z-100 flex items-center justify-center p-4" onClick={onClose}>
             <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-lg rounded-lg overflow-hidden"
+                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-lg overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
@@ -118,14 +119,14 @@ function ShareDialog({ loadout, onClose }: ShareDialogProps) {
                         <Share2 className="w-5 h-5 text-destiny-gold" />
                         <h3 className="text-lg font-bold text-white">Share Loadout</h3>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors">
                         <X className="w-5 h-5 text-slate-400" />
                     </button>
                 </div>
                 
                 <div className="p-4 space-y-4">
                     {/* Loadout Preview */}
-                    <div className="flex items-center gap-3 p-3 bg-black/30 rounded-lg">
+                    <div className="flex items-center gap-3 p-3 bg-black/30">
                         <span className="text-2xl">{loadout.icon}</span>
                         <div>
                             <div className="font-semibold text-white">{loadout.name}</div>
@@ -145,12 +146,12 @@ function ShareDialog({ loadout, onClose }: ShareDialogProps) {
                                 type="text"
                                 readOnly
                                 value={shareUrl}
-                                className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-sm text-slate-300 rounded-lg truncate"
+                                className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-sm text-slate-300 truncate"
                             />
                             <button
                                 onClick={() => handleCopy('url')}
                                 className={cn(
-                                    "px-4 py-2 font-medium text-sm rounded-lg transition-all flex items-center gap-2",
+                                    "px-4 py-2 font-medium text-sm transition-all flex items-center gap-2",
                                     copied === 'url' 
                                         ? "bg-green-500/20 text-green-400" 
                                         : "bg-destiny-gold/20 text-destiny-gold hover:bg-destiny-gold/30"
@@ -172,12 +173,12 @@ function ShareDialog({ loadout, onClose }: ShareDialogProps) {
                                 type="text"
                                 readOnly
                                 value={shareCode}
-                                className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-sm text-slate-300 font-mono rounded-lg truncate"
+                                className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-sm text-slate-300 font-mono truncate"
                             />
                             <button
                                 onClick={() => handleCopy('code')}
                                 className={cn(
-                                    "px-4 py-2 font-medium text-sm rounded-lg transition-all flex items-center gap-2",
+                                    "px-4 py-2 font-medium text-sm transition-all flex items-center gap-2",
                                     copied === 'code' 
                                         ? "bg-green-500/20 text-green-400" 
                                         : "bg-white/10 text-white hover:bg-white/20"
@@ -242,7 +243,7 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
     return (
         <div className="fixed inset-0 bg-black/80 z-100 flex items-center justify-center p-4" onClick={onClose}>
             <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-lg rounded-lg overflow-hidden"
+                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-lg overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
@@ -250,7 +251,7 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
                         <Download className="w-5 h-5 text-destiny-gold" />
                         <h3 className="text-lg font-bold text-white">Import Loadout</h3>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors">
                         <X className="w-5 h-5 text-slate-400" />
                     </button>
                 </div>
@@ -265,7 +266,7 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
                             value={importCode}
                             onChange={(e) => handleCodeChange(e.target.value)}
                             placeholder="Paste a loadout share code or URL here..."
-                            className="w-full bg-black/40 border border-white/10 px-3 py-2 text-sm text-white font-mono rounded-lg h-24 resize-none focus:outline-none focus:border-destiny-gold/50"
+                            className="w-full bg-black/40 border border-white/10 px-3 py-2 text-sm text-white font-mono h-24 resize-none focus:outline-none focus:border-destiny-gold/50"
                         />
                         {error && (
                             <p className="text-xs text-red-400 mt-1">{error}</p>
@@ -274,7 +275,7 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
                     
                     {/* Preview */}
                     {preview && (
-                        <div className="p-4 bg-black/30 rounded-lg border border-white/10">
+                        <div className="p-4 bg-black/30 border border-white/10">
                             <div className="flex items-center gap-3 mb-3">
                                 <span className="text-2xl">{preview.icon}</span>
                                 <div>
@@ -293,7 +294,7 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
                             {preview.tags && preview.tags.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                     {preview.tags.map((tag) => (
-                                        <span key={tag} className="px-2 py-0.5 bg-white/10 text-xs text-slate-400 rounded">
+                                        <span key={tag} className="px-2 py-0.5 bg-white/10 text-xs text-slate-400">
                                             {tag}
                                         </span>
                                     ))}
@@ -313,7 +314,7 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
                     <button
                         onClick={handleImport}
                         disabled={!preview}
-                        className="px-6 py-2 bg-destiny-gold text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-white transition-colors rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2 bg-destiny-gold text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-white transition-color flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Download className="w-4 h-4" />
                         Import Loadout
@@ -390,13 +391,13 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
     return (
         <div className="fixed inset-0 bg-black/80 z-110 flex items-center justify-center p-4" onClick={onClose}>
             <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-4xl max-h-[80vh] flex flex-col rounded-lg overflow-hidden"
+                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
                     <h3 className="text-lg font-bold text-white">Select Item</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors">
                         <X className="w-5 h-5 text-slate-400" />
                     </button>
                 </div>
@@ -408,7 +409,7 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
                         <input
                             type="text"
                             placeholder="Search items..."
-                            className="w-full bg-black/40 border border-white/10 py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50 rounded-lg"
+                            className="w-full bg-black/40 border border-white/10 py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50 "
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             autoFocus
@@ -428,23 +429,30 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
                         </div>
                     ) : (
                         <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 gap-y-7">
-                            {filteredItems.map((item: any, idx: number) => (
-                                <button
-                                    key={`${item.itemInstanceId || item.itemHash}-${idx}`}
-                                    onClick={() => handleSelect(item)}
-                                    className="w-16 h-16 hover:scale-105 transition-transform"
-                                >
-                                    <DestinyItemCard
-                                        itemHash={item.itemHash}
-                                        itemInstanceId={item.itemInstanceId}
-                                        instanceData={profile?.itemComponents?.instances?.data?.[item.itemInstanceId]}
-                                        socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
-                                        className="w-full h-full"
-                                        size="small"
-                                        ownerId="picker"
-                                    />
-                                </button>
-                            ))}
+                            {filteredItems.map((item: any, idx: number) => {
+                                const instanceId = item.itemInstanceId;
+                                const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
+                                const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
+                                
+                                return (
+                                    <button
+                                        key={`${instanceId || item.itemHash}-${idx}`}
+                                        onClick={() => handleSelect(item)}
+                                        className="w-16 h-16 hover:scale-105 transition-transform"
+                                    >
+                                        <DestinyItemCard
+                                            itemHash={item.itemHash}
+                                            itemInstanceId={instanceId}
+                                            instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
+                                            socketsData={profile?.itemComponents?.sockets?.data?.[instanceId]}
+                                            className="w-full h-full"
+                                            size="small"
+                                            ownerId="picker"
+                                            tierAsNumber
+                                        />
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -487,7 +495,7 @@ function SubclassSlot({ plugHash, label, size = 'small', damageType, showTooltip
             <div 
                 className={cn(
                     sizeClass, 
-                    "rounded-lg bg-black/40 border border-dashed border-white/10 flex items-center justify-center",
+                    "border border-dashed border-white/10 flex items-center justify-center",
                     disabled && "opacity-30 cursor-not-allowed"
                 )}
                 title={label}
@@ -501,7 +509,7 @@ function SubclassSlot({ plugHash, label, size = 'small', damageType, showTooltip
         <div 
             className={cn(
                 sizeClass, 
-                "rounded-lg overflow-hidden border border-white/10 relative",
+                "overflow-hidden border border-white/10 relative",
                 disabled && "opacity-30"
             )}
             style={{ borderColor: `${damageColor}40` }}
@@ -975,72 +983,74 @@ function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEd
                             const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
                             const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
                             
-                            return (
-                                <div key={bucket} className={cn(
-                                    "w-11 h-11 bg-black/30 border border-white/5 rounded relative",
-                                    hasOverrides && "ring-1 ring-destiny-gold/40"
-                                )}>
-                                    {item && (
-                                        <>
-                                            <DestinyItemCard
-                                                itemHash={item.itemHash}
-                                                itemInstanceId={item.itemInstanceId}
-                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
-                                                socketsData={socketsData}
-                                                reusablePlugs={reusablePlugs}
-                                                className="w-full h-full"
-                                                size="small"
-                                                hidePower
-                                            />
-                                            {hasOverrides && (
-                                                <div className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-destiny-gold rounded-full" title="Custom perks" />
-                                            )}
-                                        </>
-                                    )}
+                                            return (
+                                                <div key={bucket} className={cn(
+                                                    "w-11 h-11 bg-black/30 border border-white/5 rounded relative",
+                                                    hasOverrides && "ring-1 ring-destiny-gold/40"
+                                                )}>
+                                                    {item && (
+                                                        <>
+                                                            <DestinyItemCard
+                                                                itemHash={item.itemHash}
+                                                                itemInstanceId={item.itemInstanceId}
+                                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
+                                                                socketsData={socketsData}
+                                                                reusablePlugs={reusablePlugs}
+                                                                className="w-full h-full"
+                                                                size="small"
+                                                                hidePower
+                                                                tierAsNumber
+                                                            />
+                                                            {hasOverrides && (
+                                                                <div className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-destiny-gold rounded-full" title="Custom perks" />
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            );
-                        })}
-                    </div>
-                </div>
-                
-                {/* Armor Row */}
-                <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-600 mb-1.5 tracking-wider">Armor</div>
-                    <div className="flex gap-1.5">
-                        {[BUCKETS.HELMET, BUCKETS.GAUNTLETS, BUCKETS.CHEST_ARMOR, BUCKETS.LEG_ARMOR, BUCKETS.CLASS_ARMOR].map((bucket) => {
-                            const item = armorItems.find(i => i.bucketHash === bucket);
-                            const instanceId = item?.itemInstanceId || '';
-                            const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
-                            const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
-                            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
-                            const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
-                            const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
-                            
-                            return (
-                                <div key={bucket} className={cn(
-                                    "w-11 h-11 bg-black/30 border border-white/5 rounded relative",
-                                    hasOverrides && "ring-1 ring-destiny-gold/40"
-                                )}>
-                                    {item && (
-                                        <>
-                                            <DestinyItemCard
-                                                itemHash={item.itemHash}
-                                                itemInstanceId={item.itemInstanceId}
-                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
-                                                socketsData={socketsData}
-                                                reusablePlugs={reusablePlugs}
-                                                className="w-full h-full"
-                                                size="small"
-                                                hidePower
-                                            />
-                                            {hasOverrides && (
-                                                <div className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-destiny-gold rounded-full" title="Custom mods" />
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                
+                                {/* Armor Row */}
+                                <div>
+                                    <div className="text-[10px] uppercase font-bold text-slate-600 mb-1.5 tracking-wider">Armor</div>
+                                    <div className="flex gap-1.5">
+                                        {[BUCKETS.HELMET, BUCKETS.GAUNTLETS, BUCKETS.CHEST_ARMOR, BUCKETS.LEG_ARMOR, BUCKETS.CLASS_ARMOR].map((bucket) => {
+                                            const item = armorItems.find(i => i.bucketHash === bucket);
+                                            const instanceId = item?.itemInstanceId || '';
+                                            const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
+                                            const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
+                                            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
+                                            const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
+                                            const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
+                                            
+                                            return (
+                                                <div key={bucket} className={cn(
+                                                    "w-11 h-11 bg-black/30 border border-white/5 rounded relative",
+                                                    hasOverrides && "ring-1 ring-destiny-gold/40"
+                                                )}>
+                                                    {item && (
+                                                        <>
+                                                            <DestinyItemCard
+                                                                itemHash={item.itemHash}
+                                                                itemInstanceId={item.itemInstanceId}
+                                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
+                                                                socketsData={socketsData}
+                                                                reusablePlugs={reusablePlugs}
+                                                                className="w-full h-full"
+                                                                size="small"
+                                                                hidePower
+                                                                tierAsNumber
+                                                            />
+                                                            {hasOverrides && (
+                                                                <div className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-destiny-gold rounded-full" title="Custom mods" />
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                     </div>
                 </div>
                 
@@ -1156,6 +1166,162 @@ const SUBCLASS_HASHES: Record<number, Record<number, number>> = {
         5: 3893112950, // Prismatic
     },
 };
+
+// ===== Subclass Picker Item with Tooltip =====
+
+interface SubclassPickerItemProps {
+    plug: {
+        plugHash: number;
+        socketIndex: number;
+        isEquipped: boolean;
+        def: any;
+        fragmentSlots?: number;
+    };
+    slotType: string;
+    damageColor: string;
+    onSelect: () => void;
+}
+
+function SubclassPickerItem({ plug, slotType, damageColor, onSelect }: SubclassPickerItemProps) {
+    const [isHovered, setIsHovered] = useState(false);
+    const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    
+    const handleMouseEnter = () => {
+        if (buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setTooltipPos({
+                x: rect.left + rect.width / 2,
+                y: rect.top
+            });
+        }
+        setIsHovered(true);
+    };
+    
+    return (
+        <>
+            <button
+                ref={buttonRef}
+                onClick={onSelect}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={() => setIsHovered(false)}
+                className="group flex flex-col items-center gap-2 p-2 bg-black/30 border border-white/10 hover:border-destiny-gold/50 hover:bg-black/50 transition-all relative"
+                style={{ borderColor: `${damageColor}20` }}
+            >
+                <div className="w-12 h-12 rounded overflow-hidden border border-white/10 relative">
+                    {plug.def?.displayProperties?.icon ? (
+                        <Image
+                            src={getBungieImage(plug.def.displayProperties.icon)}
+                            width={48}
+                            height={48}
+                            alt=""
+                            className="w-full h-full object-cover"
+                        />
+                    ) : (
+                        <div className="w-full h-full bg-black/50 flex items-center justify-center">
+                            <Zap className="w-6 h-6 text-slate-600" />
+                        </div>
+                    )}
+                    {/* Fragment slot indicator for aspects */}
+                    {slotType === 'aspect' && plug.fragmentSlots !== undefined && plug.fragmentSlots > 0 && (
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black/90 border border-destiny-gold/50 rounded-full flex items-center justify-center text-[10px] font-bold text-destiny-gold">
+                            {plug.fragmentSlots}
+                        </div>
+                    )}
+                </div>
+                <span className="text-[10px] text-slate-400 text-center leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                    {plug.def?.displayProperties?.name || 'Unknown'}
+                </span>
+                {/* Stat bonuses preview for fragments */}
+                {slotType === 'fragment' && plug.def?.investmentStats && plug.def.investmentStats.length > 0 && (
+                    <div className="flex flex-wrap gap-0.5 justify-center">
+                        {plug.def.investmentStats.slice(0, 2).map((stat: any, idx: number) => {
+                            if (stat.value === 0) return null;
+                            return (
+                                <span 
+                                    key={idx}
+                                    className={cn(
+                                        "text-[8px] px-1 rounded",
+                                        stat.value > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                                    )}
+                                >
+                                    {stat.value > 0 ? '+' : ''}{stat.value}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
+            </button>
+            
+            {/* Hover Tooltip - Rendered via Portal */}
+            {isHovered && plug.def && typeof document !== 'undefined' && createPortal(
+                <div 
+                    className="fixed z-9999 pointer-events-none"
+                    style={{ 
+                        left: tooltipPos.x, 
+                        top: tooltipPos.y,
+                        transform: 'translate(-50%, -100%)',
+                        marginTop: '-8px'
+                    }}
+                >
+                    <div className="bg-gray-800/20 backdrop-blur-xl border border-white/20 p-3 shadow-2xl min-w-[220px] max-w-2">
+                        {/* Name */}
+                        <div className="font-bold text-white text-sm mb-1 flex items-center gap-2">
+                            {plug.def.displayProperties?.name}
+                            {slotType === 'aspect' && plug.fragmentSlots !== undefined && plug.fragmentSlots > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-destiny-gold/20 text-destiny-gold rounded">
+                                    {plug.fragmentSlots} fragment{plug.fragmentSlots !== 1 ? 's' : ''}
+                                </span>
+                            )}
+                        </div>
+                        
+                        {/* Type */}
+                        {plug.def.itemTypeDisplayName && (
+                            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+                                {plug.def.itemTypeDisplayName}
+                            </div>
+                        )}
+                        
+                        {/* Description */}
+                        {plug.def.displayProperties?.description && (
+                            <div className="text-xs text-slate-300 leading-relaxed">
+                                {plug.def.displayProperties.description}
+                            </div>
+                        )}
+                        
+                        {/* Stat bonuses */}
+                        {plug.def.investmentStats && plug.def.investmentStats.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-white/10">
+                                <div className="flex flex-wrap gap-2">
+                                    {plug.def.investmentStats.map((stat: any, idx: number) => {
+                                        const statValue = stat.value;
+                                        if (statValue === 0) return null;
+                                        const statName = getStatName(stat.statTypeHash);
+                                        return (
+                                            <span 
+                                                key={idx}
+                                                className={cn(
+                                                    "text-[10px] px-1.5 py-0.5 rounded",
+                                                    statValue > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                                                )}
+                                            >
+                                                {statValue > 0 ? '+' : ''}{statValue} {statName}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Arrow */}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-slate-900/95" />
+                    </div>
+                </div>,
+                document.body
+            )}
+        </>
+    );
+}
 
 interface SubclassPickerProps {
     slotType: 'super' | 'aspect' | 'fragment' | 'melee' | 'grenade' | 'classAbility' | 'movement';
@@ -1464,59 +1630,16 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
                     ) : (
                         <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3">
                             {filteredPlugs.map((plug) => (
-                                <button
+                                <SubclassPickerItem
                                     key={`${plug.socketIndex}-${plug.plugHash}`}
-                                    onClick={() => {
+                                    plug={plug}
+                                    slotType={slotType}
+                                    damageColor={damageColor}
+                                    onSelect={() => {
                                         onSelect(plug.plugHash, plug.def?.displayProperties?.name, plug.def?.displayProperties?.icon, plug.fragmentSlots);
                                         onClose();
                                     }}
-                                    className="group flex flex-col items-center gap-2 p-2 bg-black/30 border border-white/10 hover:border-destiny-gold/50 hover:bg-black/50 transition-all relative"
-                                    style={{ borderColor: `${damageColor}20` }}
-                                >
-                                    <div className="w-12 h-12 rounded overflow-hidden border border-white/10 relative">
-                                        {plug.def?.displayProperties?.icon ? (
-                                            <Image
-                                                src={getBungieImage(plug.def.displayProperties.icon)}
-                                                width={48}
-                                                height={48}
-                                                alt=""
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full bg-black/50 flex items-center justify-center">
-                                                <Zap className="w-6 h-6 text-slate-600" />
-                                            </div>
-                                        )}
-                                        {/* Fragment slot indicator for aspects */}
-                                        {slotType === 'aspect' && plug.fragmentSlots !== undefined && plug.fragmentSlots > 0 && (
-                                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black/90 border border-destiny-gold/50 rounded-full flex items-center justify-center text-[10px] font-bold text-destiny-gold">
-                                                {plug.fragmentSlots}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <span className="text-[10px] text-slate-400 text-center leading-tight line-clamp-2 group-hover:text-white transition-colors">
-                                        {plug.def?.displayProperties?.name || 'Unknown'}
-                                    </span>
-                                    {/* Stat bonuses preview for fragments */}
-                                    {slotType === 'fragment' && plug.def?.investmentStats && plug.def.investmentStats.length > 0 && (
-                                        <div className="flex flex-wrap gap-0.5 justify-center">
-                                            {plug.def.investmentStats.slice(0, 2).map((stat: any, idx: number) => {
-                                                if (stat.value === 0) return null;
-                                                return (
-                                                    <span 
-                                                        key={idx}
-                                                        className={cn(
-                                                            "text-[8px] px-1 rounded",
-                                                            stat.value > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                                                        )}
-                                                    >
-                                                        {stat.value > 0 ? '+' : ''}{stat.value}
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </button>
+                                />
                             ))}
                         </div>
                     )}
@@ -2155,7 +2278,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                         onClick={() => setPickerBucket(bucket.hash)}
                                                         onContextMenu={(e) => item && handleItemContextMenu(e, item, 'weapon')}
                                                         className={cn(
-                                                            "w-16 h-16 bg-black/40 border-2 border-dashed border-white/10 rounded-lg flex items-center justify-center transition-all hover:border-destiny-gold/50 hover:scale-105",
+                                                            "w-16 h-16 bg-black/40 border-2 border-white/10 flex items-center justify-center transition-all hover:border-destiny-gold/50 hover:scale-105",
                                                             item && "border-solid border-white/20",
                                                             hasOverrides && "ring-2 ring-destiny-gold/50"
                                                         )}
@@ -2170,6 +2293,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                                 reusablePlugs={reusablePlugs}
                                                                 className="w-full h-full"
                                                                 size="medium"
+                                                                tierAsNumber
                                                             />
                                                         ) : (
                                                             <span className="text-2xl opacity-50">{bucket.icon}</span>
@@ -2214,7 +2338,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                         onClick={() => setPickerBucket(bucket.hash)}
                                                         onContextMenu={(e) => item && handleItemContextMenu(e, item, 'armor')}
                                                         className={cn(
-                                                            "w-14 h-14 bg-black/40 border-2 border-dashed border-white/10 rounded-lg flex items-center justify-center transition-all hover:border-destiny-gold/50 hover:scale-105",
+                                                            "w-14 h-14 bg-black/40 border-2 border-white/10 rounded-lg flex items-center justify-center transition-all hover:border-destiny-gold/50 hover:scale-105",
                                                             item && "border-solid border-white/20",
                                                             hasOverrides && "ring-2 ring-destiny-gold/50"
                                                         )}
@@ -2229,6 +2353,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                                 reusablePlugs={reusablePlugs}
                                                                 className="w-full h-full"
                                                                 size="small"
+                                                                tierAsNumber
                                                             />
                                                         ) : (
                                                             <span className="text-lg opacity-50">{bucket.icon}</span>
@@ -2303,7 +2428,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                         {/* Super */}
                                         <button
                                             onClick={() => handleSubclassSlotClick('super')}
-                                            className="w-14 h-14 bg-black/40 border-2 border-dashed border-white/10 rounded-lg flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
+                                            className="w-14 h-14 border-white/10 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
                                             style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}30` : undefined }}
                                             title="Super"
                                         >
@@ -2329,7 +2454,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                 <button
                                                     key={ability}
                                                     onClick={() => handleSubclassSlotClick(ability)}
-                                                    className="w-11 h-11 bg-black/40 border border-dashed border-white/10 rounded-lg flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
+                                                    className="w-11 h-11 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
                                                     style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}20` : undefined }}
                                                     title={ability.charAt(0).toUpperCase() + ability.slice(1).replace(/([A-Z])/g, ' $1')}
                                                 >
@@ -2354,7 +2479,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                         <div className="relative group">
                                             <button
                                                 onClick={() => handleSubclassSlotClick('aspect', 0)}
-                                                className="w-14 h-14 bg-black/40 border-2 border-dashed border-white/10 rounded-lg flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
+                                                className="w-14 h-14 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
                                                 style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}30` : undefined }}
                                                 title="Aspect 1"
                                             >
@@ -2384,7 +2509,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                         <div className="relative group">
                                             <button
                                                 onClick={() => handleSubclassSlotClick('aspect', 1)}
-                                                className="w-14 h-14 bg-black/40 border-2 border-dashed border-white/10 rounded-lg flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
+                                                className="w-14 h-14 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
                                                 style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}30` : undefined }}
                                                 title="Aspect 2"
                                             >
@@ -2438,7 +2563,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                             onClick={() => isSlotAvailable && handleSubclassSlotClick('fragment', fragIdx)}
                                                             disabled={!isSlotAvailable}
                                                             className={cn(
-                                                                "w-11 h-11 bg-black/40 border border-dashed border-white/10 rounded-lg flex items-center justify-center transition-all",
+                                                                "w-11 h-11 flex items-center justify-center transition-all",
                                                                 isSlotAvailable && "hover:border-destiny-gold/50 hover:scale-105",
                                                                 !isSlotAvailable && "opacity-30 cursor-not-allowed"
                                                             )}

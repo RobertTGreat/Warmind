@@ -200,62 +200,115 @@ const safeLocalStorage: StateStorage = {
 // Enhanced perks have different hashes but should match their base versions
 // This maps enhanced perk hashes to their base versions for wishlist matching
 const ENHANCED_TO_BASE_PERK_MAP: Record<number, number> = {
-    // Damage/Trait Perks
+    // Damage/Trait Perks - Columns 3 & 4
     3744057135: 3078487919, // Enhanced Bait and Switch -> Bait and Switch
     1563455254: 3418782618, // Enhanced Rewind Rounds -> Rewind Rounds
-    
-    // Add more common enhanced perks here
-    // Format: enhancedHash: baseHash
-    
-    // Firing Line
     4094100260: 1771339417, // Enhanced Firing Line -> Firing Line
-    
-    // Vorpal Weapon
     2723159620: 1546637391, // Enhanced Vorpal Weapon -> Vorpal Weapon
-    
-    // Frenzy  
-    243326113: 4104185692, // Enhanced Frenzy -> Frenzy
-    
-    // Fourth Time's the Charm
-    3557516320: 1354429876, // Enhanced Fourth Time's -> Fourth Time's the Charm
-    
-    // Triple Tap
+    243326113: 4104185692,  // Enhanced Frenzy -> Frenzy
+    3557516320: 1354429876, // Enhanced Fourth Time's the Charm -> Fourth Time's the Charm
     2190027472: 3400784728, // Enhanced Triple Tap -> Triple Tap
-    
-    // Overflow
     3048851909: 3643424744, // Enhanced Overflow -> Overflow
-    
-    // Rampage
     1853616089: 3425386926, // Enhanced Rampage -> Rampage
-    
-    // Kill Clip
     3656557598: 1015611457, // Enhanced Kill Clip -> Kill Clip
-    
-    // Demolitionist
     4285249471: 3523296417, // Enhanced Demolitionist -> Demolitionist
-    
-    // Surrounded
     3114718539: 3708227201, // Enhanced Surrounded -> Surrounded
-    
-    // Explosive Payload
     1529143571: 3038247973, // Enhanced Explosive Payload -> Explosive Payload
-    
-    // One for All
     1986147658: 4049631843, // Enhanced One for All -> One for All
-    
-    // Swashbuckler  
     1548876013: 4082225868, // Enhanced Swashbuckler -> Swashbuckler
-    
-    // Incandescent
     3195606601: 4293542123, // Enhanced Incandescent -> Incandescent
-    
-    // Voltshot
     1000556632: 2173046394, // Enhanced Voltshot -> Voltshot
+    
+    // More common enhanced perks
+    2869569095: 1168162263, // Enhanced Subsistence -> Subsistence
+    1561002382: 2213355989, // Enhanced Outlaw -> Outlaw
+    2869440401: 4071163871, // Enhanced Rapid Hit -> Rapid Hit
+    744217850: 47981717,    // Enhanced Headstone -> Headstone
+    3523746922: 1820235745, // Enhanced Destabilizing Rounds -> Destabilizing Rounds
+    3673922083: 438098033,  // Enhanced Turnabout -> Turnabout
+    744594675: 3300816228,  // Enhanced Auto-Loading Holster -> Auto-Loading Holster
+    3927722942: 2726471870, // Enhanced Slideshot -> Slideshot
+    3166439525: 1264398905, // Enhanced Moving Target -> Moving Target
+    3320921730: 957782887,  // Enhanced Snapshot Sights -> Snapshot Sights
+    2284787283: 1015611457, // Another Enhanced Kill Clip variant -> Kill Clip
+    2652708987: 2039302152, // Enhanced Reconstruction -> Reconstruction
+    2621346526: 2896038713, // Enhanced Slideways -> Slideways
+    4008116374: 2620589274, // Enhanced Field Prep -> Field Prep
+    2788909693: 3300816228, // Another Auto-Loading variant -> Auto-Loading Holster
+    2610012052: 706527188,  // Enhanced Clown Cartridge -> Clown Cartridge
+    3365897133: 365154968,  // Enhanced Feeding Frenzy -> Feeding Frenzy
+    1556840489: 1015611457, // Yet another Kill Clip variant -> Kill Clip
+    3708227201: 3708227201, // Surrounded (same hash)
+    3425386926: 3425386926, // Rampage (same hash)
+    
+    // Barrel/Magazine perks (Enhanced versions)
+    3238771178: 1467527085, // Enhanced Polygonal Rifling -> Polygonal Rifling
+    518224747: 3250034553,  // Enhanced Fluted Barrel -> Fluted Barrel
+    3285635913: 791862061,  // Enhanced Hammer-Forged Rifling -> Hammer-Forged Rifling
+    
+    // More damage perks
+    2726471870: 2726471870, // Slideshot
+    120721526: 120721526,   // Lasting Impression
+    1906147653: 1954620775, // Enhanced Lasting Impression -> Lasting Impression
+    3528046508: 438098033,  // Turnabout
+    3799912824: 47981717,   // Headstone
+    3551326236: 3523296417, // Another Demolitionist variant
+    3927722941: 47981717,   // Enhanced Headstone -> Headstone
+    
+    // Chill Clip / Reservoir Burst
+    1364093401: 2848615171, // Enhanced Chill Clip -> Chill Clip
+    1167468626: 2276470399, // Enhanced Reservoir Burst -> Reservoir Burst
+    
+    // Golden Tricorn / Repulsor Brace
+    2244851822: 2610012052, // Enhanced Golden Tricorn -> Golden Tricorn
+    1820235745: 1820235745, // Destabilizing Rounds
+    
+    // Stats for All / Stats for All
+    3902125711: 1583699720, // Enhanced Stats for All -> Stats for All
+    
+    // More perks
+    1890422124: 2387244414, // Enhanced Threat Detector -> Threat Detector
+    1513326571: 247725512,  // Enhanced Pulse Monitor -> Pulse Monitor
+    280464955: 1409206216,  // Enhanced Sympathetic Arsenal -> Sympathetic Arsenal
+    2458213969: 2458213969, // Enlightened Action
+    2078547773: 2078547773, // Gutshot Straight
+    
+    // Desperado (different hash)
+    2451262963: 205890336, // Enhanced Desperado -> Desperado
+    
+    // Collective Action / Eddy Current / Slice
+    2252673041: 2252673041, // Collective Action
+    2994763968: 2994763968, // Eddy Current
+    2364471402: 2364471402, // Slice
 };
+
+// Build reverse mapping (base -> [enhanced versions])
+const BASE_TO_ENHANCED_MAP: Map<number, number[]> = new Map();
+for (const [enhanced, base] of Object.entries(ENHANCED_TO_BASE_PERK_MAP)) {
+    const enhancedNum = parseInt(enhanced, 10);
+    const existing = BASE_TO_ENHANCED_MAP.get(base) || [];
+    if (!existing.includes(enhancedNum)) {
+        existing.push(enhancedNum);
+    }
+    BASE_TO_ENHANCED_MAP.set(base, existing);
+}
 
 // Helper function to get the base perk hash for matching
 function getBasePerkHash(perkHash: number): number {
     return ENHANCED_TO_BASE_PERK_MAP[perkHash] || perkHash;
+}
+
+// Helper to check if two perks should match (considering enhanced variants)
+function perksMatch(perk1: number, perk2: number): boolean {
+    // Direct match
+    if (perk1 === perk2) return true;
+    
+    // Check if either is an enhanced version of the other
+    const base1 = getBasePerkHash(perk1);
+    const base2 = getBasePerkHash(perk2);
+    
+    // If they normalize to the same base, they match
+    return base1 === base2;
 }
 
 // ===== Wish List Parser =====
@@ -577,25 +630,15 @@ export const useWishListStore = create<WishListStore>()(
                         // If we have perk hashes to compare
                         if (perkHashes && perkHashes.length > 0) {
                             // Check if all wish list perks are present in item perks
-                            // Match both exact hashes AND normalized (enhanced -> base) hashes
+                            // Uses bidirectional matching: enhanced perks match their base versions AND vice versa
                             const matchedPerks: number[] = [];
                             const actualMatchedItemPerks: number[] = [];
                             
                             for (const wishPerk of roll.perkHashes) {
-                                // Direct match
-                                const directIndex = perkHashes.indexOf(wishPerk);
-                                if (directIndex !== -1) {
-                                    matchedPerks.push(wishPerk);
-                                    actualMatchedItemPerks.push(perkHashes[directIndex]);
-                                    continue;
-                                }
-                                
-                                // Check if item has enhanced version of this perk
-                                // by comparing normalized versions
+                                // Use bidirectional perk matching
                                 for (let i = 0; i < perkHashes.length; i++) {
                                     const itemPerk = perkHashes[i];
-                                    const normalizedItemPerk = getBasePerkHash(itemPerk);
-                                    if (normalizedItemPerk === wishPerk) {
+                                    if (perksMatch(wishPerk, itemPerk)) {
                                         matchedPerks.push(wishPerk);
                                         actualMatchedItemPerks.push(itemPerk);
                                         break;
@@ -638,19 +681,12 @@ export const useWishListStore = create<WishListStore>()(
                         
                         // If we have perk hashes to compare
                         if (perkHashes && perkHashes.length > 0) {
-                            // Check with enhanced perk normalization
+                            // Use bidirectional matching for trash rolls too
                             const matchedPerks: number[] = [];
                             
                             for (const trashPerk of roll.perkHashes) {
-                                // Direct match
-                                if (perkHashes.includes(trashPerk)) {
-                                    matchedPerks.push(trashPerk);
-                                    continue;
-                                }
-                                
-                                // Check if item has enhanced version
                                 for (const itemPerk of perkHashes) {
-                                    if (getBasePerkHash(itemPerk) === trashPerk) {
+                                    if (perksMatch(trashPerk, itemPerk)) {
                                         matchedPerks.push(trashPerk);
                                         break;
                                     }
@@ -688,8 +724,15 @@ export const useWishListStore = create<WishListStore>()(
                 const trashListLookup = new Map<number, WishListRoll[]>();
                 
                 let totalRolls = 0;
+                let emptyRollsCount = 0;
+                
                 for (const wishList of state.wishLists) {
                     if (!wishList.enabled) continue;
+                    
+                    if (!wishList.rolls || wishList.rolls.size === 0) {
+                        emptyRollsCount++;
+                        continue;
+                    }
                     
                     for (const [itemHash, rolls] of wishList.rolls) {
                         totalRolls += rolls.length;
@@ -707,7 +750,11 @@ export const useWishListStore = create<WishListStore>()(
                     }
                 }
                 
-                console.log(`[Wishlist] Rebuilt lookups: ${wishListLookup.size} wishlisted items, ${trashListLookup.size} trash items (${totalRolls} total rolls)`);
+                if (emptyRollsCount > 0) {
+                    console.log(`[Wishlist] Warning: ${emptyRollsCount} enabled wishlist(s) have no rolls loaded yet`);
+                }
+                
+                console.log(`[Wishlist] Rebuilt lookups: ${wishListLookup.size} wishlisted items, ${trashListLookup.size} trash items (${totalRolls} total rolls from ${state.wishLists.filter(w => w.enabled && w.rolls?.size > 0).length} list(s))`);
                 set({ wishListLookup, trashListLookup });
             },
         }),

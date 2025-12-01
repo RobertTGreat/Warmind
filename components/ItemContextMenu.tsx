@@ -251,7 +251,7 @@ export function ItemContextMenu({
     return createPortal(
         <div 
             ref={menuRef}
-            className="fixed z-200 w-64 bg-gray-900/90 border border-white/10 shadow-2xl py-0 text-sm text-gray-200 select-none flex flex-col backdrop-blur-xl rounded-sm overflow-hidden"
+            className="fixed z-200 w-64 bg-gray-800/20 border border-white/10 shadow-2xl py-0 text-sm text-gray-200 select-none flex flex-col backdrop-blur-xl rounded-sm overflow-hidden"
             style={{ left: x, top: y }}
         >
             {/* Static Tooltip to the right */}
@@ -341,7 +341,7 @@ export function ItemContextMenu({
             <div className="flex gap-1 px-3 pb-2">
                 <button 
                     onClick={handleLock} 
-                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-slate-800 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
+                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-gray-800/30 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
                 >
                     {isLocked ? 'Unlock' : 'Lock'}
                 </button>
@@ -351,7 +351,7 @@ export function ItemContextMenu({
                         setDetailsItem({ itemHash, itemInstanceId });
                         onClose(); 
                     }} 
-                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-slate-800 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
+                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-gray-800/30 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
                 >
                     Details
                 </button>

@@ -32,6 +32,7 @@ interface DestinyItemCardProps {
     showClassSymbolOnMismatch?: boolean;
     size?: 'small' | 'medium' | 'large';
     reusablePlugs?: any[]; // Passed from profile.itemComponents.reusablePlugs
+    tierAsNumber?: boolean; // If true, show tier as a number in top right instead of stars
 }
 
 // Element Icons (Updated with transparent PNGs where possible)
@@ -71,7 +72,8 @@ export function DestinyItemCard({
     minimal,
     showClassSymbolOnMismatch,
     size = 'medium',
-    reusablePlugs
+    reusablePlugs,
+    tierAsNumber
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
   const { data: defResponse, error } = useSWR(
     !definition && itemHash ? endpoints.getItemDefinition(itemHash) : null,
@@ -400,36 +402,88 @@ export function DestinyItemCard({
   }, [def, instanceData, socketsData, plugDefs]);
 
   // Extract perk hashes for wish list matching
+  // Include ALL available perks (reusable plugs), not just currently selected ones
   const perkHashes = useMemo(() => {
-      if (!socketsData?.sockets) return [];
       const hashes: number[] = [];
-      socketsData.sockets.forEach((socket: any) => {
-          if (socket.plugHash) {
-              hashes.push(socket.plugHash);
-          }
-      });
+      
+      if (socketsData?.sockets) {
+          socketsData.sockets.forEach((socket: any, index: number) => {
+              // Add currently selected plug
+              if (socket.plugHash) {
+                  hashes.push(socket.plugHash);
+              }
+              
+              // Add all reusable plugs from the socket itself
+              if (socket.reusablePlugHashes) {
+                  socket.reusablePlugHashes.forEach((hash: number) => {
+                      if (!hashes.includes(hash)) {
+                          hashes.push(hash);
+                      }
+                  });
+              }
+              
+              // Also check reusablePlugItems if available (some API versions)
+              if (socket.reusablePlugItems) {
+                  socket.reusablePlugItems.forEach((plug: any) => {
+                      if (plug.plugItemHash && !hashes.includes(plug.plugItemHash)) {
+                          hashes.push(plug.plugItemHash);
+                      }
+                  });
+              }
+              
+              // Check socket's nested reusablePlugs
+              if (socket.reusablePlugs) {
+                  socket.reusablePlugs.forEach((plug: any) => {
+                      const hash = plug.plugItemHash || plug;
+                      if (hash && !hashes.includes(hash)) {
+                          hashes.push(hash);
+                      }
+                  });
+              }
+              
+              // Use the reusablePlugs prop (from itemComponents.reusablePlugs.data)
+              // This is indexed by socket index
+              if (reusablePlugs?.[index]) {
+                  reusablePlugs[index].forEach((plug: any) => {
+                      const hash = plug.plugItemHash || plug;
+                      if (hash && !hashes.includes(hash)) {
+                          hashes.push(hash);
+                      }
+                  });
+              }
+          });
+      }
+      
+      // Also extract from reusablePlugs if socketsData is missing or we didn't get gameplay perks
+      // The reusablePlugs prop is keyed by socket index as strings
+      if (reusablePlugs) {
+          Object.entries(reusablePlugs).forEach(([socketIndex, plugs]: [string, any]) => {
+              if (Array.isArray(plugs)) {
+                  plugs.forEach((plug: any) => {
+                      const hash = plug.plugItemHash || plug;
+                      if (hash && typeof hash === 'number' && !hashes.includes(hash)) {
+                          hashes.push(hash);
+                      }
+                  });
+              }
+          });
+      }
+      
       return hashes;
-  }, [socketsData]);
+  }, [socketsData, reusablePlugs]);
 
   // Wish List Integration
   const getWishListInfo = useWishListStore(state => state.getWishListInfo);
   const wishListLookup = useWishListStore(state => state.wishListLookup);
+  const trashListLookup = useWishListStore(state => state.trashListLookup);
+  
   const wishListInfo = useMemo(() => {
       if (!itemHash) return { isWishListed: false, isTrash: false, matchType: 'none' as const, matchedPerkHashes: [] };
+      
       const info = getWishListInfo(itemHash, perkHashes.length > 0 ? perkHashes : undefined);
       
-      // Debug logging for wishlist matches
-      if (info.isWishListed && process.env.NODE_ENV === 'development') {
-          console.log(`[Wishlist Debug] Item ${itemHash} is wishlisted:`, {
-              matchType: info.matchType,
-              matchedPerks: info.matchedPerkHashes.length,
-              hasNotes: !!info.notes,
-              hasTags: !!info.tags
-          });
-      }
-      
       return info;
-  }, [itemHash, perkHashes, getWishListInfo, wishListLookup]);
+  }, [itemHash, perkHashes, getWishListInfo, wishListLookup, trashListLookup]);
 
   // Handlers
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -611,24 +665,36 @@ export function DestinyItemCard({
                     </div>
                 )}
 
-                {/* Tier Indicator Overlay (Stars) - Weapons and Armor */}
+                {/* Tier Indicator Overlay - Weapons and Armor */}
                 {(def.itemType === 3 || def.itemType === 2) && tierNumber > 1 && (
-                    <div className={cn(
-                        "absolute z-20 flex flex-col leading-none",
-                        starConfig.top,
-                        starConfig.left,
-                        starConfig.gap
-                    )}>
-                         {Array.from({ length: tierNumber }).map((_, i) => (
-                             <span key={i} className={cn(
-                                 "drop-shadow-md",
-                                 starConfig.text,
-                                 tierNumber === 5 ? "text-destiny-gold" : "text-white"
-                             )}>
-                                ✦
-                             </span>
-                         ))}
-                    </div>
+                    tierAsNumber ? (
+                        // Number display in top right corner
+                        <div className={cn(
+                            "absolute top-0.5 right-0.5 z-20 flex items-center justify-center rounded-sm font-bold drop-shadow-md",
+                            size === 'small' ? "w-3.5 h-3.5 text-[8px]" : size === 'large' ? "w-5 h-5 text-[11px]" : "w-4 h-4 text-[9px]",
+                            tierNumber === 5 ? "bg-destiny-gold/90 text-slate-900" : "bg-black/70 text-white border border-white/20"
+                        )}>
+                            {tierNumber}
+                        </div>
+                    ) : (
+                        // Stars display
+                        <div className={cn(
+                            "absolute z-20 flex flex-col leading-none",
+                            starConfig.top,
+                            starConfig.left,
+                            starConfig.gap
+                        )}>
+                             {Array.from({ length: tierNumber }).map((_, i) => (
+                                 <span key={i} className={cn(
+                                     "drop-shadow-md",
+                                     starConfig.text,
+                                     tierNumber === 5 ? "text-destiny-gold" : "text-white"
+                                 )}>
+                                    ✦
+                                 </span>
+                             ))}
+                        </div>
+                    )
                 )}
 
                 {/* Hover Border Overlay */}

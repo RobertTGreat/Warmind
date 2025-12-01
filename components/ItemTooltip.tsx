@@ -529,7 +529,7 @@ export function ItemTooltip({
                 )}
 
                 {enhancementTier !== undefined && enhancementTier !== null && !tier && (
-                    <div className="flex flex-col items-center justify-center bg-black/40 px-1.5 py-0.5 rounded-sm">
+                    <div className="flex flex-col items-center justify-center bg-gray-800/20 px-1.5 py-0.5 rounded-sm">
                         <span className="text-[8px] text-destiny-gold uppercase font-bold leading-none tracking-widest">Tier</span>
                         <span className="text-sm font-bold text-destiny-gold leading-none">{enhancementTier}</span>
                     </div>
@@ -793,7 +793,7 @@ export function ItemTooltip({
                                                     "w-7 h-7 rounded-full overflow-hidden border-2 transition-all",
                                                     isEquipped 
                                                         ? "border-destiny-gold bg-destiny-gold/20 ring-1 ring-destiny-gold/30" 
-                                                        : "border-green-400/60 bg-black/30 opacity-70 hover:opacity-100"
+                                                        : "border-green-400/60 bg-gray-800/20 opacity-70 hover:opacity-100"
                                                 )}>
                                                     {perkDef.displayProperties?.icon ? (
                                                         <Image 
@@ -1044,7 +1044,7 @@ export function ItemTooltip({
                                                                     : "border-gray-500",
                                                                  isSelected 
                                                                     ? "bg-[#5b94be] opacity-100" 
-                                                                    : "bg-black/20 opacity-40 hover:opacity-100"
+                                                                    : "bg-black-800/20 opacity-40 hover:opacity-100"
                                                              )}>
                                                                  <Image 
                                                                      src={getBungieImage(plug.displayProperties?.icon)} 

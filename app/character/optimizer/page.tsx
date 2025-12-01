@@ -180,6 +180,114 @@ const FRAGMENT_ICONS: Record<string, { hash: number; icon: string }> = {
     'Facet of Sacrifice': { hash: 124726502, icon: 'https://www.bungie.net/common/destiny2_content/icons/b1aec7c22fee7032b6a4898e3c9867ff.png' },
 };
 
+// Fragment descriptions (stored separately as Bungie API doesn't include them in plug definitions)
+const FRAGMENT_DESCRIPTIONS: Record<string, string> = {
+    // Solar Fragments
+    'Ember of Ashes': 'Your abilities apply more scorch stacks to targets.',
+    'Ember of Beams': 'Your Solar Super projectiles have stronger target acquisition.',
+    'Ember of Benevolence': 'Applying restoration, cure, or radiant to allies grants increased grenade, melee, and class ability regeneration for a short duration.',
+    'Ember of Blistering': 'Defeating targets with Solar ignitions grants grenade energy.',
+    'Ember of Char': 'Your Solar ignitions spread scorch to affected targets.',
+    'Ember of Combustion': 'Final blows with your Solar Super cause targets to ignite.',
+    'Ember of Empyrean': 'Solar weapon or ability final blows extend the duration of restoration and radiant effects applied to you.',
+    'Ember of Eruption': 'Your Solar ignitions have increased area of effect.',
+    'Ember of Mercy': 'When you revive an ally, you and other nearby allies gain restoration.',
+    'Ember of Resolve': 'Solar grenade final blows cure you.',
+    'Ember of Searing': 'Defeating scorched targets grants melee energy.',
+    'Ember of Singeing': 'Your class ability recharges faster when you scorch targets.',
+    'Ember of Solace': 'Radiant and restoration effects applied to you have increased duration.',
+    'Ember of Tempering': 'Solar weapon final blows grant you and your allies increased recovery for a short duration.',
+    'Ember of Torches': 'Powered melee attacks against combatants make you and nearby allies radiant.',
+    'Ember of Wonder': 'Rapidly defeating multiple targets with Solar ignitions generates an Orb of Power.',
+    // Void Fragments
+    'Echo of Cessation': 'Finishers create a Void explosion that causes nearby combatants to become volatile.',
+    'Echo of Dilation': 'While crouched, you sneak faster and gain enhanced radar resolution.',
+    'Echo of Domineering': 'After suppressing a target, you gain greatly increased mobility for a short duration and your equipped weapon is reloaded from reserves.',
+    'Echo of Exchange': 'Melee final blows grant grenade energy.',
+    'Echo of Expulsion': 'Void ability kills cause targets to explode.',
+    'Echo of Harvest': 'Defeating weakened targets with precision final blows will create an Orb of Power.',
+    'Echo of Instability': 'Defeating targets with grenades grants Volatile Rounds to your Void weapons.',
+    'Echo of Leeching': 'Melee final blows start health regeneration for you and nearby allies.',
+    'Echo of Obscurity': 'Finisher final blows grant Invisibility.',
+    'Echo of Persistence': 'Void buffs applied to you have increased duration.',
+    'Echo of Provision': 'Damaging targets with grenades grants melee energy.',
+    'Echo of Remnants': 'Your lingering grenade effects have increased duration.',
+    'Echo of Reprisal': 'Final blows when surrounded by combatants grant Super energy.',
+    'Echo of Starvation': 'Picking up an Orb of Power grants Devour.',
+    'Echo of Undermining': 'Your Void grenades weaken targets.',
+    'Echo of Vigilance': 'Defeating a target grants you a Void overshield.',
+    // Arc Fragments
+    'Spark of Amplitude': 'Rapidly defeating targets while you are amplified creates an Orb of Power.',
+    'Spark of Beacons': 'While you are amplified, your Arc Special weapon final blows create a blinding explosion.',
+    'Spark of Brilliance': 'Defeating a blinded target with precision damage creates a blinding explosion.',
+    'Spark of Discharge': 'Arc weapon final blows have a chance to create an Ionic Trace.',
+    'Spark of Feedback': 'Taking melee damage briefly increases your outgoing melee damage.',
+    'Spark of Focus': 'After sprinting for a short time, your class ability regeneration is increased.',
+    'Spark of Frequency': 'Melee hits greatly increase your reload speed for a short duration.',
+    'Spark of Haste': 'You have greatly increased resilience, recovery, and mobility while sprinting.',
+    'Spark of Instinct': 'When critically wounded, taking damage from nearby combatants emits a damaging Arc burst.',
+    'Spark of Ions': 'Defeating a jolted target creates an Ionic Trace.',
+    'Spark of Magnitude': 'Your lingering Arc grenades have extended duration.',
+    'Spark of Momentum': 'Sliding over ammo reloads your weapon and grants a small amount of melee energy.',
+    'Spark of Recharge': 'While critically wounded, your melee and grenade energy regenerate more quickly.',
+    'Spark of Resistance': 'While surrounded by combatants, you are more resistant to incoming damage.',
+    'Spark of Shock': 'Your Arc grenades jolt targets.',
+    'Spark of Volts': 'Finishers make you amplified.',
+    // Stasis Fragments
+    'Whisper of Bonds': 'Defeating frozen targets grants you Super energy.',
+    'Whisper of Chains': 'While you are near frozen targets or a friendly Stasis crystal, you take reduced damage from targets.',
+    'Whisper of Chill': 'Defeating enemies with Stasis abilities adds more stacks of slow to nearby combatants.',
+    'Whisper of Conduction': 'Nearby Stasis shards track to your position.',
+    'Whisper of Durance': 'Slow from your abilities lasts longer. For those abilities that linger, their duration will also increase.',
+    'Whisper of Fissures': 'Increases the damage and size of the burst of Stasis when you destroy a Stasis crystal or defeat a frozen target.',
+    'Whisper of Fractures': 'Your melee recharges faster when you are near two or more targets.',
+    'Whisper of Hedrons': 'Dramatically increases weapon stability after freezing a target.',
+    'Whisper of Hunger': 'Increases the melee energy gained from picking up Stasis shards.',
+    'Whisper of Impetus': 'Damaging targets with a Stasis melee reloads your stowed weapons and grants you a temporary boost to weapon ready speed.',
+    'Whisper of Refraction': 'Defeating slowed or frozen targets grants you class ability energy.',
+    'Whisper of Rending': 'Kinetic weapons do increased damage to Stasis crystals and frozen targets.',
+    'Whisper of Reversal': 'Melee hits while you are encased by Stasis grant melee energy.',
+    'Whisper of Rime': 'Collecting a Stasis shard grants a small amount of overshield, which falls off after 10 seconds.',
+    'Whisper of Shards': 'Shattering a Stasis crystal temporarily boosts your grenade recharge rate.',
+    'Whisper of Torment': 'You gain grenade energy each time you take damage.',
+    // Strand Fragments
+    'Thread of Ascent': 'Activating your grenade ability reloads your equipped weapon and grants increased airborne effectiveness and handling for a short duration.',
+    'Thread of Binding': 'Super final blows emit a suspending burst from the target.',
+    'Thread of Continuity': 'Suspend, unravel, and sever effects applied to targets have increased duration.',
+    'Thread of Evolution': 'Threadlings travel farther and deal additional damage.',
+    'Thread of Finality': 'Finishers generate Threadlings.',
+    'Thread of Fury': 'Damaging targets with a Tangle grants melee energy.',
+    'Thread of Generation': 'Dealing damage generates grenade energy.',
+    'Thread of Isolation': 'Landing rapid precision hits emits a severing burst from the target.',
+    'Thread of Mind': 'Defeating suspended targets grants class ability energy.',
+    'Thread of Propagation': 'Powered melee final blows grant your Strand weapons Unraveling Rounds.',
+    'Thread of Rebirth': 'Strand weapon final blows have a chance to create a Threadling.',
+    'Thread of Transmutation': 'While you have Woven Mail, weapon final blows create a Tangle.',
+    'Thread of Warding': 'Picking up an Orb of Power grants Woven Mail.',
+    'Thread of Wisdom': 'Defeating suspended targets with precision final blows generates an Orb of Power.',
+    // Prismatic Fragments (Facets)
+    'Facet of Awakening': 'Rapidly defeating targets or dealing damage with abilities generates an elemental pickup from your subclass.',
+    'Facet of Balance': 'Rapidly defeating targets with Light damage grants melee energy. Rapidly defeating targets with Dark damage grants grenade energy.',
+    'Facet of Blessing': 'Gain a bonus to weapon damage when picking up an Orb of Power based on the type of damage you deal.',
+    'Facet of Bravery': 'Defeating targets with Grenade final blows grants Volatile Rounds to your Void weapons and Unraveling Rounds to your Strand weapons.',
+    'Facet of Command': 'Freezing or suppressing a target reloads your equipped weapon and creates a Stasis shard or Void breach.',
+    'Facet of Courage': 'Your Arc, Solar, and Void abilities deal increased damage to targets afflicted with Darkness debuffs.',
+    'Facet of Dawn': 'Powered melee hits make you Radiant. Powered melee hits against Frozen targets make you Radiant and Amplified.',
+    'Facet of Defiance': 'Finishers create a detonation that either jolts, ignites, or makes volatile.',
+    'Facet of Devotion': 'Defeating targets afflicted with any Stasis or Strand status effect grants bonus Light Transcendence energy.',
+    'Facet of Dominance': 'Your Void grenades weaken targets, and your Arc grenades jolt targets.',
+    'Facet of Generosity': 'Defeating targets with abilities while Transcendent creates Orbs of Power.',
+    'Facet of Grace': 'Damaging targets with Kinetic weapons grants bonus Transcendence energy. Damaging targets with your Super grants bonus Transcendence energy.',
+    'Facet of Honor': 'Collecting an elemental pickup or destroying a Tangle grants Transcendence energy of the same type.',
+    'Facet of Hope': 'While you have an elemental buff, your class ability regenerates more quickly.',
+    'Facet of Justice': 'While Transcendent, your ability final blows explode.',
+    'Facet of Mending': 'Grenade final blows cure you.',
+    'Facet of Protection': 'While surrounded by combatants, you are more resistant to incoming damage.',
+    'Facet of Purpose': 'Picking up an Orb of Power grants either Amplified, Radiant, Frost Armor, or Woven Mail.',
+    'Facet of Ruin': 'Increases the size and damage of the burst when you shatter a Stasis crystal or a frozen target, and increases the damage of Solar ignitions.',
+    'Facet of Sacrifice': 'While you have an elemental buff, your melee and grenade ability regenerate more quickly.',
+};
+
 // Stat Mod Item Hashes (for showing actual mod icons)
 const STAT_MOD_HASHES: Record<keyof ArmorStats, { plus10: number; plus5: number }> = {
     weapons: { plus10: 3961599962, plus5: 204137529 },   // Mobility Mod
@@ -785,10 +893,8 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
     const subclass = statData?.subclass || 'solar';
     const bonuses = statData?.bonuses || [];
     
-    // Fetch fragment definition for description
-    const { definitions } = useItemDefinitions(iconData?.hash ? [iconData.hash] : []);
-    const fragmentDef = iconData?.hash ? definitions[iconData.hash] : null;
-    const description = fragmentDef?.displayProperties?.description || '';
+    // Fragment descriptions (Bungie API doesn't include these in plug definitions)
+    const fragmentDescription = FRAGMENT_DESCRIPTIONS[name] || '';
     
     const subclassColors: Record<string, string> = {
         solar: 'border-orange-500 shadow-orange-500/40',
@@ -859,13 +965,11 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
             </div>
             
             {/* Description */}
-            <div className="px-3 py-2.5 border-t border-white/10">
-                {description ? (
-                    <p className="text-[11px] text-slate-200 leading-relaxed">{description}</p>
-                ) : (
-                    <p className="text-[10px] text-slate-500 italic">Loading description...</p>
-                )}
-            </div>
+            {fragmentDescription && (
+                <div className="px-3 py-2.5 border-t border-white/10">
+                    <p className="text-[11px] text-slate-200 leading-relaxed">{fragmentDescription}</p>
+                </div>
+            )}
             
             {/* Stats */}
             {bonuses.length > 0 && (

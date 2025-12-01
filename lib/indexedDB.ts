@@ -1,6 +1,8 @@
-const DB_NAME = 'WarmindDB';
+// Simple key-value store for wishlists and other data
+// Uses a separate DB name to avoid conflicts with WarmindDB (Dexie)
+const DB_NAME = 'WarmindKV';
 const DB_VERSION = 1;
-const STORE_NAME = 'manifest_items';
+const STORE_NAME = 'keyvalue';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -27,7 +29,20 @@ const openDB = () => {
         };
 
         request.onerror = (event) => {
-            reject((event.target as IDBOpenDBRequest).error);
+            console.error('IndexedDB Open Error:', (event.target as IDBOpenDBRequest).error);
+            // If there's a version error, delete and retry
+            const error = (event.target as IDBOpenDBRequest).error;
+            if (error?.name === 'VersionError') {
+                console.log('Version conflict detected, deleting old database...');
+                indexedDB.deleteDatabase(DB_NAME);
+                dbPromise = null;
+                // Retry after deletion
+                setTimeout(() => {
+                    openDB().then(resolve).catch(reject);
+                }, 100);
+            } else {
+                reject(error);
+            }
         };
     });
 
