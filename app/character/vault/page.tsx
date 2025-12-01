@@ -234,10 +234,12 @@ export default function VaultPage() {
   }[iconSize];
 
   // --- Drag and Drop Handlers ---
-  const { addOperation, removeOperation, pendingOperations } = useTransferStore();
+  const { addOperation, removeOperation, updateOperationStatus, pendingOperations } = useTransferStore();
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
 
   const handleDrop = async (e: React.DragEvent, targetOwnerId: string, bucketHash?: number) => {
       e.preventDefault();
+      setDragOverTarget(null);
       const data = e.dataTransfer.getData('application/json');
       if (!data) return;
       
@@ -252,25 +254,15 @@ export default function VaultPage() {
           // @ts-ignore
           const targetName = targetOwnerId === 'VAULT' ? 'Vault' : (character ? classNames[character.classType] : 'Character');
 
-          // Optimistic UI: Add to store
-          // We add the minimal data needed for the UI to render the ghost item
-          // Note: We don't have the full item structure here from the drag data easily unless we passed it all.
-          // But we can try to find it in the current rendered lists if needed, or just pass what we have.
-          // Actually, the drag data included `def` maybe? No, we limited it.
-          // Let's find the item in our existing lists to pass it to the store for optimistic rendering.
-          // We can scan allItems list or just use the hook's knowledge if we had it.
-          // Since we don't have easy access to the full item object here without scanning, 
-          // we'll rely on the fact that we can find it in the profile data.
-          
-          let fullItem: any = null;
-          // Quick scan to find the item object
+          // Find full item for optimistic rendering
           const allItemsList = [
               ...Object.values(profile?.characterInventories?.data || {}).flatMap((c: any) => c.items),
               ...Object.values(profile?.characterEquipment?.data || {}).flatMap((c: any) => c.items),
               ...(profile?.profileInventory?.data?.items || [])
           ];
-          fullItem = allItemsList.find((i: any) => i.itemInstanceId === itemInstanceId);
+          const fullItem = allItemsList.find((i: any) => i.itemInstanceId === itemInstanceId);
 
+          // Add operation with 'syncing' status (handled by store)
           addOperation({
               itemHash,
               itemInstanceId,
@@ -278,18 +270,20 @@ export default function VaultPage() {
               toOwnerId: targetOwnerId,
               item: fullItem || {}, 
               type: 'transfer',
-              bucketHash // Pass the bucket hash so we know where to render it optimistically
+              bucketHash
           });
 
           const promise = (async () => {
               try {
                  await moveItem(itemInstanceId, itemHash, fromOwnerId, targetOwnerId, membershipInfo.membershipType);
-                 // Wait a bit for SWR or manual refresh (not implemented yet)
-                 // In a real app, we'd mutate SWR here.
-                 setTimeout(() => removeOperation(itemInstanceId), 2000); 
+                 // API confirmed - update status to success, then remove after brief delay
+                 updateOperationStatus(itemInstanceId, 'success');
+                 setTimeout(() => removeOperation(itemInstanceId), 1500); 
               } catch (err) {
-                 // If failed, remove operation immediately so it "bounces back"
-                 removeOperation(itemInstanceId);
+                 // API failed - set error status for bounce-back animation
+                 updateOperationStatus(itemInstanceId, 'error');
+                 // Remove after animation completes (500ms animation + buffer)
+                 setTimeout(() => removeOperation(itemInstanceId), 800);
                  throw err;
               }
           })();
@@ -297,7 +291,7 @@ export default function VaultPage() {
           toast.promise(promise, {
               loading: `Transferring to ${targetName}...`,
               success: `Moved to ${targetName}`,
-              error: 'Transfer failed'
+              error: 'Transfer failed - item returned'
           });
 
       } catch (e) {
@@ -305,9 +299,14 @@ export default function VaultPage() {
       }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, targetId?: string) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
+      if (targetId) setDragOverTarget(targetId);
+  };
+  
+  const handleDragLeave = () => {
+      setDragOverTarget(null);
   };
 
 
@@ -602,17 +601,21 @@ export default function VaultPage() {
 
                                      const sortedInventory = sortItems(inventory);
 
-                                    return (
-                                        <div 
-                                            key={charId} 
-                                            className={cn(
-                                                "shrink-0 flex gap-1 p-1 transition-all border border-transparent rounded-sm", 
-                                                "hover:border-white/5 hover:bg-white/5", // Drop zone hint on hover
-                                                columnWidthClass // Match header width
-                                            )}
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) => handleDrop(e, charId, bucketHash)}
-                                        >
+                                   const dropZoneId = `${charId}-${bucketHash}`;
+                                   return (
+                                       <div 
+                                           key={charId} 
+                                           className={cn(
+                                               "shrink-0 flex gap-1 p-1 transition-all border border-transparent rounded-sm", 
+                                               dragOverTarget === dropZoneId 
+                                                   ? "drag-over-active border-destiny-gold/40 bg-destiny-gold/10" 
+                                                   : "hover:border-white/5 hover:bg-white/5",
+                                               columnWidthClass
+                                           )}
+                                           onDragOver={(e) => handleDragOver(e, dropZoneId)}
+                                           onDragLeave={handleDragLeave}
+                                           onDrop={(e) => handleDrop(e, charId, bucketHash)}
+                                       >
                                              {/* Equipped (Large) */}
                                            <div className={cn("shrink-0 flex flex-col gap-1", equippedSizeClass.replace('h-', 'w-'))}> 
                                                {/* Equipped Item */}
@@ -659,9 +662,18 @@ export default function VaultPage() {
                                 })}
                                 
                                 {/* Vault Column for this bucket */}
+                                 {(() => {
+                                    const vaultDropZoneId = `VAULT-${bucketHash}`;
+                                    return (
                                  <div 
-                                    className="flex-1 p-1 border border-transparent rounded-sm hover:border-white/5 hover:bg-white/5 transition-colors ml-4"
-                                    onDragOver={handleDragOver}
+                                    className={cn(
+                                        "flex-1 p-1 border border-transparent rounded-sm transition-colors ml-4",
+                                        dragOverTarget === vaultDropZoneId 
+                                            ? "drag-over-active border-destiny-gold/40 bg-destiny-gold/10" 
+                                            : "hover:border-white/5 hover:bg-white/5"
+                                    )}
+                                    onDragOver={(e) => handleDragOver(e, vaultDropZoneId)}
+                                    onDragLeave={handleDragLeave}
                                     onDrop={(e) => handleDrop(e, "VAULT", bucketHash)}
                                  >
                                     <div className="text-xs text-slate-500 uppercase mb-1 font-bold">{bucketName} (Vault)</div>
@@ -789,8 +801,10 @@ export default function VaultPage() {
                                          }
 
                                          return null;
-                                     })()}
-                                </div>
+                                    })()}
+                               </div>
+                                    );
+                                 })()}
                              </div>
                          );
                      })}

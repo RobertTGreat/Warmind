@@ -328,8 +328,12 @@ export default function CharacterPage() {
         return { basePowerLevel: bpl, bestItems: best };
     }, [activeCharacterId, profile]);
 
+    const updateOperationStatus = useTransferStore(state => state.updateOperationStatus);
+    const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+
     const handleDrop = async (e: React.DragEvent, targetOwnerId: string, bucketHash?: number) => {
         e.preventDefault();
+        setDragOverTarget(null);
         const dataStr = e.dataTransfer.getData('application/json');
         if (!dataStr) return;
         
@@ -351,6 +355,7 @@ export default function CharacterPage() {
             ];
             const fullItem = allItemsList.find((i: any) => i.itemInstanceId === itemInstanceId);
   
+            // Add operation with 'syncing' status (handled by store)
             addOperation({
                 itemHash,
                 itemInstanceId,
@@ -364,9 +369,14 @@ export default function CharacterPage() {
             const promise = (async () => {
                 try {
                    await moveItem(itemInstanceId, itemHash, fromOwnerId, targetOwnerId, membershipInfo.membershipType);
-                   setTimeout(() => removeOperation(itemInstanceId), 2000); 
+                   // API confirmed - update status to success, then remove after brief delay
+                   updateOperationStatus(itemInstanceId, 'success');
+                   setTimeout(() => removeOperation(itemInstanceId), 1500); 
                 } catch (err) {
-                   removeOperation(itemInstanceId);
+                   // API failed - set error status for bounce-back animation
+                   updateOperationStatus(itemInstanceId, 'error');
+                   // Remove after animation completes
+                   setTimeout(() => removeOperation(itemInstanceId), 800);
                    throw err;
                 }
             })();
@@ -374,7 +384,7 @@ export default function CharacterPage() {
             toast.promise(promise, {
                 loading: `Transferring to ${targetName}...`,
                 success: `Moved to ${targetName}`,
-                error: 'Transfer failed'
+                error: 'Transfer failed - item returned'
             });
   
         } catch (e) {
@@ -382,9 +392,14 @@ export default function CharacterPage() {
         }
     };
   
-    const handleDragOver = (e: React.DragEvent) => {
+    const handleDragOver = (e: React.DragEvent, targetId?: string) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
+        if (targetId) setDragOverTarget(targetId);
+    };
+    
+    const handleDragLeave = () => {
+        setDragOverTarget(null);
     };
 
     // Currencies & Materials Calculation
@@ -731,13 +746,19 @@ export default function CharacterPage() {
                                         </div>
 
                                         {/* Inventory Grid (3x3) Drop Zone */}
+                                        {(() => {
+                                            const inventoryDropZoneId = `${activeCharacterId}-${section.bucket}`;
+                                            return (
                                         <div 
                                             className={cn(
                                                 "grid grid-cols-3 gap-2 gap-y-7 p-1 -m-1 border border-transparent rounded-sm transition-colors content-start",
                                                 sizeConfig.containerWidth,
-                                                "hover:bg-white/5 hover:border-white/5"
+                                                dragOverTarget === inventoryDropZoneId 
+                                                    ? "drag-over-active border-destiny-gold/40 bg-destiny-gold/10" 
+                                                    : "hover:bg-white/5 hover:border-white/5"
                                             )}
-                                            onDragOver={handleDragOver}
+                                            onDragOver={(e) => handleDragOver(e, inventoryDropZoneId)}
+                                            onDragLeave={handleDragLeave}
                                             onDrop={(e) => handleDrop(e, activeCharacterId!, section.bucket)}
                                         >
                                             {inventorySlots.map((_, i) => {
@@ -758,18 +779,26 @@ export default function CharacterPage() {
                                                 );
                                             })}
                                         </div>
+                                            );
+                                        })()}
                                     </div>
 
                                     {/* Spacer / Vault Divider */}
                                     <div className="w-px bg-slate-800 mx-2" />
 
                                     {/* Vault Grid Drop Zone (Expanded View) */}
+                                    {(() => {
+                                        const vaultDropZoneId = `VAULT-${section.bucket}`;
+                                        return (
                                     <div 
                                         className={cn(
                                             "flex-1 p-2 -m-1 border border-transparent rounded-sm transition-colors",
-                                            "hover:bg-white/5 hover:border-white/5"
+                                            dragOverTarget === vaultDropZoneId 
+                                                ? "drag-over-active border-destiny-gold/40 bg-destiny-gold/10" 
+                                                : "hover:bg-white/5 hover:border-white/5"
                                         )}
-                                        onDragOver={handleDragOver}
+                                        onDragOver={(e) => handleDragOver(e, vaultDropZoneId)}
+                                        onDragLeave={handleDragLeave}
                                         onDrop={(e) => handleDrop(e, "VAULT", section.bucket)}
                                     >
                                          <h3 className="text-xs text-slate-500 uppercase font-bold mb-2">{section.name}</h3>
@@ -911,6 +940,8 @@ export default function CharacterPage() {
                                             );
                                          })()}
                                     </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         );

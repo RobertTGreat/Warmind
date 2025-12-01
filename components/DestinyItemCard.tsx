@@ -2,13 +2,14 @@ import useSWR from 'swr';
 import Image from 'next/image';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { cn } from '@/lib/utils';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { ItemTooltip } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
-import { useTransferStore } from '@/store/transferStore';
+import { useTransferStore, TransferStatus } from '@/store/transferStore';
 import { getItemTier, getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils';
 import { useWishListStore } from '@/store/wishlistStore';
+import { RefreshCw } from 'lucide-react';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -81,9 +82,19 @@ export function DestinyItemCard({
     }
   );
   
-  // Watch store for this item
+  // Watch store for this item's transfer status
   const pendingOperations = useTransferStore(state => state.pendingOperations);
-  const isPending = itemInstanceId ? pendingOperations.some(op => op.itemInstanceId === itemInstanceId) : false;
+  const transferOperation = itemInstanceId 
+    ? pendingOperations.find(op => op.itemInstanceId === itemInstanceId) 
+    : null;
+  const transferStatus: TransferStatus | null = transferOperation?.status ?? null;
+  const isPending = !!transferOperation;
+  const isSyncing = transferStatus === 'syncing';
+  const isError = transferStatus === 'error';
+  
+  // Track drag state for visual feedback
+  const [isDragging, setIsDragging] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const def = definition || defResponse?.Response;
 
@@ -429,6 +440,9 @@ export function DestinyItemCard({
 
   const handleDragStart = (e: React.DragEvent) => {
       if (!itemInstanceId) return;
+      setIsDragging(true);
+      setIsHovered(false);
+      
       e.dataTransfer.setData('application/json', JSON.stringify({
           itemHash,
           itemInstanceId,
@@ -436,6 +450,16 @@ export function DestinyItemCard({
           def
       }));
       e.dataTransfer.setData('text/plain', itemInstanceId);
+      
+      // Set custom drag image (semi-transparent)
+      if (cardRef.current) {
+          const rect = cardRef.current.getBoundingClientRect();
+          e.dataTransfer.setDragImage(cardRef.current, rect.width / 2, rect.height / 2);
+      }
+  };
+  
+  const handleDragEnd = () => {
+      setIsDragging(false);
   };
 
   const isLocked = instanceData ? (instanceData.state & 1) === 1 : false;
@@ -503,17 +527,24 @@ export function DestinyItemCard({
     return (
     <>
         <div 
+            ref={cardRef}
             className={cn(
                 "group relative flex flex-col bg-transparent transition-all cursor-pointer select-none", 
                 "h-auto! border-none! overflow-visible!",
                 className,
-                isPending && "opacity-50 grayscale animate-pulse pointer-events-none"
+                // Dragging state - slightly transparent, no pointer events
+                isDragging && "opacity-40 scale-95 pointer-events-none",
+                // Syncing state - show with sync animation
+                isSyncing && "animate-snap-in",
+                // Error state - shake animation
+                isError && "animate-error-shake"
             )} 
             onMouseEnter={handleMouseEnter}
             onMouseLeave={() => setIsHovered(false)}
             onContextMenu={handleContextMenu}
-            draggable={!!itemInstanceId}
+            draggable={!!itemInstanceId && !isPending}
             onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
         >
             {/* Main Icon Container */}
             <div className={cn(
@@ -547,10 +578,27 @@ export function DestinyItemCard({
                 )}
 
                 {/* Lock Icon Overlay */}
-                {isLocked && (
+                {isLocked && !isSyncing && (
                     <div className="absolute top-0.5 right-0.5 z-20">
                         <div className="w-2 h-2 bg-yellow-500 rounded-full shadow-sm" />
                     </div>
+                )}
+                
+                {/* Sync Icon Overlay - Shows during optimistic transfer */}
+                {isSyncing && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+                        <div className="relative">
+                            <RefreshCw className={cn(
+                                "text-destiny-gold animate-sync-spin drop-shadow-lg",
+                                size === 'small' ? "w-4 h-4" : size === 'large' ? "w-6 h-6" : "w-5 h-5"
+                            )} />
+                        </div>
+                    </div>
+                )}
+                
+                {/* Error state overlay */}
+                {isError && (
+                    <div className="absolute inset-0 z-30 border-2 border-red-500/50 pointer-events-none" />
                 )}
 
                 {/* Trash Indicator - Only show on icon for trash rolls */}
