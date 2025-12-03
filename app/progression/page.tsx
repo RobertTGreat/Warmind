@@ -1,761 +1,717 @@
 'use client';
 
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
-import { Loader2, Swords, Shield, Grid3X3, Search, CheckCircle2 } from "lucide-react";
-import { useState, useMemo, Fragment } from "react";
+import { Loader2, Search, Plus, X, Check, BookOpen, Star, ChevronDown, ChevronUp } from "lucide-react";
+import { ItemTooltip } from "@/components/ItemTooltip";
 import { cn } from "@/lib/utils";
+import { toast } from 'sonner';
+import Image from 'next/image';
+import { getBungieImage } from '@/lib/bungie';
 
-// Lazy load the heavy PageHeader
+// Lazy load components
 const PageHeader = dynamic(
   () => import("@/components/PageHeader").then((mod) => mod.PageHeader),
   { ssr: false }
 );
 
-// Known Hashes
-const EXOTIC_CLASS_ITEM_HASHES = {
-    HUNTER: 3273230820, // Relativism
-    TITAN: 2773636829,  // Stoicism
-    WARLOCK: 373760677  // Solipsism
-};
+const DestinyItemCard = dynamic(
+  () => import("@/components/DestinyItemCard").then((mod) => mod.DestinyItemCard),
+  { ssr: false }
+);
 
-const ERGO_SUM_HASH = 3514146698;
+// Local storage for custom wishlist entries
+const WISHLIST_STORAGE_KEY = 'warmind-custom-wishlist';
 
-// Matrix Definitions
-const CLASS_ITEM_PERKS = {
-    COL1: [
-        "Spirit of the Assassin", "Spirit of Inmost Light", "Spirit of Ophidian", "Spirit of Severance", 
-        "Spirit of Hoarfrost", "Spirit of the Eternal Warrior", "Spirit of Abeyant", "Spirit of the Bear", 
-        "Spirit of the Dragon", "Spirit of Galanor", "Spirit of Foetracer", "Spirit of Caliban", 
-        "Spirit of Renewal", "Spirit of the Stag", "Spirit of the Filament", "Spirit of the Necrotic", 
-        "Spirit of Osmiomancy", "Spirit of Apotheosis"
-    ],
-    COL2: [
-        "Spirit of the Star-Eater", "Spirit of Synthoceps", "Spirit of Verity", "Spirit of Cyrtarachne", 
-        "Spirit of Gyrfalcon", "Spirit of the Liar", "Spirit of the Wormhusk", "Spirit of the Coyote", 
-        "Spirit of Scars", "Spirit of the Horn", "Spirit of Alpha Lupi", "Spirit of the Armamentarium", 
-        "Spirit of Contact", "Spirit of the Claw", "Spirit of Starfire", "Spirit of Vesper", 
-        "Spirit of Harmony", "Spirit of the Swarm"
-    ]
-};
+// Wishlist Item Component
+function WishlistItemIcon({ 
+  entry, 
+  definitions, 
+  profile, 
+  allItems, 
+  isItemInInventory,
+  onRemove 
+}: { 
+  entry: WishListEntry;
+  definitions: Record<number, any>;
+  profile: any;
+  allItems: any[];
+  isItemInInventory: (hash: number) => boolean;
+  onRemove: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const iconRef = useRef<HTMLDivElement>(null);
 
-const ERGO_SUM_PERKS = {
-    FRAMES: ["Wave Sword Frame", "Caster Frame", "Vortex Frame", "Lightweight Frame", "Aggressive Frame"],
-    TRAITS: [
-        "Wolfpack Rounds", "Gathering Light", "Sacred Flame", "The Perfect Fifth", 
-        "Arc Conductor", "Stormbringer", "Unplanned Reprieve", "Insectoid Robot Grenades"
-    ]
-};
+  const entryDef = definitions[entry.itemHash];
+  const inInventory = isItemInInventory(entry.itemHash);
 
-const ARMOR_CLASSES = ['Titan', 'Hunter', 'Warlock'];
+  // Get item instance data for tooltip
+  const itemInstance = allItems.find((i: any) => i.itemHash === entry.itemHash);
+  const instanceId = itemInstance?.itemInstanceId;
+  const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
+  const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
+  const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
+  const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    if (iconRef.current) {
+      const rect = iconRef.current.getBoundingClientRect();
+      setTooltipPos({
+        x: rect.left + rect.width / 2,
+        y: rect.top
+      });
+    }
+    setIsHovered(true);
+  };
+
+  return (
+    <div className="relative group">
+      <div
+        ref={iconRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setIsHovered(false)}
+        className={cn(
+          "relative w-16 h-16 border-2 transition-all cursor-pointer",
+          inInventory
+            ? "border-destiny-gold bg-destiny-gold/10 shadow-[0_0_10px_rgba(227,206,98,0.3)]"
+            : "border-white/10 hover:border-destiny-gold/50"
+        )}
+      >
+        {entry.itemIcon && (
+          <Image
+            src={getBungieImage(entry.itemIcon)}
+            fill
+            alt={entry.itemName}
+            className="object-cover"
+          />
+        )}
+        <button
+          onClick={onRemove}
+          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        >
+          <X className="w-3 h-3 text-white" />
+        </button>
+      </div>
+
+      {/* Tooltip */}
+      {isHovered && entryDef && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed z-9999 pointer-events-none"
+          style={{ 
+            left: tooltipPos.x, 
+            top: tooltipPos.y,
+            transform: 'translate(-50%, -100%)',
+            marginTop: '-8px'
+          }}
+        >
+          <ItemTooltip
+            name={entryDef.displayProperties?.name || entry.itemName}
+            itemType={entryDef.itemTypeDisplayName || ''}
+            rarity={entryDef.inventory?.tierTypeName || ''}
+            icon={entryDef.displayProperties?.icon ? getBungieImage(entryDef.displayProperties.icon) : undefined}
+            power={instanceData?.primaryStat?.value}
+            itemHash={entry.itemHash}
+            stats={statsData}
+            socketsData={socketsData}
+            itemDef={entryDef}
+            fixedPosition
+          />
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+interface WishListEntry {
+  itemHash: number;
+  itemName: string;
+  itemIcon: string;
+  perkHashes?: number[]; // Specific roll (empty = any roll)
+  statDistribution?: {
+    weapons?: number;
+    health?: number;
+    class?: number;
+    grenade?: number;
+    super?: number;
+    melee?: number;
+  };
+  notes?: string;
+  tags?: string[];
+}
 
 export default function ProgressionPage() {
-    const { profile, isLoggedIn, isLoading } = useDestinyProfile();
-    const [activeTab, setActiveTab] = useState<'exotic-class' | 'ergo-sum' | 'armor-sets'>('exotic-class');
+  const { profile, isLoading: profileLoading } = useDestinyProfile();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedItem, setSelectedItem] = useState<number | null>(null);
+  const [selectedRoll, setSelectedRoll] = useState<number[]>([]);
+  const [selectedStats, setSelectedStats] = useState<WishListEntry['statDistribution'] | null>(null);
+  const [notes, setNotes] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState('');
+  const [expandedSockets, setExpandedSockets] = useState<Set<number>>(new Set());
 
-    if (isLoading) {
-        return (
-            <div className="w-full h-[calc(100vh-80px)] flex items-center justify-center">
-                <Loader2 className="w-12 h-12 animate-spin text-destiny-gold" />
-            </div>
-        );
+  // Get all items from profile for search
+  const allItems = useMemo(() => {
+    if (!profile) return [];
+    const items: any[] = [];
+    if (profile.characterInventories?.data) {
+      Object.values(profile.characterInventories.data).forEach((char: any) => items.push(...char.items));
     }
-
-    if (!isLoggedIn) {
-        return (
-            <div className="p-10 text-center text-slate-400">
-                Please login to view your progression.
-            </div>
-        );
+    if (profile.characterEquipment?.data) {
+      Object.values(profile.characterEquipment.data).forEach((char: any) => items.push(...char.items));
     }
+    if (profile.profileInventory?.data?.items) {
+      items.push(...profile.profileInventory.data.items);
+    }
+    return items;
+  }, [profile]);
 
-    return (
-        <div className="min-h-screen p-4 md:p-8 pb-24">
-            <PageHeader 
-                title="Progression" 
-                description="Track your collection of random-rolled exotics and armor sets."
-            />
+  // Check if an item is in inventory/vault
+  const isItemInInventory = useMemo(() => {
+    const itemHashes = new Set(allItems.map((i: any) => i.itemHash));
+    return (itemHash: number) => itemHashes.has(itemHash);
+  }, [allItems]);
 
-            {/* Tabs */}
-            <div className="flex gap-4 mt-8 border-b border-white/10 pb-4 overflow-x-auto">
-                <button 
-                    onClick={() => setActiveTab('exotic-class')}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-sm transition-colors whitespace-nowrap font-bold uppercase tracking-wider text-sm",
-                        activeTab === 'exotic-class' ? "bg-destiny-gold text-slate-900" : " text-slate-400 hover:text-white"
-                    )}
-                >
-                    <Shield className="w-4 h-4" />
-                    Exotic Class Items
-                </button>
-                <button 
-                    onClick={() => setActiveTab('ergo-sum')}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-sm transition-colors whitespace-nowrap font-bold uppercase tracking-wider text-sm",
-                        activeTab === 'ergo-sum' ? "bg-destiny-gold text-slate-900" : " text-slate-400 hover:text-white"
-                    )}
-                >
-                    <Swords className="w-4 h-4" />
-                    Ergo Sum
-                </button>
-                <button 
-                    onClick={() => setActiveTab('armor-sets')}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-sm transition-colors whitespace-nowrap font-bold uppercase tracking-wider text-sm",
-                        activeTab === 'armor-sets' ? "bg-destiny-gold text-slate-900" : " text-slate-400 hover:text-white"
-                    )}
-                >
-                    <Grid3X3 className="w-4 h-4" />
-                    Armor Collection
-                </button>
-            </div>
+  // Get unique item hashes
+  const uniqueHashes = useMemo(() => {
+    return Array.from(new Set(allItems.map((i: any) => i.itemHash)));
+  }, [allItems]);
 
-            <div className="mt-8">
-                {activeTab === 'exotic-class' && <ExoticClassItemChecker profile={profile} />}
-                {activeTab === 'ergo-sum' && <ErgoSumChecker profile={profile} />}
-                {activeTab === 'armor-sets' && <ArmorSetChecker profile={profile} />}
-            </div>
-        </div>
-    );
-}
+  const { definitions, isLoading: defsLoading } = useItemDefinitions(uniqueHashes);
 
-// --- Components ---
-
-function ExoticClassItemChecker({ profile }: { profile: any }) {
-    const allItems = useAllItems(profile);
+  // Filter items by search
+  const filteredItems = useMemo(() => {
+    if (!searchQuery || !definitions) return [];
     
-    const titanItems = allItems.filter((item: any) => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.TITAN);
-    const hunterItems = allItems.filter((item: any) => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.HUNTER);
-    const warlockItems = allItems.filter((item: any) => item.itemHash === EXOTIC_CLASS_ITEM_HASHES.WARLOCK);
+    const query = searchQuery.toLowerCase();
+    return uniqueHashes
+      .map(hash => definitions[hash])
+      .filter(def => {
+        if (!def) return false;
+        const name = def.displayProperties?.name?.toLowerCase() || '';
+        const type = def.itemTypeDisplayName?.toLowerCase() || '';
+        return name.includes(query) || type.includes(query);
+      })
+      .slice(0, 50); // Limit to 50 results
+  }, [searchQuery, definitions, uniqueHashes]);
 
+  // Get selected item definition
+  const selectedItemDef = selectedItem ? definitions[selectedItem] : null;
+
+  // Get available perks organized by socket slot - from item definition, not instance
+  const socketPerks = useMemo(() => {
+    if (!selectedItem || !selectedItemDef) return [];
+    
+    if (!selectedItemDef.sockets?.socketEntries) return [];
+
+    // Excluded socket indices and category names
+    const excludedIndices = [6, 10, 11]; // Columns 7, 11, 12 (0-indexed)
+    const excludedCategoryNames = ['Weapon Perks 3'];
+
+    // Organize perks by socket index
+    const socketMap: Array<{
+      socketIndex: number;
+      categoryName: string;
+      perks: Array<{ hash: number; canInsert: boolean }>;
+    }> = [];
+
+    selectedItemDef.sockets.socketEntries.forEach((entry: any, idx: number) => {
+      // Skip excluded indices (columns 7, 11, 12 are 0-indexed as 6, 10, 11)
+      if (excludedIndices.includes(idx)) return;
+
+      // Get category name from socket category
+      let categoryName = `Column ${idx + 1}`;
+      let weaponPerkCount = 0;
+      
+      if (selectedItemDef.sockets?.socketCategories) {
+        const category = selectedItemDef.sockets.socketCategories.find((cat: any) => 
+          cat.socketIndexes?.includes(idx)
+        );
+        if (category) {
+          // Try to extract a meaningful name
+          const catHash = category.socketCategoryHash;
+          if (catHash === 4241085061) {
+            // Count how many "Weapon Perks" categories we've seen so far
+            weaponPerkCount = socketMap.filter(s => {
+              const sCategory = selectedItemDef.sockets.socketCategories.find((c: any) => 
+                c.socketIndexes?.includes(s.socketIndex)
+              );
+              return sCategory?.socketCategoryHash === 4241085061;
+            }).length;
+            categoryName = weaponPerkCount === 0 ? 'Weapon Perks' : weaponPerkCount === 1 ? 'Weapon Perks 2' : `Weapon Perks ${weaponPerkCount + 1}`;
+          }
+          else if (catHash === 3956125808) categoryName = 'Intrinsic';
+          else if (catHash === 590099826 || catHash === 2518356196) categoryName = 'Armor Mods';
+          else categoryName = category.displayProperties?.name || categoryName;
+        }
+      }
+
+      // Skip excluded category names (Weapon Perks 3)
+      if (excludedCategoryNames.includes(categoryName)) return;
+
+      // Get all possible plugs from all instances of this item
+      const perkHashes = new Set<number>();
+      
+      // Collect plugs from all instances of this item
+      const itemInstances = allItems.filter((i: any) => i.itemHash === selectedItem);
+      itemInstances.forEach((itemInstance: any) => {
+        const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[itemInstance.itemInstanceId]?.plugs;
+        const plugs = reusablePlugs?.[idx] || [];
+        plugs.forEach((p: any) => {
+          if (p.plugItemHash) {
+            perkHashes.add(p.plugItemHash);
+          }
+        });
+      });
+
+      // Also add singleInitialItemHash if present
+      if (entry.singleInitialItemHash) {
+        perkHashes.add(entry.singleInitialItemHash);
+      }
+
+      const perkList = Array.from(perkHashes).map(hash => ({ hash, canInsert: true }));
+
+      if (perkList.length > 0) {
+        socketMap.push({
+          socketIndex: idx,
+          categoryName,
+          perks: perkList,
+        });
+      }
+    });
+
+    return socketMap;
+  }, [selectedItem, profile, allItems, selectedItemDef]);
+
+  // Get all perk hashes for definitions
+  const allPerkHashes = useMemo(() => {
+    return socketPerks.flatMap(s => s.perks.map(p => p.hash));
+  }, [socketPerks]);
+
+  const { definitions: perkDefs } = useItemDefinitions(allPerkHashes);
+
+  const toggleSocket = (socketIndex: number) => {
+    setExpandedSockets(prev => {
+      const next = new Set(prev);
+      if (next.has(socketIndex)) {
+        next.delete(socketIndex);
+      } else {
+        next.add(socketIndex);
+      }
+      return next;
+    });
+  };
+
+  // Reset expanded sockets when item changes
+  useEffect(() => {
+    setExpandedSockets(new Set());
+    setSelectedRoll([]);
+  }, [selectedItem]);
+
+  // Load wishlist entries from localStorage
+  const [wishListEntries, setWishListEntries] = useState<WishListEntry[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = localStorage.getItem(WISHLIST_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Save wishlist entries to localStorage
+  const saveWishList = (entries: WishListEntry[]) => {
+    setWishListEntries(entries);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(entries));
+    }
+  };
+
+  const handleAddWishList = () => {
+    if (!selectedItem || !selectedItemDef) {
+      toast.error('Please select an item');
+      return;
+    }
+
+    const newEntry: WishListEntry = {
+      itemHash: selectedItem,
+      itemName: selectedItemDef.displayProperties?.name || 'Unknown',
+      itemIcon: selectedItemDef.displayProperties?.icon || '',
+      perkHashes: selectedRoll.length > 0 ? selectedRoll : undefined,
+      statDistribution: selectedStats ?? undefined,
+      notes: notes.trim() || undefined,
+      tags: tags.length > 0 ? tags : undefined,
+    };
+
+    // Check for duplicates (same item + same perks)
+    const isDuplicate = wishListEntries.some(entry => {
+      if (entry.itemHash !== selectedItem) return false;
+      if (entry.perkHashes?.length !== selectedRoll.length) return false;
+      if (selectedRoll.length > 0) {
+        return entry.perkHashes?.every(h => selectedRoll.includes(h));
+      }
+      return true; // Same item with no specific perks
+    });
+
+    if (isDuplicate) {
+      toast.error('This roll is already in your wishlist');
+      return;
+    }
+
+    saveWishList([...wishListEntries, newEntry]);
+    toast.success('Added to wishlist!');
+    
+    // Reset form
+    setSelectedItem(null);
+    setSelectedRoll([]);
+    setSelectedStats(null);
+    setNotes('');
+    setTags([]);
+    setExpandedSockets(new Set());
+  };
+
+  const handleRemoveWishList = (index: number) => {
+    const newEntries = wishListEntries.filter((_, i) => i !== index);
+    saveWishList(newEntries);
+    toast.success('Removed from wishlist');
+  };
+
+  const addTag = () => {
+    if (customTag.trim() && !tags.includes(customTag.trim())) {
+      setTags([...tags, customTag.trim()]);
+      setCustomTag('');
+    }
+  };
+
+  const removeTag = (tag: string) => {
+    setTags(tags.filter(t => t !== tag));
+  };
+
+  if (profileLoading || defsLoading) {
     return (
-        <div className="space-y-12">
-            {titanItems.length > 0 && (
-                <ExoticMatrix 
-                    title="Stoicism (Titan)" 
-                    items={titanItems} 
-                    col1Perks={CLASS_ITEM_PERKS.COL1}
-                    col2Perks={CLASS_ITEM_PERKS.COL2}
-                />
-            )}
-            {hunterItems.length > 0 && (
-                <ExoticMatrix 
-                    title="Relativism (Hunter)" 
-                    items={hunterItems} 
-                    col1Perks={CLASS_ITEM_PERKS.COL1}
-                    col2Perks={CLASS_ITEM_PERKS.COL2}
-                />
-            )}
-            {warlockItems.length > 0 && (
-                <ExoticMatrix 
-                    title="Solipsism (Warlock)" 
-                    items={warlockItems} 
-                    col1Perks={CLASS_ITEM_PERKS.COL1}
-                    col2Perks={CLASS_ITEM_PERKS.COL2}
-                />
-            )}
-            
-            {titanItems.length === 0 && hunterItems.length === 0 && warlockItems.length === 0 && (
-                 <div className="text-center py-12 text-slate-500">
-                     No Exotic Class Items found.
-                 </div>
-            )}
-        </div>
+      <div className="w-full h-[calc(100vh-80px)] flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-destiny-gold" />
+      </div>
     );
-}
+  }
 
-function ErgoSumChecker({ profile }: { profile: any }) {
-    const allItems = useAllItems(profile);
-    const swords = allItems.filter((item: any) => String(item.itemHash) === String(ERGO_SUM_HASH));
+  return (
+    <div className="min-h-screen p-4 md:p-8 pb-24">
+      <PageHeader 
+        title="Wishlister" 
+        description="Search for items and add them to your wishlist with specific rolls or stat distributions."
+      />
 
-    return (
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left: Search & Selection */}
         <div className="space-y-6">
-             <ExoticMatrix 
-                title="Ergo Sum Collection" 
-                items={swords} 
-                col1Perks={ERGO_SUM_PERKS.FRAMES}
-                col2Perks={ERGO_SUM_PERKS.TRAITS}
-                isErgoSum
-             />
-        </div>
-    );
-}
-
-function ArmorSetChecker({ profile }: { profile: any }) {
-    const [searchTerm, setSearchTerm] = useState("");
-    const [selectedClasses, setSelectedClasses] = useState<Set<string>>(new Set(ARMOR_CLASSES));
-    const allItems = useAllItems(profile);
-    const socketsData = profile?.itemComponents?.sockets?.data;
-    
-    // Armor Buckets
-    const ARMOR_BUCKETS = [3448274439, 3551918588, 14239492, 20886954, 1585787867];
-    const ARCHETYPE_HASH = 778194869; // ArmorArchetypes plug category hash
-    
-    // Edge of Fate sets (and onwards) - case-insensitive matching for filtering
-    const EDGE_OF_FATE_SETS = ['smoke jumper', 'bushido', 'aion adapter', 'aion renewal', 'aion', 'edge of fate', 'tusked allegiance', 'iron forerunner'];
-    
-    // Known set names to always show (will be populated from discovered sets)
-    const KNOWN_SET_NAMES = new Set<string>();
-    
-    // Known archetypes with their hashes
-    const ARCHETYPE_HASHES: Record<number, string> = {
-        4227065942: 'Paragon',      // Paragon archetype
-        3349393475: 'Brawler',      // Brawler archetype
-        549468645: 'Bulwark',       // Bulwark archetype
-        1807652646: 'Gunner',       // Gunner archetype
-        2937665788: 'Grenadier',    // Grenadier archetype
-        2230428468: 'Specialist',   // Specialist archetype
-    };
-    
-    // Edge of Fate set hashes (from setData.hash in item definitions)
-    // These will be populated from discovered items
-    const SET_HASHES = new Set<number>();
-    
-    const ARCHETYPES = Object.values(ARCHETYPE_HASHES);
-    const SLOTS = ['Helmet', 'Arms', 'Chest', 'Legs', 'Class'];
-
-    // 1. Filter for Armor items
-    const armorItems = useMemo(() => {
-        return allItems.filter((item: any) => item.bucketHash && ARMOR_BUCKETS.includes(item.bucketHash));
-    }, [allItems]);
-
-    // 2. Get definitions
-    const uniqueHashes = useMemo(() => {
-        return Array.from(new Set(armorItems.map(i => i.itemHash)));
-    }, [armorItems]);
-    
-    const { definitions: itemDefs, isLoading } = useItemDefinitions(uniqueHashes);
-
-    // 3. Extract plug hashes for archetypes
-    const plugHashes = useMemo(() => {
-        const hashes = new Set<number>();
-        armorItems.forEach(item => {
-            const sockets = socketsData?.[item.itemInstanceId]?.sockets;
-            if (sockets) {
-                sockets.forEach((s: any) => {
-                    if (s.plugHash) hashes.add(s.plugHash);
-                });
-            }
-            // Also check item definition for default archetype
-            const def = itemDefs?.[item.itemHash];
-            if (def?.sockets?.socketEntries) {
-                def.sockets.socketEntries.forEach((entry: any) => {
-                    if (entry.socketCategoryHash === ARCHETYPE_HASH && entry.singleInitialItemHash) {
-                        hashes.add(entry.singleInitialItemHash);
-                    }
-                });
-            }
-        });
-        return Array.from(hashes);
-    }, [armorItems, socketsData, itemDefs]);
-
-    const { definitions: plugDefs } = useItemDefinitions(plugHashes);
-
-    // 4. Process sets with archetypes - Structure: { ClassName: { SetName: { Slot: { Archetype: boolean } } } }
-    const setsData = useMemo(() => {
-        if (isLoading || !itemDefs) return null;
-
-        const data: Record<string, Record<string, Record<string, Record<string, boolean>>>> = {
-            'Titan': {},
-            'Hunter': {},
-            'Warlock': {}
-        };
-
-        // Helper function to extract set name from item definition
-        const extractSetName = (def: any): string | null => {
-            if (!def || !def.itemTypeDisplayName?.includes('Armor')) return null;
+          <div className="bg-gray-800/20 border border-white/10 p-6">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Search className="w-5 h-5 text-destiny-gold" />
+              Search Items
+            </h2>
             
-            let setName = def.displayProperties.name;
-            const slotKeywords = [
-                'Helmet', 'Helm', 'Mask', 'Hood', 'Cover', 'Visor', 'Casque', 'Cowl',
-                'Gauntlets', 'Gloves', 'Grips', 'Grasps', 'Vambraces', 'Sleeves',
-                'Plate', 'Vest', 'Robes', 'Tunic', 'Cuirass', 'Harness', 'Jacket',
-                'Greaves', 'Boots', 'Strides', 'Trousers', 'Steps',
-                'Mark', 'Cloak', 'Bond'
-            ];
-
-            setName = setName.replace(/\s(Chest|Leg)\sArmor$/i, "").trim();
-            if (slotKeywords.some(k => setName.endsWith(k))) {
-                setName = setName.replace(new RegExp(`\\s(${slotKeywords.join('|')})$`), "").trim();
-            }
-
-            // Normalize the set name (handle variations like "AION" vs "Aion")
-            const normalizedName = setName.replace(/AION/gi, 'Aion');
-            
-            // Filter to only Edge of Fate sets - more flexible matching
-            const setNameLower = normalizedName.toLowerCase();
-            const matchingSet = EDGE_OF_FATE_SETS.find(set => {
-                const setLower = set.toLowerCase();
-                // Check if set name contains the search term OR search term contains set name
-                return setNameLower.includes(setLower) || setLower.includes(setNameLower.split(' ')[0]);
-            });
-            
-            if (matchingSet) {
-                // Return normalized name, but prefer the canonical form from EDGE_OF_FATE_SETS
-                // Map common variations to canonical names
-                if (setNameLower.includes('techsec')) return 'Techsec';
-                if (setNameLower.includes('aion adapter')) return 'Aion Adapter';
-                if (setNameLower.includes('aion renewal')) return 'Aion Renewal';
-                if (setNameLower.includes('smoke jumper')) return 'Smoke Jumper';
-                if (setNameLower.includes('bushido')) return 'Bushido';
-                if (setNameLower.includes('last discipline')) return 'Last Discipline';
-                if (setNameLower.includes('disaster corps')) return 'Disaster Corps';
-                if (setNameLower.includes('lustrous')) return 'Lustrous';
-                if (setNameLower.includes('collective psyche')) return 'Collective Psyche';
-                if (setNameLower.includes('wayward psyche')) return 'Wayward Psyche';
-                if (setNameLower.includes('twofold crown')) return 'Twofold Crown';
-                return normalizedName;
-            }
-            
-            return null;
-        };
-
-        // First pass: Discover all set names from items
-        const allDiscoveredSets = new Set<string>();
-
-        armorItems.forEach(item => {
-            const def = itemDefs[item.itemHash];
-            const setName = extractSetName(def);
-            if (setName) {
-                allDiscoveredSets.add(setName);
-            }
-        });
-
-        // Pre-populate all known Edge of Fate sets (canonical names)
-        const canonicalSetNames = [
-            'Smoke Jumper',
-            'Bushido',
-            'Aion Adapter',
-            'Aion Renewal',
-            'Techsec',
-            'Last Discipline',
-            'Disaster Corps',
-            'Lustrous',
-            'Collective Psyche',
-            'Wayward Psyche',
-            'Twofold Crown'
-        ];
-        
-        canonicalSetNames.forEach(setName => {
-            allDiscoveredSets.add(setName);
-        });
-
-        // Initialize all discovered sets for ALL classes (even if player doesn't have items for that class)
-        ARMOR_CLASSES.forEach(cls => {
-            allDiscoveredSets.forEach(setName => {
-                if (!data[cls][setName]) {
-                    data[cls][setName] = {
-                        Helmet: {}, Arms: {}, Chest: {}, Legs: {}, Class: {}
-                    };
-                }
-            });
-        });
-
-        // Second pass: Populate with actual item data
-        armorItems.forEach(item => {
-            const def = itemDefs[item.itemHash];
-            const setName = extractSetName(def);
-            if (!setName) return;
-
-            // Determine Class
-            const cls = def.classType === 0 ? 'Titan' : def.classType === 1 ? 'Hunter' : 'Warlock';
-            
-            // Determine Slot
-            let slot = '';
-            if (def.itemTypeDisplayName.includes('Helmet')) slot = 'Helmet';
-            else if (def.itemTypeDisplayName.includes('Gauntlets')) slot = 'Arms';
-            else if (def.itemTypeDisplayName.includes('Chest')) slot = 'Chest';
-            else if (def.itemTypeDisplayName.includes('Leg')) slot = 'Legs';
-            else if (def.itemTypeDisplayName.includes('Class') || def.itemTypeDisplayName.includes('Cloak') || def.itemTypeDisplayName.includes('Mark') || def.itemTypeDisplayName.includes('Bond')) slot = 'Class';
-            
-            if (!slot) return;
-
-            // Get Archetype by hash
-            let archetypeName: string | null = null;
-            const sockets = socketsData?.[item.itemInstanceId]?.sockets;
-            if (sockets && plugDefs) {
-                for (const socket of sockets) {
-                    if (socket?.plugHash) {
-                        // Check if this plug hash matches a known archetype
-                        if (ARCHETYPE_HASHES[socket.plugHash]) {
-                            archetypeName = ARCHETYPE_HASHES[socket.plugHash];
-                            break;
-                        }
-                        // Also check by category and name (for Bushido and other archetypes)
-                        const plug = plugDefs[socket.plugHash];
-                        if (plug) {
-                            const categoryHash = plug.plug?.plugCategoryHash || plug.plugCategoryHash;
-                            if (categoryHash === ARCHETYPE_HASH) {
-                                const plugName = plug.displayProperties?.name || '';
-                                // Check if it's a known archetype by name
-                                if (ARCHETYPES.includes(plugName)) {
-                                    archetypeName = plugName;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Fallback: Check item definition for default archetype
-            if (!archetypeName && def.sockets?.socketEntries && plugDefs) {
-                for (const entry of def.sockets.socketEntries) {
-                    if (entry.socketCategoryHash === ARCHETYPE_HASH && entry.singleInitialItemHash) {
-                        if (ARCHETYPE_HASHES[entry.singleInitialItemHash]) {
-                            archetypeName = ARCHETYPE_HASHES[entry.singleInitialItemHash];
-                            break;
-                        }
-                        // Also check by name
-                        const archetypeDef = plugDefs[entry.singleInitialItemHash];
-                        if (archetypeDef && ARCHETYPES.includes(archetypeDef.displayProperties?.name || '')) {
-                            archetypeName = archetypeDef.displayProperties?.name || null;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Only include known archetypes
-            if (!archetypeName) return;
-            
-            // Track set hash if available
-            if (def.setData?.hash) {
-                SET_HASHES.add(def.setData.hash);
-            }
-            
-            // Ensure structure exists
-            if (!data[cls][setName]) {
-                data[cls][setName] = {
-                    Helmet: {}, Arms: {}, Chest: {}, Legs: {}, Class: {}
-                };
-            }
-            
-            if (!data[cls][setName][slot]) {
-                data[cls][setName][slot] = {};
-            }
-            
-            data[cls][setName][slot][archetypeName] = true;
-        });
-
-        return data;
-    }, [armorItems, itemDefs, socketsData, plugDefs, isLoading]);
-
-    const filteredSets = useMemo(() => {
-        if (!setsData) return null;
-        const result: typeof setsData = {};
-
-        ARMOR_CLASSES.forEach(cls => {
-            if (!selectedClasses.has(cls)) {
-                result[cls] = {};
-                return;
-            }
-            result[cls] = {};
-            const classSets = setsData[cls];
-            Object.keys(classSets).sort().forEach(setName => {
-                if (setName.toLowerCase().includes(searchTerm.toLowerCase())) {
-                    result[cls][setName] = classSets[setName];
-                }
-            });
-        });
-
-        return result;
-    }, [setsData, searchTerm, selectedClasses]);
-
-    const toggleClass = (cls: string) => {
-        setSelectedClasses(prev => {
-            const next = new Set(prev);
-            if (next.has(cls)) {
-                next.delete(cls);
-            } else {
-                next.add(cls);
-            }
-            return next;
-        });
-    };
-
-    if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-destiny-gold" /></div>;
-
-    return (
-        <div className="space-y-8">
-            {/* Search Bar with Class Toggles */}
-            <div className="flex items-center gap-4 max-w-4xl mx-auto mb-8">
-                {/* Class Toggle Buttons */}
-                <div className="flex gap-2 shrink-0">
-                    {ARMOR_CLASSES.map(cls => (
-                        <button
-                            key={cls}
-                            onClick={() => toggleClass(cls)}
-                            className={cn(
-                                "px-4 py-2 rounded-sm border transition-colors font-bold uppercase tracking-wider text-sm",
-                                selectedClasses.has(cls)
-                                    ? "bg-destiny-gold/20 text-destiny-gold border-destiny-gold/40"
-                                    : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"
-                            )}
-                        >
-                            {cls}
-                        </button>
-                    ))}
-                </div>
-                
-                {/* Search Bar */}
-                <div className="relative flex-1">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input
-                        type="text"
-                        className="block w-full pl-10 pr-3 py-2 border border-white/10 rounded-sm leading-5 text-slate-300 placeholder-slate-500 focus:outline-hidden focus:ring-1 focus:ring-destiny-gold focus:border-destiny-gold sm:text-sm transition-colors"
-                        placeholder="Search armor sets..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
+            {/* Search Input */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search for weapons, armor, or items..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-black/40 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-destiny-gold/50"
+              />
             </div>
 
-            {/* Matrix Grids for Each Set */}
-            {ARMOR_CLASSES.map(cls => {
-                if (!selectedClasses.has(cls)) return null;
-                const sets = filteredSets?.[cls];
-                if (!sets || Object.keys(sets).length === 0) return null;
-
-                return Object.entries(sets).map(([setName, setData]) => (
-                    <ArmorSetMatrix 
-                        key={`${cls}-${setName}`}
-                        className={cls}
-                        setName={setName}
-                        setData={setData}
-                        archetypes={ARCHETYPES}
-                        slots={SLOTS}
-                    />
-                ));
-            })}
-
-            {(!filteredSets || Object.values(filteredSets).every(s => Object.keys(s).length === 0)) && (
-                <div className="text-center py-12 text-slate-500">
-                    No armor sets found matching your search.
-                </div>
+            {/* Search Results */}
+            {searchQuery && filteredItems.length > 0 && (
+              <div className="max-h-96 overflow-y-auto space-y-2">
+                {filteredItems.map((def) => (
+                  <button
+                    key={def.hash}
+                    onClick={() => setSelectedItem(def.hash)}
+                    className={cn(
+                      "w-full flex items-center gap-3 p-3 bg-black/30 border border-white/10 hover:border-destiny-gold/50 transition-all text-left",
+                      selectedItem === def.hash && "border-destiny-gold bg-destiny-gold/10"
+                    )}
+                  >
+                    {def.displayProperties?.icon && (
+                      <Image
+                        src={getBungieImage(def.displayProperties.icon)}
+                        width={40}
+                        height={40}
+                        alt=""
+                        className="w-10 h-10"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-white truncate">{def.displayProperties?.name}</div>
+                      <div className="text-xs text-slate-400">{def.itemTypeDisplayName}</div>
+                    </div>
+                    {selectedItem === def.hash && (
+                      <Check className="w-5 h-5 text-destiny-gold" />
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
-        </div>
-    );
-}
 
-// Matrix component for displaying set + archetype grid
-function ArmorSetMatrix({ 
-    className, 
-    setName, 
-    setData, 
-    archetypes, 
-    slots 
-}: { 
-    className: string;
-    setName: string;
-    setData: Record<string, Record<string, boolean>>;
-    archetypes: string[];
-    slots: string[];
-}) {
-    return (
-        <div className="p-6 rounded ">
-            <div className="flex items-center gap-3 mb-6">
-                <h3 className="text-xl font-bold text-white">{setName}</h3>
-                <div className="h-px flex-1 bg-white/10" />
-                <span className="text-xs font-mono text-slate-500 uppercase">{className}</span>
-            </div>
+            {searchQuery && filteredItems.length === 0 && (
+              <div className="text-center py-8 text-slate-500">
+                No items found
+              </div>
+            )}
+          </div>
 
-            <div className="overflow-x-auto pb-2">
-                <div className="inline-block min-w-full">
-                    <div className="grid gap-1" style={{ 
-                        gridTemplateColumns: `auto repeat(${archetypes.length}, minmax(60px, 1fr))` 
-                    }}>
-                        {/* Header Row */}
-                        <div className="sticky left-0 z-10 p-2 bg-gray-900/80 backdrop-blur-sm rounded-l-sm border border-white/5"></div>
-                        {archetypes.map(archetype => (
-                            <div 
-                                key={archetype} 
-                                className="text-xs font-bold text-slate-400 text-center py-2 flex items-center justify-center whitespace-nowrap border border-white/5 bg-gray-900/80 backdrop-blur-sm"
-                            >
-                                {archetype}
-                            </div>
-                        ))}
+          {/* Selected Item Details */}
+          {selectedItemDef && (
+            <div className="bg-gray-800/20 border border-white/10 p-6">
+              <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Star className="w-5 h-5 text-destiny-gold" />
+                Selected Item
+              </h2>
 
-                        {/* Rows for each slot */}
-                        {slots.map(slot => (
-                            <Fragment key={slot}>
-                                <div className="sticky left-0 z-10 text-right pr-4 py-2 pl-2 text-xs font-bold text-slate-300 flex items-center justify-end whitespace-nowrap bg-gray-900/80 backdrop-blur-sm rounded-l-sm border-y border-l border-white/5">
-                                    {slot === 'Class' ? 'Class' : slot}
-                                </div>
-                                {archetypes.map((archetype, i) => {
-                                    const isCollected = setData[slot]?.[archetype] === true;
-                                    const isLast = i === archetypes.length - 1;
-                                    return (
-                                        <div 
-                                            key={`${slot}-${archetype}`} 
-                                            className={cn(
-                                                "flex items-center justify-center p-2 border-y border-white/5 transition-colors relative group",
-                                                isCollected ? "bg-green-500/10 hover:bg-green-500/20" : "hover:bg-white/5",
-                                                isLast && "rounded-r-sm border-r"
-                                            )}
-                                            title={`${slot} - ${archetype}`}
-                                        >
-                                            {isCollected ? (
-                                                <div className="relative">
-                                                    <div className="absolute inset-0 bg-green-500 blur-md opacity-20" />
-                                                    <CheckCircle2 className="w-5 h-5 text-green-500 relative z-10" />
-                                                </div>
-                                            ) : (
-                                                <div className="w-1.5 h-1.5 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </Fragment>
-                        ))}
-                    </div>
+              <div className="flex items-center gap-4 mb-6">
+                {selectedItemDef.displayProperties?.icon && (
+                  <Image
+                    src={getBungieImage(selectedItemDef.displayProperties.icon)}
+                    width={64}
+                    height={64}
+                    alt=""
+                    className="w-16 h-16"
+                  />
+                )}
+                <div>
+                  <div className="font-bold text-white text-lg">{selectedItemDef.displayProperties?.name}</div>
+                  <div className="text-sm text-slate-400">{selectedItemDef.itemTypeDisplayName}</div>
                 </div>
-            </div>
-        </div>
-    );
-}
+              </div>
 
-// --- Generic Matrix Component ---
+              {/* Perk Selection (for weapons and armor) */}
+              {(selectedItemDef.itemType === 3 || selectedItemDef.itemType === 2) && socketPerks.length > 0 && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-300 mb-3">
+                    Select Perks/Mods (Optional)
+                  </label>
+                  <div className="space-y-2">
+                    {socketPerks.map((socket) => {
+                      const isExpanded = expandedSockets.has(socket.socketIndex);
+                      const selectedInSocket = socket.perks.filter(p => selectedRoll.includes(p.hash));
+                      
+                      return (
+                        <div
+                          key={socket.socketIndex}
+                          className="border border-white/10 bg-black/20"
+                        >
+                          <button
+                            onClick={() => toggleSocket(socket.socketIndex)}
+                            className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-slate-400" />
+                              ) : (
+                                <ChevronUp className="w-4 h-4 text-slate-400" />
+                              )}
+                              <span className="text-sm font-medium text-white">{socket.categoryName}</span>
+                              {selectedInSocket.length > 0 && (
+                                <span className="text-xs text-destiny-gold">
+                                  ({selectedInSocket.length} selected)
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-slate-500">
+                              {socket.perks.length} option{socket.perks.length !== 1 ? 's' : ''}
+                            </span>
+                          </button>
+                          
+                          {isExpanded && (
+                            <div className="border-t border-white/10 p-3 space-y-2 max-h-64 overflow-y-auto">
+                              {socket.perks.map((perk) => {
+                                const perkDef = perkDefs[perk.hash];
+                                if (!perkDef) return null;
+                                const isSelected = selectedRoll.includes(perk.hash);
+                                
+                                return (
+                                  <button
+                                    key={perk.hash}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedRoll(selectedRoll.filter(h => h !== perk.hash));
+                                      } else {
+                                        setSelectedRoll([...selectedRoll, perk.hash]);
+                                      }
+                                    }}
+                                    className={cn(
+                                      "w-full flex items-center gap-3 p-2 border text-left transition-all",
+                                      isSelected
+                                        ? "border-destiny-gold bg-destiny-gold/10"
+                                        : "border-white/10 hover:border-white/30 bg-black/20"
+                                    )}
+                                  >
+                                    {perkDef.displayProperties?.icon && (
+                                      <Image
+                                        src={getBungieImage(perkDef.displayProperties.icon)}
+                                        width={32}
+                                        height={32}
+                                        alt=""
+                                        className="w-8 h-8"
+                                      />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium text-white">
+                                        {perkDef.displayProperties?.name}
+                                      </div>
+                                      {perkDef.displayProperties?.description && (
+                                        <div className="text-xs text-slate-400 line-clamp-2 mt-0.5">
+                                          {perkDef.displayProperties.description}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isSelected && (
+                                      <Check className="w-5 h-5 text-destiny-gold shrink-0" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-function ExoticMatrix({ title, items, col1Perks, col2Perks, isErgoSum = false }: { title: string, items: any[], col1Perks: string[], col2Perks: string[], isErgoSum?: boolean }) {
-    const { profile } = useDestinyProfile();
-    const socketsData = profile?.itemComponents?.sockets?.data;
-    const [plugHashes, setPlugHashes] = useState<Set<number>>(new Set());
+              {/* Stat Distribution (for armor) */}
+              {selectedItemDef.itemType === 2 && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    Stat Distribution (Optional)
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {['weapons', 'health', 'class', 'grenade', 'super', 'melee'].map((stat) => (
+                      <div key={stat}>
+                        <label className="block text-xs text-slate-400 mb-1 capitalize">{stat}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={selectedStats?.[stat as keyof typeof selectedStats] || ''}
+                          onChange={(e) => {
+                            const value = e.target.value ? parseInt(e.target.value) : undefined;
+                            setSelectedStats({
+                              ...selectedStats,
+                              [stat]: value,
+                            });
+                          }}
+                          className="w-full px-3 py-2 bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-destiny-gold/50"
+                          placeholder="Any"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-    // Extract plugs from items
-    useMemo(() => {
-        if (!socketsData) return;
-        const newHashes = new Set<number>();
-        items.forEach(item => {
-            const sockets = socketsData[item.itemInstanceId]?.sockets;
-            if (sockets) {
-                sockets.forEach((s: any) => {
-                    if (s.isEnabled && s.plugHash) newHashes.add(s.plugHash);
-                });
-            }
-        });
-        setPlugHashes(newHashes);
-    }, [items, socketsData]);
+              {/* Notes */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-300 mb-2">Notes (Optional)</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes about this wishlist entry..."
+                  className="w-full px-3 py-2 bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-destiny-gold/50 resize-none"
+                  rows={3}
+                />
+              </div>
 
-    const { definitions, isLoading } = useItemDefinitions(Array.from(plugHashes));
-
-    // Build Matrix Data
-    const { collectedSet, collectedCount, totalCount } = useMemo(() => {
-        const empty = { collectedSet: new Set<string>(), collectedCount: 0, totalCount: col1Perks.length * col2Perks.length };
-        if (isLoading || !definitions) return empty;
-        
-        const collectedSet = new Set<string>();
-
-        items.forEach(item => {
-            const sockets = socketsData?.[item.itemInstanceId]?.sockets;
-            if (!sockets) return;
-
-            const plugNames = sockets
-                .map((s: any) => definitions[s.plugHash]?.displayProperties?.name)
-                .filter(Boolean);
-
-            // Find matches
-            const p1 = col1Perks.find(p => plugNames.includes(p) || plugNames.some((n: string) => n?.includes(p)));
-            const p2 = col2Perks.find(p => plugNames.includes(p) || plugNames.some((n: string) => n?.includes(p)));
-
-            if (p1 && p2) {
-                collectedSet.add(`${p1}|${p2}`);
-            }
-        });
-
-        return {
-            collectedSet,
-            collectedCount: collectedSet.size,
-            totalCount: empty.totalCount
-        };
-    }, [items, definitions, col1Perks, col2Perks, socketsData, isLoading]);
-
-    if (isLoading) return <div className="animate-pulse text-slate-500">Loading matrix...</div>;
-
-    return (
-        <div className="p-6 rounded overflow-hidden border border-white/10">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    {isErgoSum ? <Swords className="w-5 h-5 text-destiny-gold" /> : <Shield className="w-5 h-5 text-purple-400" />}
-                    {title}
-                </h3>
-                <div className="text-sm font-mono">
-                    <span className={cn("font-bold", collectedCount === totalCount ? "text-green-500" : "text-white")}>
-                        {collectedCount}
+              {/* Tags */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-300 mb-2">Tags</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-destiny-gold/20 text-destiny-gold text-xs rounded"
+                    >
+                      {tag}
+                      <button
+                        onClick={() => removeTag(tag)}
+                        className="hover:text-destiny-gold/70"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </span>
-                    <span className="text-slate-500"> / {totalCount}</span>
+                  ))}
                 </div>
-            </div>
-
-            <div className="overflow-x-auto pb-2">
-                <div className="inline-block min-w-full">
-                    <div className="grid gap-1" style={{ 
-                        gridTemplateColumns: `auto repeat(${col2Perks.length}, minmax(40px, 1fr))` 
-                    }}>
-                        {/* Header Row */}
-                        <div className="sticky left-0 z-10 p-2"></div>
-                        {col2Perks.map((col, i) => (
-                            <div key={col} className="text-[10px] font-bold text-slate-400 text-center -rotate-45 h-32 flex items-end justify-center pb-2 whitespace-nowrap transform origin-bottom-left translate-x-6">
-                                {col.replace("Spirit of ", "").replace(" Frame", "")}
-                            </div>
-                        ))}
-
-                        {/* Rows */}
-                        {col1Perks.map(row => (
-                            <Fragment key={row}>
-                                <div className="sticky left-0 z-10 text-right pr-4 py-2 text-xs font-bold text-slate-300 flex items-center justify-end whitespace-nowrap bg-gray-900/80 backdrop-blur-sm rounded-l-sm border-y border-l border-white/5">
-                                    {row.replace("Spirit of ", "").replace(" Frame", "")}
-                                </div>
-                                {col2Perks.map((col, i) => {
-                                    const isCollected = collectedSet.has(`${row}|${col}`);
-                                    const isLast = i === col2Perks.length - 1;
-                                    return (
-                                        <div 
-                                            key={`${row}-${col}`} 
-                                            className={cn(
-                                                "flex items-center justify-center p-2 border-y border-white/5 transition-colors relative group",
-                                                isCollected ? "bg-green-500/5 hover:bg-green-500/10" : "hover:bg-white/5",
-                                                isLast && "rounded-r-sm border-r"
-                                            )}
-                                            title={`${row} + ${col}`}
-                                        >
-                                            {isCollected ? (
-                                                <div className="relative">
-                                                    <div className="absolute inset-0 bg-green-500 blur-md opacity-20" />
-                                                    <CheckCircle2 className="w-5 h-5 text-green-500 relative z-10" />
-                                                </div>
-                                            ) : (
-                                                <div className="w-1.5 h-1.5 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </Fragment>
-                        ))}
-                    </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customTag}
+                    onChange={(e) => setCustomTag(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addTag()}
+                    placeholder="Add tag..."
+                    className="flex-1 px-3 py-2 bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-destiny-gold/50"
+                  />
+                  <button
+                    onClick={addTag}
+                    className="px-4 py-2 bg-destiny-gold/20 text-destiny-gold hover:bg-destiny-gold/30 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
                 </div>
+              </div>
+
+              {/* Add Button */}
+              <button
+                onClick={handleAddWishList}
+                className="w-full px-4 py-3 bg-destiny-gold text-slate-900 font-bold hover:bg-white transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                Add to Wishlist
+              </button>
             </div>
+          )}
         </div>
-    );
-}
 
-function useAllItems(profile: any) {
-    return useMemo(() => {
-        if (!profile) return [];
-        const items: any[] = [];
-        
-        if (profile.characterInventories?.data) {
-            Object.values(profile.characterInventories.data).forEach((char: any) => items.push(...char.items));
-        }
-        if (profile.characterEquipment?.data) {
-            Object.values(profile.characterEquipment.data).forEach((char: any) => items.push(...char.items));
-        }
-        if (profile.profileInventory?.data?.items) {
-            items.push(...profile.profileInventory.data.items);
-        }
-        return items;
-    }, [profile]);
+        {/* Right: Wishlist Entries */}
+        <div className="space-y-6">
+          <div className="bg-gray-800/20 border border-white/10 p-6">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-destiny-gold" />
+              Your Wishlist ({wishListEntries.length})
+            </h2>
+
+            {wishListEntries.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                <Star className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No wishlist entries yet</p>
+                <p className="text-sm mt-2">Search for items and add them to your wishlist</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-8 gap-3 max-h-[calc(100vh-300px)] overflow-y-auto">
+                {wishListEntries.map((entry, idx) => (
+                  <WishlistItemIcon
+                    key={`${entry.itemHash}-${idx}`}
+                    entry={entry}
+                    definitions={definitions}
+                    profile={profile}
+                    allItems={allItems}
+                    isItemInInventory={isItemInInventory}
+                    onRemove={() => handleRemoveWishList(idx)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

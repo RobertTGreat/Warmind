@@ -38,7 +38,8 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
         { name: 'Optimizer', href: '/character/optimizer', icon: Target },
     ],
     '/progression': [
-        { name: 'Progression', href: '/progression', icon: Globe },
+        { name: 'Wishlist', href: '/progression', icon: Book },
+        { name: 'Ergo Sum', href: '/progression/ergo-sum', icon: Swords },
     ],
     '/collections': [
         { name: 'Collections', href: '/collections', icon: Book },

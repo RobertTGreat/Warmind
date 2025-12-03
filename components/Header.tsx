@@ -45,7 +45,16 @@ const navItems: {
   { name: 'Home', href: '/', icon: Shield, description: 'Dashboard & Overview' },
   { name: 'Collections', href: '/collections', icon: Book, description: 'Weapons, Armor & More' },
   { name: 'Triumphs', href: '/triumphs', icon: Trophy, description: 'Achievements & Seals' },
-  { name: 'Progression', href: '/progression', icon: Globe, description: 'Raids & Dungeons', disabled: true },
+  { 
+    name: 'Progression', 
+    href: '/progression', 
+    icon: Globe, 
+    description: 'Wishlist & Collections',
+    subNav: [
+      { name: 'Wishlist', href: '/progression', icon: Book },
+      { name: 'Ergo Sum', href: '/progression/ergo-sum', icon: Swords },
+    ]
+  },
   { 
     name: 'Character', 
     href: '/character', 
@@ -58,7 +67,16 @@ const navItems: {
     ]
   },
   { name: 'Quests', href: '/quests', icon: Scroll, description: 'Active Quests' },
-  { name: 'Activities', href: '/activity', icon: Activity, description: 'Recent History' },
+  { 
+    name: 'Activities', 
+    href: '/activity', 
+    icon: Globe, 
+    description: 'Past Activities',
+    subNav: [
+      { name: 'Activity Report', href: '/activity', icon: Book },
+      { name: 'Wrapped', href: '/activity/wrapped', icon: Swords },
+    ]
+  },
 ];
 
 export function Header() {

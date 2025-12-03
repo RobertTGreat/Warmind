@@ -92,7 +92,7 @@ export function useDragLayer() {
         size: 'small' | 'medium' | 'large';
     } | null>(null);
     
-    const rafRef = useRef<number>();
+    const rafRef = useRef<number | undefined>(undefined);
     
     useEffect(() => {
         const handleDragStart = (e: DragEvent) => {

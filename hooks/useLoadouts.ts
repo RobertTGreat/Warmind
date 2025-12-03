@@ -283,3 +283,4 @@ export const CLASS_ICONS: Record<number, string> = {
     2: '/class-warlock.svg',
 };
 
+
