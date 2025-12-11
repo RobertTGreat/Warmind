@@ -23,7 +23,7 @@
     "idb": "^8.0.3",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.554.0",
-    "next": "16.0.3",
+    "next": "16.0.9",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-virtuoso": "^4.15.0",
