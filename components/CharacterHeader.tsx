@@ -32,33 +32,36 @@ interface CharacterHeaderProps {
     };
     isHidden?: boolean;
     onToggleVisibility?: () => void;
+    className?: string;
 }
 
-export function CharacterHeader({ 
-    character, 
-    isHidden = false, 
-    onToggleVisibility 
+export function CharacterHeader({
+    character,
+    isHidden = false,
+    onToggleVisibility,
+    className
 }: CharacterHeaderProps) {
     // Fetch title definition if character has an equipped title
     const { data: titleDefData } = useSWR(
         character.titleRecordHash ? endpoints.getRecordDefinition(character.titleRecordHash) : null,
         fetcher
     );
-    
+
     const titleDef = titleDefData?.Response;
     const titleName = titleDef?.titleInfo?.titlesByGender?.Male || titleDef?.titleInfo?.titlesByGenderHash?.Male || null;
-    
+
     return (
-        <div 
+        <div
             className={cn(
-                "relative overflow-hidden transition-all cursor-pointer group h-[72px]",
-                isHidden && "opacity-30 grayscale"
+                "relative overflow-hidden transition-all cursor-pointer group h-full",
+                isHidden && "opacity-30 grayscale",
+                className
             )}
             onClick={onToggleVisibility}
             title={`Click to ${isHidden ? 'show' : 'hide'} ${CLASS_NAMES[character.classType]}`}
         >
             {/* Emblem Background */}
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 h-full w-full">
                 <Image
                     src={getBungieImage(character.emblemBackgroundPath)}
                     fill
@@ -68,31 +71,31 @@ export function CharacterHeader({
                     priority
                 />
                 {/* Gradient overlay for readability */}
-                <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-black/50" />
             </div>
-            
+
             {/* Content */}
             <div className="relative z-10 flex flex-col justify-center h-full p-3">
                 {/* Top Row: Class & Power */}
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
                         {/* Class Icon */}
-                        <div className="relative w-7 h-7 shrink-0">
+                        <div className="relative w-14 h-14 shrink-0 -ml-1">
                             <Image
                                 src={CLASS_ICONS[character.classType]}
-                                width={28}
-                                height={28}
+                                width={48}
+                                height={48}
                                 className="object-contain drop-shadow-[0_0_4px_rgba(0,0,0,0.8)]"
                                 alt=""
                             />
                         </div>
-                        
+
                         {/* Class Name */}
                         <span className="font-bold text-white text-base tracking-wide uppercase drop-shadow-md">
                             {CLASS_NAMES[character.classType]}
                         </span>
                     </div>
-                    
+
                     {/* Power Level */}
                     <div className="flex items-center gap-1">
                         <span className="text-destiny-gold text-xl">✦</span>
@@ -101,7 +104,7 @@ export function CharacterHeader({
                         </span>
                     </div>
                 </div>
-                
+
                 {/* Title (if equipped) */}
                 {titleName && (
                     <div className="mt-1">
@@ -111,7 +114,7 @@ export function CharacterHeader({
                     </div>
                 )}
             </div>
-            
+
             {/* Hover Overlay */}
             <div className={cn(
                 "absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
