@@ -349,16 +349,21 @@ export function ActivityReportCard({
     
     // Load persisted invalid instance IDs on mount
     useEffect(() => {
-        setInvalidInstanceIds(getInvalidInstanceIds());
+        const load = async () => {
+            const ids = await getInvalidInstanceIds();
+            setInvalidInstanceIds(ids);
+        };
+        load();
     }, []);
     
     const isFlipped = viewMode !== 'FRONT';
     
     // Callback to mark an instance as invalid (called from CardBack when PGCR is loaded)
-    const handleMarkInvalid = (instanceId: string) => {
-        addInvalidInstanceId(instanceId); // Persist to localStorage
-        purgeInvalidInstancesFromCache(); // Also remove from IndexedDB cache
-        setInvalidInstanceIds(prev => new Set([...prev, instanceId]));
+    const handleMarkInvalid = async (instanceId: string) => {
+        await addInvalidInstanceId(instanceId); // Persist to IDB
+        await purgeInvalidInstancesFromCache(); // Also remove from IndexedDB cache
+        const ids = await getInvalidInstanceIds();
+        setInvalidInstanceIds(ids);
     };
 
     // Fetch Activity Definition
@@ -400,6 +405,14 @@ export function ActivityReportCard({
             return false;
         };
     }, [records]);
+
+    // Helper to check metric completion (greater than 0)
+    const checkMetricComplete = useMemo(() => {
+        return (metricHash: number | null | undefined): boolean => {
+            if (!metricHash || !metrics?.metrics?.[metricHash]) return false;
+            return metrics.metrics[metricHash].objectiveProgress.progress > 0;
+        };
+    }, [metrics]);
 
     // Helper function to auto-find record hashes by searching all records
     // This is a fallback if record hashes aren't explicitly defined in activityDefinitions.ts
@@ -463,18 +476,39 @@ export function ActivityReportCard({
 
 
     // 2. Check Flawless
-    const isFlawless = checkRecordComplete(flawlessRecordHash);
+    const isFlawless = checkRecordComplete(flawlessRecordHash) || checkMetricComplete(activity.flawlessMetricHash);
 
     // 3. Check Solo Flawless
-    const isSoloFlawless = checkRecordComplete(activity.soloFlawlessRecordHash);
+    const isSoloFlawless = checkRecordComplete(activity.soloFlawlessRecordHash) || checkMetricComplete(activity.soloFlawlessMetricHash);
 
     // Filter history for this activity (matching primary hash OR any related hashes)
     // Also exclude invalid instances (solo failed clears, >15 players)
-    const activityHistory = history.filter(h => 
-        (h.activityDetails.referenceId === activity.activityHash || 
-        activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)) &&
-        !invalidInstanceIds.has(h.activityDetails.instanceId)
-    );
+    const activityHistory = useMemo(() => {
+        const hasMethod = typeof (invalidInstanceIds as any)?.has === 'function';
+        
+        return history.filter(h => 
+            (h.activityDetails.referenceId === activity.activityHash || 
+            activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)) &&
+            !(hasMethod ? (invalidInstanceIds as Set<string>).has(h.activityDetails.instanceId) : false)
+        );
+    }, [history, activity, invalidInstanceIds]);
+
+    // 3b. Check Solo, Duo, Trio (Manual scan of history or records)
+    const soloCompletion = useMemo(() => {
+        if (isSoloFlawless) return true;
+        if (checkRecordComplete(activity.soloRecordHash)) return true;
+        return false;
+    }, [isSoloFlawless, activity.soloRecordHash, checkRecordComplete]);
+
+    const duoCompletion = useMemo(() => {
+        if (checkRecordComplete(activity.duoRecordHash)) return true;
+        return false;
+    }, [activity.duoRecordHash, checkRecordComplete]);
+
+    const trioCompletion = useMemo(() => {
+        if (checkRecordComplete(activity.trioRecordHash)) return true;
+        return false;
+    }, [activity.trioRecordHash, checkRecordComplete]);
 
     // 4. Check Master Completion - use same logic as advanced stats
     // Check if there are any completed master runs in history
@@ -484,40 +518,30 @@ export function ActivityReportCard({
             return true;
         }
         
-        // Fallback: check history for master runs (same logic as advanced stats)
-        const normalHash = activity.relatedActivityHashes?.[0] || activity.activityHash;
-        const masterHash = activity.relatedActivityHashes?.[1];
+        // Fallback: check history for master runs
+        const masterHashes = activity.relatedActivityHashes?.filter(h => 
+            h !== activity.activityHash
+        ) || [];
         
-        if (!masterHash) return false;
-        
-        // Count completed master runs (exact same logic as AdvancedStats)
-        let masterRuns = 0;
-        for (const run of activityHistory) {
-            const completed = run.values.completed.basic.value === 1;
-            if (!completed) continue;
-            
-            // Check if this run matches the master hash
-            if (run.activityDetails.referenceId === masterHash) {
-                masterRuns++;
-            }
-        }
-        
-        return masterRuns >= 1;
-    }, [masterRecordHash, checkRecordComplete, activityHistory, activity.relatedActivityHashes, activity.activityHash]);
+        return activityHistory.some(run => 
+            run.values.completed.basic.value === 1 && 
+            masterHashes.includes(run.activityDetails.referenceId)
+        );
+    }, [masterRecordHash, checkRecordComplete, activityHistory, activity.activityHash, activity.relatedActivityHashes]);
 
     // 5. Check Day One Completion (contest record or calculated from history)
     const isDayOneCompleted = useMemo(() => {
         // First check if there's a contest/day one record hash (explicit or auto-found)
-        if (contestRecordHash) {
-            return checkRecordComplete(contestRecordHash);
+        if (contestRecordHash && checkRecordComplete(contestRecordHash)) {
+            return true;
         }
         
-        // Otherwise calculate from history - day one is within 24 hours of release
+        // Otherwise calculate from history - day one is within 48 hours of release
         if (!activity.releaseDate) return false;
         
         const releaseDate = new Date(activity.releaseDate);
         const dayOneEnd = new Date(releaseDate);
-        dayOneEnd.setHours(dayOneEnd.getHours() + 24); // 24 hours after release
+        dayOneEnd.setHours(dayOneEnd.getHours() + 48); // 48 hours for contest period
         
         // Find first completed run within day one
         for (const run of activityHistory) {
@@ -530,7 +554,7 @@ export function ActivityReportCard({
         }
         
         return false;
-    }, [contestRecordHash, activity.releaseDate, activityHistory, records]);
+    }, [contestRecordHash, activity.releaseDate, activityHistory, checkRecordComplete]);
 
     // 6. Check Epic Completion (for Desert Perpetual)
     const isEpicCompleted = checkRecordComplete(activity.epicRecordHash);

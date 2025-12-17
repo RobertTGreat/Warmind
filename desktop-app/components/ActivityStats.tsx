@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { useMemo, useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getInvalidInstanceIds, addInvalidInstanceId, purgeInvalidInstancesFromCache } from "@/lib/activityCache";
+import { fetchPGCR as shimFetchPGCR } from '@/desktop-app/lib/api-shim';
 
 // Track which instances we've already checked
 const checkedInstances = new Set<string>();
@@ -22,8 +23,8 @@ interface ActivityStatsProps {
 }
 
 export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMasterCompleted, isDayOneCompleted, isEpicCompleted, weekOneCompletion, onMarkInvalid }: ActivityStatsProps) {
-    // Local state for invalid instances - using array for reliable serialization
-    const [localInvalidIds, setLocalInvalidIds] = useState<string[]>([]);
+    // Local state for invalid instances discovered during background checks
+    const [localInvalidIds, setLocalInvalidIds] = useState<Set<string>>(new Set());
     
     // Load invalid IDs on mount
     useEffect(() => {
@@ -32,19 +33,17 @@ export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMa
             try {
                 const ids = await getInvalidInstanceIds();
                 if (!mounted) return;
-                
-                // Always convert to array for reliable state management
+
                 if (ids instanceof Set) {
-                    setLocalInvalidIds([...ids]);
-                } else if (Array.isArray(ids)) {
                     setLocalInvalidIds(ids);
+                } else if (Array.isArray(ids)) {
+                    setLocalInvalidIds(new Set(ids));
                 } else {
                     console.warn("Invalid IDs returned unknown type:", ids);
-                    setLocalInvalidIds([]);
+                    setLocalInvalidIds(new Set());
                 }
             } catch (e) {
                 console.error("Failed to load invalid instance IDs", e);
-                setLocalInvalidIds([]);
             }
         };
         load();
@@ -54,13 +53,26 @@ export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMa
     // Filter history for this specific activity (matching primary hash OR any related hashes)
     // Also filter out known invalid instances
     const activityRuns = useMemo(() => {
-        // Convert array to Set for efficient lookups
-        const invalidSet = new Set(Array.isArray(localInvalidIds) ? localInvalidIds : []);
+        // Paranoid safety check: Create a local safe copy of the set
+        // This avoids any issues with state mutations or invalid objects
+        const safeInvalidSet = new Set<string>();
+        
+        try {
+            if (localInvalidIds && typeof (localInvalidIds as any).has === 'function') {
+                // It looks like a Set, copy its values
+                (localInvalidIds as Set<string>).forEach(id => safeInvalidSet.add(id));
+            } else if (Array.isArray(localInvalidIds)) {
+                // Handle array case just in case
+                (localInvalidIds as string[]).forEach(id => safeInvalidSet.add(id));
+            }
+        } catch (e) {
+            console.error("Error processing localInvalidIds in memo:", e);
+        }
         
         return history.filter(h => 
             (h.activityDetails.referenceId === activity.activityHash || 
             activity.relatedActivityHashes?.includes(h.activityDetails.referenceId)) &&
-            !invalidSet.has(h.activityDetails.instanceId)
+            !safeInvalidSet.has(h.activityDetails.instanceId)
         );
     }, [history, activity, localInvalidIds]);
     
@@ -70,8 +82,7 @@ export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMa
         
         // Check failed runs for solo DNFs (batch with small delay to avoid rate limiting)
         const checkRuns = async () => {
-            const invalidSet = new Set(Array.isArray(localInvalidIds) ? localInvalidIds : []);
-            
+            const invalidSet = (localInvalidIds instanceof Set) ? localInvalidIds : new Set<string>();
             for (const run of failedRuns) {
                 const instanceId = run.activityDetails.instanceId;
                 
@@ -84,8 +95,7 @@ export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMa
                 
                 try {
                     // Use server proxy (required due to CORS restrictions on Bungie's PGCR endpoint)
-                    const res = await fetch(`/api/pgcr/${instanceId}`);
-                    const data = await res.json();
+                    const data = await shimFetchPGCR(instanceId);
                     const pgcr = data.Response;
                     
                     if (pgcr) {
@@ -97,8 +107,8 @@ export function ActivityStats({ activity, history, onSelectRun, isFlawless, isMa
                         if (isSoloFailed || hasTooManyPlayers) {
                             addInvalidInstanceId(instanceId);
                             setLocalInvalidIds(prev => {
-                                const prevArr = Array.isArray(prev) ? prev : [];
-                                return [...prevArr, instanceId];
+                                const prevSet = (prev instanceof Set) ? prev : new Set<string>();
+                                return new Set([...prevSet, instanceId]);
                             });
                             // Purge from IndexedDB cache as well
                             purgeInvalidInstancesFromCache();

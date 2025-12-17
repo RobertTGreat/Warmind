@@ -3,6 +3,7 @@ import { getActivityHistory } from '@/lib/bungie';
 import { useDestinyProfile } from './useDestinyProfile';
 import { useState, useEffect, useCallback } from 'react';
 import { getCachedHistory, setCachedHistory, clearCache, getInvalidInstanceIds } from '@/lib/activityCache';
+import { fetchPGCR as shimFetchPGCR } from '@/desktop-app/lib/api-shim';
 
 export interface ActivityHistoryItem {
     activityDetails: {
@@ -133,10 +134,8 @@ export function useActivityHistory() {
 
                 // Filter out any known invalid instances before storing
                 const invalidIds = await getInvalidInstanceIds();
-                const hasMethod = typeof (invalidIds as any)?.has === 'function';
-
-                const filteredRaids = uniqueRaids.filter(r => !(hasMethod ? invalidIds.has(r.activityDetails.instanceId) : false));
-                const filteredDungeons = uniqueDungeons.filter(d => !(hasMethod ? invalidIds.has(d.activityDetails.instanceId) : false));
+                const filteredRaids = uniqueRaids.filter(r => !invalidIds.has(r.activityDetails.instanceId));
+                const filteredDungeons = uniqueDungeons.filter(d => !invalidIds.has(d.activityDetails.instanceId));
 
                 // Sort by date (newest first)
                 filteredRaids.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
@@ -183,8 +182,7 @@ export function useActivityHistory() {
 
 // Fetch PGCR via server proxy (required due to CORS restrictions on Bungie's PGCR endpoint)
 const fetchPGCR = async (instanceId: string) => {
-    const res = await fetch(`/api/pgcr/${instanceId}`);
-    const data = await res.json();
+    const data = await shimFetchPGCR(instanceId);
     return data.Response;
 };
 

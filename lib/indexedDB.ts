@@ -1,7 +1,7 @@
 // Simple key-value store for wishlists and other data
 // Uses a separate DB name to avoid conflicts with WarmindDB (Dexie)
 const DB_NAME = 'WarmindKV';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'keyvalue';
 
 let dbPromise: Promise<IDBDatabase> | null = null;

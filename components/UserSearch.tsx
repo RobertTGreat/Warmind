@@ -67,7 +67,7 @@ export function UserSearch({ onSelectUser, onClear, selectedUser }: UserSearchPr
             </div>
 
             {isOpen && query.length >= 3 && (
-                <div className="absolute top-full mt-2 w-full bg-slate-900 border border-white/10 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                <div className="absolute top-full mt-2 w-full bg-gray-800/20 border border-white/10 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto backdrop-blur-xl">
                     {isLoading ? (
                         <div className="p-4 flex items-center justify-center">
                             <Loader2 className="w-5 h-5 animate-spin text-destiny-gold" />

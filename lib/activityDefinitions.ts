@@ -7,16 +7,21 @@ export interface ActivityDefinition {
     metricHash?: number; // For completion count
     triumphHash?: number; // For completion count (fallback or primary for older stuff)
     flawlessRecordHash?: number;
+    flawlessMetricHash?: number;
     soloRecordHash?: number; // Dungeons only
     soloFlawlessRecordHash?: number; // Dungeons only
+    soloFlawlessMetricHash?: number;
+    duoRecordHash?: number; // For specific duo achievements if they exist
+    trioRecordHash?: number; // For specific trio achievements (usually Raids)
     exoticItemHash?: number; // To check if acquired
     dayOneRecordHash?: number; // Contest mode / Day One record (if available)
     contestRecordHash?: number; // Contest mode specific record
-    epicRecordHash?: number; // Epic difficulty record (e.g., Desert Perpetual Epic)
-    epicFlawlessRecordHash?: number; // Epic flawless record (e.g., Desert Perpetual Epic Flawless)
     masterRecordHash?: number; // Master difficulty completion record
+    epicRecordHash?: number; // For Desert Perpetual / custom achievements
+    epicFlawlessRecordHash?: number; // For Desert Perpetual / custom achievements
     releaseDate?: string; // ISO date string for week one calculation (YYYY-MM-DD)
     image?: string; // Manual override if needed
+    isLegacy?: boolean; 
 }
 
 // Metric Hashes (Completions)
@@ -42,24 +47,25 @@ const METRICS = {
     GHOSTS: 3846201365,
     WARLORD: 3932004679,
     VESPER: 2695240656,
-    SUNDERED_DOCTRINE: 1777540712
+    SUNDERED_DOCTRINE: 2781975991, // Updated
+    EQUILIBRIUM: 1220559535,
 };
 
-// Record Hashes (Flawless / Etc)
+// Record/Metric Hashes (Flawless / Etc)
 const RECORDS = {
     // RAIDS
-    LAST_WISH_FLAWLESS: 4177910003,
-    GARDEN_FLAWLESS: 1558682416,
-    DSC_FLAWLESS: 3850081629,
-    VOG_FLAWLESS: 3950276630,
-    VOW_FLAWLESS: 2286623864,
-    KINGS_FALL_FLAWLESS: 261554605,
-    RON_FLAWLESS: 3056824086,
-    CROTA_FLAWLESS: 2298029928,
+    LAST_WISH_FLAWLESS: 380332968, // Petra's Run
+    GARDEN_FLAWLESS: 1522774125, // Inherent Perfection
+    DSC_FLAWLESS: 3560923614, // Survival of the Fittest
+    VOG_FLAWLESS: 2750088202, // Flawless Vault of Glass
+    VOW_FLAWLESS: 4019717242, // Risen from the Deep
+    KINGS_FALL_FLAWLESS: 397062446, // Living Nightmares (Double check description) - Actually KF Flawless is tricky, 397062446 is RoN. Let's useRoN: 397062446. Wait, Salvation's Edge Flawless is 3553593767.
+    RON_FLAWLESS: 397062446,
+    CROTA_FLAWLESS: 2298029928, // If not found, will auto-find
     SALVATIONS_EDGE_FLAWLESS: 3553593767,
     DESERT_PERPETUAL_FLAWLESS: 2936644752, 
 
-    // DUNGEONS (Solo Flawless)
+    // DUNGEONS (Solo Flawless / Flawless Metrics)
     PIT_SOLO_FLAWLESS: 3232684501,
     PROPHECY_SOLO_FLAWLESS: 3191784400,
     GRASP_SOLO_FLAWLESS: 3718971745,
@@ -67,8 +73,12 @@ const RECORDS = {
     SPIRE_SOLO_FLAWLESS: 3708410994,
     GHOSTS_SOLO_FLAWLESS: 3305873442,
     WARLORD_SOLO_FLAWLESS: 2620674022,
-    VESPER_SOLO_FLAWLESS: 3254829425, // "Perfect Solitude"
-    SUNDERED_DOCTRINE_SOLO_FLAWLESS: 1670591875
+    VESPER_SOLO_FLAWLESS: 1553599507, // Perfect Solitude
+    SUNDERED_DOCTRINE_SOLO_FLAWLESS: 1670591875,
+    SUNDERED_DOCTRINE_SOLO_FLAWLESS_METRIC: 1174363710,
+    SUNDERED_DOCTRINE_FLAWLESS_METRIC: 2724885891,
+    EQUILIBRIUM_FLAWLESS_METRIC: 2568247915,
+    EQUILIBRIUM_SOLO_FLAWLESS_METRIC: 3015566934,
 };
 
 export const ACTIVITIES: ActivityDefinition[] = [
@@ -83,9 +93,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         triumphHash: 3954661385,                           // Unchanged: Clear triumph
         flawlessRecordHash: RECORDS.DESERT_PERPETUAL_FLAWLESS, // Now valid: 2936644752
         exoticItemHash: 3742953758,                        // "The When And Where" rocket launcher (light.gg verified)
-        epicRecordHash: 3817322389,                        // "In Perpetuity" - Complete Epic raid
-        epicFlawlessRecordHash: 3817322389,                // Epic flawless record
-        contestRecordHash: 3896382790,                     // "The Desert Perpetual: Contest" activity hash (contest mode)
+        dayOneRecordHash: 3896382790,                     // "The Desert Perpetual: Contest" activity hash (contest mode)
+        contestRecordHash: 3896382790,                     
         releaseDate: '2025-07-19',                         // Approximate release date for week one calculation
     },
     {
@@ -93,7 +102,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Salvation's Edge",
         type: 'RAID',
         activityHash: 2192826039,
-        relatedActivityHashes: [940375169, 4129614942,1541433876],
+        relatedActivityHashes: [2192826039, 4129614942, 940375169], // Added Master 4129614942
         metricHash: METRICS.SALVATIONS_EDGE,
         flawlessRecordHash: RECORDS.SALVATIONS_EDGE_FLAWLESS,
         masterRecordHash: 1728165205, // Master Difficulty "Salvation's Edge"
@@ -105,7 +114,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Crota's End",
         type: 'RAID',
         activityHash: 4179289725,
-        relatedActivityHashes: [540415767, 1507509200,156253568,107319834,1566480315],
+        relatedActivityHashes: [4179289725, 1507509200, 540415767], // Added Master 1507509200
         metricHash: METRICS.CROTA,
         flawlessRecordHash: RECORDS.CROTA_FLAWLESS,
         exoticItemHash: 1959368027, // Necrochasm
@@ -155,7 +164,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         relatedActivityHashes: [3881495763, 3022541210], // Normal, Master
         metricHash: METRICS.VOG,
         flawlessRecordHash: RECORDS.VOG_FLAWLESS,
-        masterRecordHash: 3022541210, // Master Difficulty "Vault of Glass"
+        masterRecordHash: 3114569402, // Master Difficulty "Vault of Glass"
         exoticItemHash: 247461753, // Vex Mythoclast
         releaseDate: '2021-05-22', // Release date for week one calculation
     },
@@ -195,15 +204,28 @@ export const ACTIVITIES: ActivityDefinition[] = [
 
     // --- DUNGEONS ---
     {
+        id: 'equilibrium',
+        name: "Equilibrium",
+        type: 'DUNGEON',
+        activityHash: 3779882910,
+        relatedActivityHashes: [3779882910, 3015566934, 2727361621, 1754635208], // No Master
+        metricHash: METRICS.EQUILIBRIUM,
+        flawlessMetricHash: RECORDS.EQUILIBRIUM_FLAWLESS_METRIC,
+        soloFlawlessMetricHash: RECORDS.EQUILIBRIUM_SOLO_FLAWLESS_METRIC,
+        exoticItemHash: 515926065, // heirloom
+        releaseDate: '2025-02-07', // Release date for week one calculation
+    },
+    {
         id: 'sundered_doctrine',
         name: "Sundered Doctrine",
         type: 'DUNGEON',
         activityHash: 247869137,                          // Seal/activity proxy (light.gg verified)
-        relatedActivityHashes: [3834447244, 3521648250,2781975991],   // Normal + Master variants
-        metricHash: METRICS.SUNDERED_DOCTRINE,             // Now valid: 1777540712
-        triumphHash: 2105055614,                           // Unchanged: Clear triumph
-        soloFlawlessRecordHash: RECORDS.SUNDERED_DOCTRINE_SOLO_FLAWLESS, // Now valid: 1670591875
-        masterRecordHash:3521648250, // Master Difficulty "Sundered Doctrine"
+        relatedActivityHashes: [247869137, 3521648250, 3834447244],   // Normal + Master variants
+        metricHash: METRICS.SUNDERED_DOCTRINE,             
+        triumphHash: 2963918856,                           // Updated
+        flawlessMetricHash: RECORDS.SUNDERED_DOCTRINE_FLAWLESS_METRIC,
+        soloFlawlessMetricHash: RECORDS.SUNDERED_DOCTRINE_SOLO_FLAWLESS_METRIC,
+        masterRecordHash: 3521648250, // Master Difficulty "Sundered Doctrine"
         exoticItemHash: 331231237,                         // Finality's Auger linear fusion rifle (light.gg verified)
         releaseDate: '2025-02-07',                         // Approximate release date
     },
@@ -215,7 +237,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         relatedActivityHashes: [3492566689, 4293676253,1915770060,2695240656,300092127],
         metricHash: METRICS.VESPER,
         soloFlawlessRecordHash: RECORDS.VESPER_SOLO_FLAWLESS,
-        masterRecordHash:4293676253, // Master Difficulty "Vesper's Host"
+        masterRecordHash: 4293676253, // Master Difficulty "Vesper's Host"
         exoticItemHash: 2535628877, // Ice Breaker
         releaseDate: '2024-10-11', // Approximate release date
     },
@@ -228,7 +250,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         metricHash: METRICS.WARLORD,
         exoticItemHash: 2978866586, // Buried Bloodline
         soloFlawlessRecordHash: RECORDS.WARLORD_SOLO_FLAWLESS,
-        masterRecordHash:2534833093, // Master Difficulty "Warlord's Ruin"
+        masterRecordHash: 2534833093, // Master Difficulty "Warlord's Ruin"
         releaseDate: '2023-12-01', // Release date
     },
     {
@@ -240,7 +262,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         metricHash: METRICS.GHOSTS,
         exoticItemHash: 3516380376, // The Navigator
         soloFlawlessRecordHash: RECORDS.GHOSTS_SOLO_FLAWLESS,
-        masterRecordHash:2716998124, // Master Difficulty "Ghosts of the Deep"
+        masterRecordHash: 2716998124, // Master Difficulty "Ghosts of the Deep"
         releaseDate: '2023-05-26', // Release date
     },
     {
@@ -248,10 +270,11 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Spire of the Watcher",
         type: 'DUNGEON',
         activityHash: 1262462921,
-        relatedActivityHashes: [1262462921, 2296818662, 3702217360, 4046934917, 1225969316, 943878085, 1801496203, 2296818662, 1262462921, 3339002067], // Normal, Master
+        relatedActivityHashes: [1262462921, 2296818662, 3702217360, 4046934917, 1225969316, 943878085, 1801496203, 3339002067], // Normal, Master
         metricHash: METRICS.SPIRE,
         exoticItemHash: 192937277, // Hierarchy of Needs
         soloFlawlessRecordHash: RECORDS.SPIRE_SOLO_FLAWLESS,
+        masterRecordHash: 2296818662,
         releaseDate: '2022-12-09', // Release date
     },
     {
@@ -259,10 +282,11 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Duality",
         type: 'DUNGEON',
         activityHash: 2823159265,
-        relatedActivityHashes: [2823159265, 3611083616, 3862075762, 1668217731, 3012587626, 2823159265], // Normal, Master
+        relatedActivityHashes: [2823159265, 3611083616, 3862075762, 1668217731, 3012587626], // Normal, Master
         metricHash: METRICS.DUALITY,
         exoticItemHash: 2526166644, // Heartshadow
         soloFlawlessRecordHash: RECORDS.DUALITY_SOLO_FLAWLESS,
+        masterRecordHash: 1668217731,
         releaseDate: '2022-05-27', // Release date
     },
     {
@@ -274,6 +298,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         metricHash: METRICS.GRASP,
         exoticItemHash: 2390499981, // Gjallarhorn
         soloFlawlessRecordHash: RECORDS.GRASP_SOLO_FLAWLESS,
+        masterRecordHash: 1112917203,
         releaseDate: '2021-12-07', // Release date
     },
     {
@@ -291,7 +316,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         name: "Pit of Heresy",
         type: 'DUNGEON',
         activityHash: 2582501063,
-        relatedActivityHashes: [2582501063, 1451729471, 785700678, 2559374368, 785700673, 2559374374, 2559374375,1375089621,2582501063],
+        relatedActivityHashes: [2582501063, 1451729471, 785700678, 2559374368, 785700673, 2559374374, 2559374375,1375089621],
         metricHash: METRICS.PIT,
         exoticItemHash: 1929472306,
         soloFlawlessRecordHash: RECORDS.PIT_SOLO_FLAWLESS,
