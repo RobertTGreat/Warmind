@@ -78,8 +78,8 @@ export function useDestinyProfile() {
 
   // Check for token on mount (client-side only)
   useEffect(() => {
-    const token = Cookies.get('bungie_access_token');
-    if (token) {
+    const membershipId = Cookies.get('bungie_membership_id');
+    if (membershipId) {
       setHasToken(true);
     }
   }, []);
@@ -88,18 +88,14 @@ export function useDestinyProfile() {
   useEffect(() => {
       // Only try refresh if we've already checked for the token and didn't find one
       // We use a slight timeout or check to ensure we don't run this immediately if cookie reading was just delayed
-      const token = Cookies.get('bungie_access_token');
+      const membershipId = Cookies.get('bungie_membership_id');
       
-      if (!token && !isRefreshing) {
+      if (!membershipId && !isRefreshing) {
           setIsRefreshing(true);
           fetch('/api/auth/refresh', { method: 'POST' })
             .then(async (res) => {
                 if (res.ok) {
-                    const data = await res.json();
-                    if (data.access_token) {
-                        Cookies.set('bungie_access_token', data.access_token);
-                        setHasToken(true);
-                    }
+                    setHasToken(true);
                 }
             })
             .catch(() => {

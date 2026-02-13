@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
+export const revalidate = 86400;
+
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ instanceId: string }> }

@@ -1,8 +1,7 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
-import Cookies from 'js-cookie';
 
 const API_KEY = process.env.NEXT_PUBLIC_BUNGIE_API_KEY || '';
-const BASE_URL = 'https://www.bungie.net/Platform';
+const BASE_URL = '/api/bungie';
 
 export const bungieApi = axios.create({
   baseURL: BASE_URL,
@@ -11,12 +10,8 @@ export const bungieApi = axios.create({
   },
 });
 
-// Interceptor to add Authorization header if available
+// Interceptor to keep API key attached to all requests
 bungieApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = Cookies.get('bungie_access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
   // Ensure the API Key is always set, even if retrying
   config.headers['X-API-Key'] = API_KEY;
   return config;
@@ -37,14 +32,7 @@ bungieApi.interceptors.response.use(
         const res = await fetch('/api/auth/refresh', { method: 'POST' });
         
         if (res.ok) {
-           const data = await res.json();
-           // Update client-side cookie knowledge (though browser handles it automatically for requests, 
-           // we need it for the manual header attachment in the request interceptor above)
-           if (data.access_token) {
-               Cookies.set('bungie_access_token', data.access_token);
-               originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
-               return bungieApi(originalRequest);
-           }
+           return bungieApi(originalRequest);
         }
       } catch (refreshError) {
          // If refresh fails, redirect to logout
@@ -296,9 +284,6 @@ export const loginWithBungie = () => {
 };
 
 export const logout = () => {
-  Cookies.remove('bungie_access_token');
-  Cookies.remove('bungie_refresh_token');
-  Cookies.remove('bungie_membership_id');
   window.location.href = '/api/auth/logout';
 };
 

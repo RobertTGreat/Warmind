@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   const cookieStore = await cookies();
   const refreshToken = cookieStore.get('bungie_refresh_token')?.value;
 
@@ -35,11 +35,11 @@ export async function POST(request: NextRequest) {
         throw new Error(data.error_description || 'Failed to refresh token');
     }
 
-    const { access_token, refresh_token, membership_id } = data;
+    const { access_token, refresh_token } = data;
 
     // Update Cookies
     cookieStore.set('bungie_access_token', access_token, {
-      httpOnly: false, // Allow client JS to read for API calls
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 3600, // 1 hour
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       maxAge: 90 * 24 * 60 * 60, // 90 days
     });
 
-    return NextResponse.json({ access_token, success: true });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Token Refresh Error:', error);
     // Clear cookies if refresh fails so client knows to re-login

@@ -33,9 +33,6 @@ export async function GET(request: NextRequest) {
     // Also, Bungie OAuth often requires the `Content-Type` to be exactly correct.
     // Let's try adding `Origin` header if needed, but usually not.
     
-    // Debug logging (DO NOT LOG SECRETS IN PROD)
-    console.log("Exchanging code for token with Client ID:", CLIENT_ID);
-
     const response = await fetch('https://www.bungie.net/Platform/App/OAuth/token/', {
       method: 'POST',
       headers: {
@@ -50,13 +47,13 @@ export async function GET(request: NextRequest) {
       throw new Error(data.error_description || 'Failed to exchange code');
     }
 
-    const { access_token, refresh_token, member_id, membership_id } = data;
+    const { access_token, refresh_token, membership_id } = data;
 
     // Store tokens in httpOnly cookies
     const cookieStore = await cookies();
     
     cookieStore.set('bungie_access_token', access_token, {
-      httpOnly: false, // Allow client to read for API calls from browser if needed, or keep secure and use server proxy
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 3600, // 1 hour
