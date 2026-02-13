@@ -563,22 +563,40 @@ export function Header() {
                   })}
                 </div>
 
-                {/* Ko-fi Support Link */}
+                {/* Support and other projects links */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.3 }}
                   className="flex justify-center mt-4 pt-3 border-t border-white/5"
                 >
-                  <a
-                    href="https://ko-fi.com/roberttgreat"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-[#FF5E5B] transition-colors"
-                  >
-                    <Heart className="w-3 h-3" />
-                    <span>Support on Ko-fi</span>
-                  </a>
+                  <div className="inline-flex items-center gap-3 text-xs text-slate-500">
+                    <a
+                      href="https://ko-fi.com/roberttgreat"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 hover:text-[#FF5E5B] transition-colors"
+                    >
+                      <Heart className="w-3 h-3" />
+                      <span>Support on Ko-fi</span>
+                    </a>
+                    <span className="text-slate-700">•</span>
+                    <a
+                      href="https://pleiades.chat"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 hover:text-white transition-colors"
+                    >
+                      <Image
+                        src="/favicon-pleiades.svg"
+                        alt="Pleiades"
+                        width={12}
+                        height={12}
+                        className="w-3 h-3"
+                      />
+                      <span>pleiades.chat</span>
+                    </a>
+                  </div>
                 </motion.div>
               </div>
             </motion.div>

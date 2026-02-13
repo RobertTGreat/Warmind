@@ -12,7 +12,8 @@ import {
   Newspaper, 
   Package, 
   BarChart3,
-  Sparkles
+  Sparkles,
+  Heart
 } from "lucide-react";
 import { useDestinyProfile } from "@/hooks/useDestinyProfile";
 
@@ -258,9 +259,40 @@ function LandingPage() {
 
       {/* Footer */}
       <footer className="relative px-6 py-4 border-t border-white/5">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <span>© 2024 WARMIND</span>
-          <p>Not affiliated with Bungie. Destiny is a registered trademark of Bungie, Inc.</p>
+        <div className="max-w-6xl mx-auto flex flex-col gap-2 text-xs text-slate-500">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span>© 2024 WARMIND</span>
+            <div className="inline-flex items-center gap-3">
+              <a
+                href="https://ko-fi.com/roberttgreat"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 hover:text-[#FF5E5B] transition-colors"
+              >
+                <Heart className="w-3 h-3" />
+                <span>Support on Ko-fi</span>
+              </a>
+              <span className="text-slate-700">•</span>
+              <a
+                href="https://pleiades.chat"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 hover:text-white transition-colors"
+              >
+                <Image
+                  src="/favicon-pleiades.svg"
+                  alt="Pleiades"
+                  width={12}
+                  height={12}
+                  className="w-3 h-3"
+                />
+                <span>pleiades.chat</span>
+              </a>
+            </div>
+          </div>
+          <p className="text-center sm:text-left">
+            Not affiliated with Bungie. Destiny is a registered trademark of Bungie, Inc.
+          </p>
         </div>
       </footer>
     </div>

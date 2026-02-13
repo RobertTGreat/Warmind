@@ -299,7 +299,7 @@ export const logout = () => {
   Cookies.remove('bungie_access_token');
   Cookies.remove('bungie_refresh_token');
   Cookies.remove('bungie_membership_id');
-  window.location.href = '/';
+  window.location.href = '/api/auth/logout';
 };
 
 export const getBungieImage = (path: string) => {
