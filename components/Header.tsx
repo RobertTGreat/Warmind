@@ -46,16 +46,6 @@ const navItems: {
   { name: 'Collections', href: '/collections', icon: Book, description: 'Weapons, Armor & More' },
   { name: 'Triumphs', href: '/triumphs', icon: Trophy, description: 'Achievements & Seals' },
   { 
-    name: 'Progression', 
-    href: '/progression', 
-    icon: Globe, 
-    description: 'Wishlist & Collections',
-    subNav: [
-      { name: 'Wishlist', href: '/progression', icon: Book },
-      { name: 'Ergo Sum', href: '/progression/ergo-sum', icon: Swords },
-    ]
-  },
-  { 
     name: 'Character', 
     href: '/character', 
     icon: User, 
@@ -185,13 +175,6 @@ export function Header() {
                       <span>Season {stats.seasonRank ?? '-'}</span>
                     </div>
                   </button>
-                  
-                  {/* Beta Badge - Absolute positioned overlay */}
-                  <div className="absolute left-[340px] top-1/2 -translate-y-1/2 px-2 py-1 bg-linear-to-r from-destiny-gold/20 to-transparent border border-destiny-gold/30 pointer-events-none">
-                    <span className="text-[12px] font-bold uppercase tracking-wider text-white">
-                      Beta
-                    </span>
-                  </div>
                   
                   {/* Character Selector Dropdown */}
                   <AnimatePresence>

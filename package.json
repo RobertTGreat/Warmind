@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --experimental-https",
+    "dev": "node scripts/run-next-https.mjs dev",
     "build": "next build",
-    "start": "next start --experimental-https"
+    "start": "node scripts/run-next-https.mjs start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",
@@ -37,7 +37,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
-    "baseline-browser-mapping": "^2.8.32",
+    "baseline-browser-mapping": "^2.10.9",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
