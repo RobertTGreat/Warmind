@@ -437,6 +437,7 @@ function CollectionItem({ hash, profile, showAll }: { hash: number, profile: any
                 hideBorder={!isAcquired}
                 className="rounded-none w-full h-full"
                 minimal 
+                imageFetchPriority="low"
             />
             {!isAcquired && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

@@ -103,6 +103,7 @@ export function VaultGrid({
                         ownerId={ownerId}
                         quantity={showQuantity ? item.quantity : undefined}
                         size={iconSize}
+                        imageFetchPriority="low"
                     />
                 );
             })}

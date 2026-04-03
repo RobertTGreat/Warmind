@@ -86,6 +86,7 @@ const ItemRenderer = memo(({
             ownerId={ownerId}
             quantity={item.quantity}
             size={iconSize}
+            imageFetchPriority="low"
         />
     );
 });
@@ -262,6 +263,7 @@ export function GroupedVirtualizedGrid({
                                         ownerId={ownerId}
                                         quantity={item.quantity}
                                         size={iconSize}
+                                        imageFetchPriority="low"
                                     />
                                 ))}
                             </div>

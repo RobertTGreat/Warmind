@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, memo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { getBungieImage } from '@/lib/bungie';
+import { tooltipBungieImageSrc } from '@/lib/bungieImageProxy';
 import { useObjectiveDefinitions } from '@/hooks/useObjectiveDefinitions';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { STAT_HASHES, ARMOR_STAT_HASHES, getArmorBaseStats, ArmorQuality } from '@/lib/destinyUtils';
@@ -51,7 +51,7 @@ export interface WishListInfo {
     matchedPerkHashes: number[];
 }
 
-interface ItemTooltipProps {
+export interface ItemTooltipProps {
   name: string;
   itemType: string;
   rarity: string;
@@ -88,11 +88,24 @@ interface ItemTooltipProps {
     plugDefs?: Record<number, any>; // Plug definitions for archetype lookup
     wishListInfo?: WishListInfo; // Wish list match info
     showWishListSection?: boolean; // Only show wish list section when true (context menu)
+    /** Render body only (no portal) — use inside a parent shell, e.g. context menu + tooltip row. */
+    docked?: boolean;
 }
 
 import { ScrollingText } from "@/components/ScrollingText";
 
-export function ItemTooltip({ 
+type TooltipPosition = { x: number; y: number };
+
+function computeTooltipPosition(clientX: number, clientY: number): TooltipPosition {
+  let x = clientX + 15;
+  let y = clientY + 15;
+  if (typeof window !== "undefined" && x + 350 > window.innerWidth) {
+    x = clientX - 365;
+  }
+  return { x, y };
+}
+
+const ItemTooltipBody = memo(function ItemTooltipBody({ 
     name, 
     itemType, 
     rarity, 
@@ -124,9 +137,19 @@ export function ItemTooltip({
     socketsData,
     plugDefs,
     wishListInfo,
-    showWishListSection = false
+    showWishListSection = false,
+    docked = false,
 }: ItemTooltipProps) {
-  const [position, setPosition] = useState<{x: number, y: number} | null>(initialPosition || null);
+  const [screenshotFailed, setScreenshotFailed] = useState(false);
+  const [emblemBannerFailed, setEmblemBannerFailed] = useState(false);
+
+  useEffect(() => {
+    setScreenshotFailed(false);
+  }, [screenshot]);
+
+  useEffect(() => {
+    setEmblemBannerFailed(false);
+  }, [itemDef?.secondaryIcon]);
 
   // Calculate Hashes for Data Fetching
   const objectiveHashes = useMemo(() => objectives?.map((o: any) => o.objectiveHash) || [], [objectives]);
@@ -292,40 +315,6 @@ export function ItemTooltip({
     return null;
   }, [itemDef, detailedPerks, itemType, socketsData, plugDefs, stepDefs]);
 
-  useEffect(() => {
-    if (fixedPosition) {
-        if (initialPosition) setPosition(initialPosition);
-        return;
-    }
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // Offset tooltip slightly from cursor
-      // Ensure it stays within viewport
-      let x = e.clientX + 15;
-      let y = e.clientY + 15;
-      
-      // Simple boundary checks (will be handled by transform in render for Y)
-      if (x + 320 > window.innerWidth) {
-          x = e.clientX - 365; // Flip to left
-      }
-      
-      setPosition({ x, y });
-    };
-
-    // If we have an initial position, apply boundary check logic to it too immediately
-    if (initialPosition) {
-        let x = initialPosition.x + 15;
-        let y = initialPosition.y + 15;
-        if (x + 320 > window.innerWidth) {
-             x = initialPosition.x - 365;
-        }
-        setPosition({ x, y });
-    }
-
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [fixedPosition, initialPosition]);
-
   const rarityColors = {
       'Exotic': { text: 'text-yellow-400', bg: 'bg-yellow-500', border: 'border-yellow-500' },
       'Legendary': { text: 'text-purple-400', bg: 'bg-purple-600', border: 'border-purple-500' },
@@ -464,23 +453,8 @@ export function ItemTooltip({
   const armorTotal = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + s.value : acc, 0) : 0;
   const armorTierSum = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + Math.floor(s.value / 10) : acc, 0) : 0;
 
-  // Render via Portal
-  if (typeof document === 'undefined' || !position) return null;
-
-    return createPortal(
-    <div 
-        ref={containerRef}
-        className={cn(
-            "fixed z-300 w-[350px] flex flex-col shadow-2xl font-sans backdrop-blur-xl",
-            fixedPosition ? "pointer-events-auto" : "pointer-events-none"
-        )}
-        style={{ 
-            left: position.x, 
-            top: position.y,
-            // Prevent running off screen bottom
-            transform: position.y > window.innerHeight - 500 ? 'translateY(-100%)' : 'none'
-        }}
-    >
+  return (
+    <>
         {/* Header */}
         <div className={cn("relative h-14 flex items-center px-4 gap-3 overflow-hidden", rarityColors.bg)}>
             {/* Header Pattern Overlay (CSS Pattern) */}
@@ -498,10 +472,20 @@ export function ItemTooltip({
             )}
             
             <div className="relative z-10 flex-1 min-w-0 overflow-hidden">
-                <ScrollingText className="font-bold text-white uppercase tracking-widest text-xl drop-shadow-md">
+                <ScrollingText
+                    pauseOnHover={false}
+                    duration={14}
+                    className="font-bold text-white uppercase tracking-widest text-xl drop-shadow-md"
+                >
                     {name}
                 </ScrollingText>
-                <p className="text-[10px] text-white/90 uppercase tracking-wider font-bold truncate">{rarity} / {itemType}</p>
+                <ScrollingText
+                    pauseOnHover={false}
+                    duration={20}
+                    className="text-[10px] font-bold uppercase tracking-wider text-white/90"
+                >
+                    {rarity} / {itemType}
+                </ScrollingText>
             </div>
 
             {/* Top Right Element/Badge */}
@@ -536,7 +520,7 @@ export function ItemTooltip({
                 )}
                 {elementIcon && (
                     <Image 
-                        src={elementIcon} 
+                        src={tooltipBungieImageSrc(elementIcon, 32)} 
                         width={32} 
                         height={32} 
                         className="object-contain drop-shadow-md" 
@@ -546,7 +530,7 @@ export function ItemTooltip({
                 {seasonBadge && (
                     <div className="relative w-20 h-20 flex items-center justify-center -mr-18 mt-4">
                         <Image 
-                            src={seasonBadge} 
+                            src={tooltipBungieImageSrc(seasonBadge, 80)} 
                             fill 
                             sizes="80px"
                             className="object-contain drop-shadow-md pt-1" 
@@ -558,16 +542,22 @@ export function ItemTooltip({
         </div>
 
         {/* Body */}
-        <div className="bg-gray-800/20 border-x border-b border-white/10 p-1">
-            {/* Screenshot Section */}
-            {screenshot ? (
+        <div
+          className={cn(
+            "bg-gray-800/20 border-b border-white/10 p-1 overflow-visible",
+            docked ? "border-r" : "border-x",
+          )}
+        >
+            {/* Screenshot Section — Bungie often 404s old screenshot paths; fall back to item icon. */}
+            {screenshot && !screenshotFailed ? (
                 <div className="relative w-full h-48 overflow-hidden mb-1 group">
                     <Image 
-                        src={screenshot} 
+                        src={tooltipBungieImageSrc(screenshot, 350)} 
                         alt="" 
                         fill
                         sizes="(max-width: 768px) 100vw, 350px"
                         className="object-cover opacity-90 group-hover:opacity-100 transition-opacity" 
+                        onError={() => setScreenshotFailed(true)}
                     />
                     <div className="absolute inset-0 bg-linear-to-t from-slate-900 via-transparent to-transparent opacity-80" />
                     
@@ -579,15 +569,33 @@ export function ItemTooltip({
                         </div>
                     )}
                 </div>
-            ) : itemType === "Emblem" && itemDef?.secondaryIcon ? (
+            ) : screenshot && screenshotFailed && icon ? (
+                <div className="relative mb-1 flex h-48 w-full items-center justify-center overflow-hidden bg-slate-950/90 group">
+                    <Image
+                        src={tooltipBungieImageSrc(icon, 256)}
+                        alt=""
+                        width={256}
+                        height={256}
+                        className="object-contain opacity-95 group-hover:opacity-100 transition-opacity"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-slate-900 via-transparent to-transparent opacity-80" />
+                    {power && (
+                        <div className="absolute bottom-2 left-3 flex items-end">
+                            <span className="text-5xl font-bold text-destiny-gold drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">{power}</span>
+                            <span className="text-2xl text-destiny-gold mb-1 ml-1 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">✧</span>
+                        </div>
+                    )}
+                </div>
+            ) : itemType === "Emblem" && itemDef?.secondaryIcon && !emblemBannerFailed ? (
                 // Special case for Emblems: Show full emblem (secondaryIcon is usually the wide banner)
                 <div className="relative w-full aspect-474/96 overflow-hidden mb-1">
                      <Image 
-                        src={getBungieImage(itemDef.secondaryIcon)} 
+                        src={tooltipBungieImageSrc(itemDef.secondaryIcon, 350)} 
                         alt="" 
                         fill
                         sizes="(max-width: 768px) 100vw, 350px"
                         className="object-cover" 
+                        onError={() => setEmblemBannerFailed(true)}
                      />
                 </div>
             ) : null}
@@ -677,8 +685,8 @@ export function ItemTooltip({
                     </div>
                 )}
 
-                {/* Details Grid - Show Power here if no screenshot */}
-                {!screenshot && power !== undefined && power !== 0 && (
+                {/* Details Grid - Show Power when no hero image (or screenshot URL 404'd with no icon fallback). */}
+                {(!screenshot || (screenshotFailed && !icon)) && power !== undefined && power !== 0 && (
                     <div className="flex items-center justify-between border-b border-white/10 pb-2">
                         <span className="text-slate-400 uppercase text-xs font-bold tracking-widest">Power Level</span>
                         <div className="flex items-center">
@@ -695,7 +703,7 @@ export function ItemTooltip({
                             {armorArchetype.icon && (
                                 <div className="w-8 h-8 shrink-0 rounded-sm overflow-hidden border border-white/20 bg-slate-800/50">
                                     <Image 
-                                        src={getBungieImage(armorArchetype.icon)} 
+                                        src={tooltipBungieImageSrc(armorArchetype.icon, 32)} 
                                         width={32}
                                         height={32}
                                         className="object-cover"
@@ -797,7 +805,7 @@ export function ItemTooltip({
                                                 )}>
                                                     {perkDef.displayProperties?.icon ? (
                                                         <Image 
-                                                            src={getBungieImage(perkDef.displayProperties.icon)} 
+                                                            src={tooltipBungieImageSrc(perkDef.displayProperties.icon, 28)} 
                                                             width={28}
                                                             height={28}
                                                             className="object-cover"
@@ -1005,14 +1013,14 @@ export function ItemTooltip({
 
                 {/* Perks / Traits - Detailed Grid View & Mods */}
                 {(detailedPerks && detailedPerks.length > 0) || mods.length > 0 ? (
-                    <div className="mt-2 border-t border-white/10 pt-2 space-y-2">
+                    <div className="mt-2 border-t border-white/10 pt-2 space-y-2 overflow-visible">
                         {detailedPerks && detailedPerks.length > 0 && (
                             <h4 className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Perks & Traits</h4>
                         )}
-                        <div className="flex items-start gap-4">
+                        <div className="flex items-start gap-4 overflow-visible">
                             {/* Perks Scroll Area */}
                             {detailedPerks && detailedPerks.length > 0 && (
-                                <div className="flex-1 flex flex-row flex-wrap gap-2 pb-2">
+                                <div className="flex min-w-0 flex-1 flex-row flex-wrap gap-2 overflow-visible pb-2">
                                     {detailedPerks.map((socket, idx) => (
                                          <div key={idx} className="flex flex-col gap-2 shrink-0">
                                             {/* Intrinsic / Active Plug usually first */}
@@ -1047,7 +1055,7 @@ export function ItemTooltip({
                                                                     : "bg-black-800/20 opacity-40 hover:opacity-100"
                                                              )}>
                                                                  <Image 
-                                                                     src={getBungieImage(plug.displayProperties?.icon)} 
+                                                                     src={tooltipBungieImageSrc(plug.displayProperties?.icon, 32)} 
                                                                      width={32}
                                                                      height={32}
                                                                      className="object-cover" 
@@ -1070,15 +1078,15 @@ export function ItemTooltip({
                                                              </div>
                                                              
                                                              {/* Hover Tooltip for Icon */}
-                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-[#0f0f0f] border border-white/20 p-3 rounded shadow-2xl pointer-events-none opacity-0 group-hover/perkicon:opacity-100 transition-opacity z-1000 backdrop-blur-md">
+                                                             <div className="absolute left-1/2 bottom-full z-[1000] mb-2 w-52 max-w-[min(13rem,calc(100vw-1rem))] -translate-x-1/2 overflow-visible rounded border border-white/20 bg-[#0f0f0f] p-3 shadow-2xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/perkicon:opacity-100">
                                                                  <div className="flex items-center gap-1.5 mb-0.5">
-                                                                     <p className="text-sm font-bold text-destiny-gold leading-tight">{plug.displayProperties?.name}</p>
+                                                                     <p className="min-w-0 break-words text-sm font-bold leading-tight text-destiny-gold">{plug.displayProperties?.name}</p>
                                                                      {isWishListedPerk && (
                                                                          <span className="text-destiny-gold text-xs">★</span>
                                                                      )}
                                                                  </div>
-                                                                 <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">{plug.itemTypeDisplayName}</p>
-                                                                 <p className="text-xs text-slate-300 leading-relaxed">{plug.displayProperties?.description}</p>
+                                                                 <p className="mb-2 text-[10px] uppercase tracking-wide text-slate-500">{plug.itemTypeDisplayName}</p>
+                                                                 <p className="break-words text-xs leading-relaxed text-slate-300">{plug.displayProperties?.description}</p>
                                                                  {isWishListedPerk && (
                                                                      <p className="text-[10px] text-destiny-gold mt-2 uppercase font-medium">Wish List Perk</p>
                                                                  )}
@@ -1091,7 +1099,7 @@ export function ItemTooltip({
                                                  socket.activePlug && (
                                                     <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-500 bg-[#5b94be]">
                                                         <Image 
-                                                            src={getBungieImage(socket.activePlug.displayProperties?.icon)} 
+                                                            src={tooltipBungieImageSrc(socket.activePlug.displayProperties?.icon, 32)} 
                                                             width={32}
                                                             height={32}
                                                             className="object-cover" 
@@ -1109,7 +1117,7 @@ export function ItemTooltip({
                             {mods.length > 0 && (
                                 <div className="flex flex-row gap-1.5 shrink-0 pt-0.5 border-l border-white/10 pl-3">
                                     {mods.map((plug, i) => {
-                                        const iconUrl = getBungieImage(plug.displayProperties?.icon);
+                                        const iconUrl = tooltipBungieImageSrc(plug.displayProperties?.icon, 32);
                                         return (
                                             <div key={i} className="group/cosmetic relative">
                                                 <div className="w-8 h-8 border border-gray-500 bg-black/40 overflow-hidden shadow-sm hover:border-white/60 transition-colors flex items-center justify-center">
@@ -1124,8 +1132,8 @@ export function ItemTooltip({
                                                     )}
                                                 </div>
                                                 {/* Mod Tooltip */}
-                                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 bg-[#0f0f0f] border border-white/20 p-2 rounded shadow-xl pointer-events-none opacity-0 group-hover/cosmetic:opacity-100 transition-opacity z-100 backdrop-blur-md">
-                                                    <p className="text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
+                                                <div className="absolute left-1/2 bottom-full z-[1000] mb-2 w-48 max-w-[min(12rem,calc(100vw-1rem))] -translate-x-1/2 overflow-visible rounded border border-white/20 bg-[#0f0f0f] p-2 shadow-xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/cosmetic:opacity-100">
+                                                    <p className="min-w-0 break-words text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
                                                     <p className="text-[9px] text-slate-400 uppercase">{plug.itemTypeDisplayName}</p>
                                                 </div>
                                             </div>
@@ -1144,7 +1152,7 @@ export function ItemTooltip({
                                 {/* Icon */}
                                 <div className="w-10 h-10 shrink-0 rounded-sm overflow-hidden group-hover/perk:border-destiny-gold transition-colors relative">
                                     <Image 
-                                        src={getBungieImage(plug.displayProperties?.icon)} 
+                                        src={tooltipBungieImageSrc(plug.displayProperties?.icon, 40)} 
                                         width={40}
                                         height={40}
                                         className="object-cover" 
@@ -1177,7 +1185,94 @@ export function ItemTooltip({
 
             </div>
         </div>
+    </>
+  );
+});
+
+ItemTooltipBody.displayName = "ItemTooltipBody";
+
+export function ItemTooltip(props: ItemTooltipProps) {
+  const { fixedPosition, initialPosition, containerRef, docked } = props;
+
+  const [position, setPosition] = useState<TooltipPosition | null>(() => {
+    if (typeof window === "undefined" || docked) return null;
+    if (!initialPosition) return null;
+    return computeTooltipPosition(initialPosition.x, initialPosition.y);
+  });
+
+  const rafRef = useRef<number | null>(null);
+  const latestMoveRef = useRef<TooltipPosition | null>(null);
+
+  const setShellRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (containerRef && "current" in containerRef) {
+        (containerRef as React.MutableRefObject<HTMLDivElement | null>).current =
+          node;
+      }
+    },
+    [containerRef],
+  );
+
+  useEffect(() => {
+    if (docked) return;
+
+    if (fixedPosition) {
+      if (initialPosition) {
+        setPosition(
+          computeTooltipPosition(initialPosition.x, initialPosition.y),
+        );
+      }
+      return;
+    }
+
+    const flushMove = () => {
+      rafRef.current = null;
+      const p = latestMoveRef.current;
+      if (p) setPosition(p);
+    };
+
+    const onMove = (e: MouseEvent) => {
+      latestMoveRef.current = computeTooltipPosition(e.clientX, e.clientY);
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(flushMove);
+      }
+    };
+
+    window.addEventListener("mousemove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [docked, fixedPosition, initialPosition]);
+
+  if (docked) {
+    return (
+      <div className="flex w-full min-h-0 min-w-0 flex-col overflow-visible">
+        <ItemTooltipBody {...props} />
+      </div>
+    );
+  }
+
+  if (typeof document === "undefined" || !position) return null;
+
+  const flipY =
+    typeof window !== "undefined" && position.y > window.innerHeight - 500;
+
+  return createPortal(
+    <div
+      ref={setShellRef}
+      className={cn(
+        "fixed z-300 w-[350px] flex flex-col overflow-visible shadow-2xl font-sans backdrop-blur-md",
+        fixedPosition ? "pointer-events-auto" : "pointer-events-none",
+      )}
+      style={{
+        left: position.x,
+        top: position.y,
+        transform: flipY ? "translateY(-100%)" : "none",
+      }}
+    >
+      <ItemTooltipBody {...props} />
     </div>,
-    document.body
+    document.body,
   );
 }

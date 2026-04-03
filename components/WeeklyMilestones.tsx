@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+'use client';
+
 import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { Loader2, Star, Swords, Crosshair, Shield } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { RewardItem } from './RewardItem';
 import { ScrollingText } from '@/components/ScrollingText';
+import { PretextLineClamp } from '@/components/PretextLineClamp';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -103,9 +104,11 @@ function MilestoneCard({ milestone }: { milestone: any }) {
                      <ScrollingText className="text-sm font-bold text-white group-hover:text-destiny-gold transition-colors">
                          {def.displayProperties.name}
                      </ScrollingText>
-                     <p className="text-xs text-slate-400 line-clamp-2 min-h-[2.5em]">
-                         {def.displayProperties.description}
-                     </p>
+                     <PretextLineClamp
+                         className="text-xs text-slate-400 line-clamp-2"
+                         maxLines={2}
+                         text={def.displayProperties.description ?? ''}
+                     />
                  </div>
              </div>
              

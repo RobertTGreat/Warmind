@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { usePresentationNode, useRecord } from '@/hooks/useDefinitions';
@@ -7,6 +9,7 @@ import { useDestinyProfile } from '@/hooks/useDestinyProfile';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
 import { ScrollingText } from '@/components/ScrollingText';
+import { PretextLineClamp } from '@/components/PretextLineClamp';
 
 interface TriumphsBrowserProps {
     rootHash: number;
@@ -435,9 +438,11 @@ function RecordItem({ hash, profile, showCompleted }: { hash: number, profile: a
                         <ScrollingText className={cn("font-bold text-white", isCompleted && "text-destiny-gold")}>
                             {isObscured ? "Secret Triumph" : record.displayProperties?.name}
                         </ScrollingText>
-                        <p className="text-sm text-slate-400 line-clamp-2 mt-1">
-                             {isObscured ? "???" : record.displayProperties?.description}
-                        </p>
+                        <PretextLineClamp
+                            className="text-sm text-slate-400 line-clamp-2 mt-1"
+                            maxLines={2}
+                            text={isObscured ? "???" : (record.displayProperties?.description ?? '')}
+                        />
                         {title && isCompleted && (
                             <div className="text-xs text-purple-400 mt-1 uppercase tracking-wider">
                                 Title Unlocked: {title}

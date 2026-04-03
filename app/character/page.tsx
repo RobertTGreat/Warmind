@@ -169,6 +169,7 @@ function ItemCardWrapper({ item, profile, basePower, classFilter, characterId, o
             showClassSymbolOnMismatch
             size={iconSize}
             isHighlighted={isHighlighted}
+            imageFetchPriority="low"
         />
     );
 }
@@ -641,6 +642,7 @@ export default function CharacterPage() {
                                                     size="small" // Fixed small size for header
                                                     hideBorder={true}  // Hide inner border to use outer container
                                                     hidePower={true}
+                                                    imageFetchPriority="low"
                                                 />
                                             ) : (
                                                 <div className="w-full h-full bg-white/0" />
@@ -683,6 +685,7 @@ export default function CharacterPage() {
                                                         size="small"
                                                         hideBorder={true}
                                                         hidePower={true}
+                                                        imageFetchPriority="low"
                                                     />
                                                 ) : (
                                                     <div className="w-full h-full bg-white/0" />

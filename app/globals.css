@@ -26,7 +26,8 @@
   width: max-content;
   animation: marquee 20s linear infinite;
 }
-.animate-marquee:hover {
+/* Opt-in pause; tooltips use continuous scroll via ScrollingText pauseOnHover={false} */
+.animate-marquee.marquee-pause-on-hover:hover {
   animation-play-state: paused;
 }
 

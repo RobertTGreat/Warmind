@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useObjectiveDefinitions } from '@/hooks/useObjectiveDefinitions';
 import { useMemo, useState } from 'react';
 import { ItemTooltip } from './ItemTooltip';
+import { PretextLineClamp } from '@/components/PretextLineClamp';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 
 interface QuestItemCardProps {
@@ -147,9 +148,11 @@ export function QuestItemCard({
                 </div>
 
                 {/* Description */}
-                <p className="text-sm text-slate-300 mt-2 line-clamp-2 leading-relaxed">
-                    {description}
-                </p>
+                <PretextLineClamp
+                    className="text-sm text-slate-300 mt-2 line-clamp-2 leading-relaxed"
+                    maxLines={2}
+                    text={description ?? ''}
+                />
 
                 {/* Objectives - Now for ALL quests if present */}
                 {objectives && objectives.length > 0 && (

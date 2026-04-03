@@ -182,7 +182,7 @@ export function FireteamList() {
                                 {/* Info Section */}
                                 <div className="flex-1 px-4 py-2 flex flex-col justify-center relative z-10 overflow-hidden">
                                     <div className="flex items-baseline gap-2 overflow-hidden">
-                                        <ScrollingText className="font-bold text-white text-base">
+                                        <ScrollingText className="min-w-0 flex-1 font-bold text-white text-base">
                                             {member.displayName}
                                         </ScrollingText>
                                         {member.displayNameCode && (

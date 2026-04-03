@@ -345,7 +345,7 @@ export default function VaultPage() {
         {/* Controls */}
         <div className="flex items-center justify-between gap-4 p-4 border-b border-white/5 backdrop-blur-md shrink-0 sticky top-16 z-50">
              <div className="flex items-center gap-6">
-                 <h1 className="text-xl font-bold text-white uppercase tracking-wide">Gear Manager</h1>
+                 <h1 className="text-xl font-bold text-white uppercase tracking-wide"> </h1>
              </div>
              
              <div className="flex items-center gap-2">

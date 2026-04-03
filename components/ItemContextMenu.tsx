@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useDestinyProfile } from '@/hooks/useDestinyProfile';
@@ -6,8 +6,9 @@ import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlug
 import { toast } from 'sonner';
 import { useTransferStore } from '@/store/transferStore';
 import { useUIStore } from '@/store/uiStore';
+import type { ArmorQuality } from '@/lib/destinyUtils';
+import { cn } from '@/lib/utils';
 import { ItemTooltip, WishListInfo } from './ItemTooltip';
-import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 
 interface ItemContextMenuProps {
     x: number;
@@ -24,14 +25,29 @@ interface ItemContextMenuProps {
     wishListInfo?: WishListInfo;
     socketsData?: any;
     plugDefs?: Record<number, any>;
+    /** Match hover `ItemTooltip` header (tier / element / season / MW / shiny / armor roll). */
+    tooltipSeasonBadge?: string;
+    tooltipElementIcon?: string;
+    tooltipTier?: string | null;
+    tooltipEnhancementTier?: number | null;
+    tooltipIsShiny?: boolean;
+    tooltipArmorQuality?: ArmorQuality | null;
 }
 
 export function ItemContextMenu({ 
     x, y, onClose, itemHash, itemInstanceId, ownerId, isLocked, 
-    itemDef, sockets, instanceData, detailedPerks, wishListInfo, socketsData, plugDefs
+    itemDef, sockets, instanceData, detailedPerks, wishListInfo, socketsData, plugDefs,
+    tooltipSeasonBadge,
+    tooltipElementIcon,
+    tooltipTier,
+    tooltipEnhancementTier,
+    tooltipIsShiny,
+    tooltipArmorQuality,
 }: ItemContextMenuProps) {
-    const menuRef = useRef<HTMLDivElement>(null);
+    const shellRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
+    /** Mount rich tooltip after first paint so equip/transfer UI shows immediately. */
+    const [tooltipReady, setTooltipReady] = useState(false);
     const { profile, stats, membershipInfo } = useDestinyProfile();
     const addOperation = useTransferStore(state => state.addOperation);
     const removeOperation = useTransferStore(state => state.removeOperation);
@@ -82,9 +98,9 @@ export function ItemContextMenu({
         });
     };
 
-    // Prepare Tooltip Data
+    // Prepare tooltip payload only after defer — avoids blocking the first menu paint.
     const tooltipData = useMemo(() => {
-        if (!itemDef) return null;
+        if (!tooltipReady || !itemDef) return null;
 
         // Separate sockets into detailed perks and mods
         const mods: any[] = [];
@@ -141,18 +157,59 @@ export function ItemContextMenu({
             ornaments,
             killEffects,
             killTrackers,
-            enhancementTier: undefined, 
-            tier: undefined,
+            enhancementTier: tooltipEnhancementTier ?? undefined,
+            tier: tooltipTier ?? undefined,
+            seasonBadge: tooltipSeasonBadge,
+            elementIcon: tooltipElementIcon,
+            isShiny: tooltipIsShiny,
+            armorQuality: tooltipArmorQuality ?? undefined,
             wishListInfo,
             socketsData,
             plugDefs
         };
-    }, [itemDef, sockets, instanceData, detailedPerks, wishListInfo, socketsData, plugDefs]);
+    }, [
+        tooltipReady,
+        itemDef,
+        sockets,
+        instanceData,
+        detailedPerks,
+        wishListInfo,
+        socketsData,
+        plugDefs,
+        tooltipSeasonBadge,
+        tooltipElementIcon,
+        tooltipTier,
+        tooltipEnhancementTier,
+        tooltipIsShiny,
+        tooltipArmorQuality,
+    ]);
+
+    const shellLayout = useMemo(() => {
+        const menuW = 256;
+        const tooltipW = 350;
+        const hasTip = !!tooltipData;
+        const shellW = hasTip ? menuW + tooltipW : menuW;
+        if (typeof window === "undefined") {
+            return { left: x, top: y };
+        }
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const pad = 8;
+        let left = x;
+        if (left + shellW > vw - pad) {
+            left = Math.max(pad, vw - shellW - pad);
+        }
+        let top = y;
+        const estH = 560;
+        if (top + estH > vh - pad) {
+            top = Math.max(pad, vh - estH - pad);
+        }
+        return { left, top };
+    }, [x, y, tooltipData]);
     
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node) && 
-                (!tooltipRef.current || !tooltipRef.current.contains(e.target as Node))) {
+            if (shellRef.current && !shellRef.current.contains(e.target as Node)) {
                 onClose();
             }
         };
@@ -165,6 +222,21 @@ export function ItemContextMenu({
             window.removeEventListener('scroll', handleScroll, true);
         };
     }, [onClose]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const id = requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (!cancelled) {
+                    startTransition(() => setTooltipReady(true));
+                }
+            });
+        });
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(id);
+        };
+    }, []);
 
     if (!itemInstanceId || !membershipInfo || !ownerId) return null;
 
@@ -249,28 +321,24 @@ export function ItemContextMenu({
     };
 
     return createPortal(
-        <div 
-            ref={menuRef}
-            className="fixed z-200 w-64 bg-gray-800/20 border border-white/10 shadow-2xl py-0 text-sm text-gray-200 select-none flex flex-col backdrop-blur-xl rounded-sm overflow-hidden"
-            style={{ left: x, top: y }}
-        >
-            {/* Static Tooltip to the right */}
-            {tooltipData && (
-                <ItemTooltip 
-                    {...tooltipData} 
-                    initialPosition={{ x: x + 264, y: y }} 
-                    fixedPosition={true}
-                    itemDef={itemDef}
-                    onPlugClick={(socketIndex, plugHash) => handleEquipPlug(socketIndex, plugHash)}
-                    containerRef={tooltipRef}
-                    showWishListSection={true}
-                />
+        <div
+            ref={shellRef}
+            className={cn(
+                'fixed z-200 flex flex-row items-start gap-0 shadow-2xl',
+                !tooltipData && 'w-64'
             )}
-
-            {/* Actions List */}
-            <div className="py-1">
+            style={{ left: shellLayout.left, top: shellLayout.top }}
+        >
+            <div
+                className={cn(
+                    'flex w-64 shrink-0 flex-col self-start h-fit py-1 overflow-hidden text-sm text-gray-200 select-none bg-gray-800/90 backdrop-blur-md',
+                    tooltipData
+                        ? 'rounded-l-sm border border-white/10'
+                        : 'rounded-sm border border-white/10'
+                )}
+            >
                 {/* Equip Options */}
-                <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Equip</div>
+                <div className="px-3 py-1 text-[10px] text-white uppercase tracking-wider">Equip</div>
                 <div className="flex gap-1 px-3 pb-2">
                     {characters.map((char: any) => (
                         <button 
@@ -356,8 +424,26 @@ export function ItemContextMenu({
                     Details
                 </button>
             </div>
-        </div>
-    </div>,
+            </div>
+
+            {tooltipData && (
+                <div
+                    ref={tooltipRef}
+                    className="flex h-fit w-[350px] shrink-0 flex-col min-w-0 overflow-visible rounded-r-sm border border-white/10 bg-gray-950/40 backdrop-blur-md"
+                >
+                    <ItemTooltip
+                        {...tooltipData}
+                        docked
+                        fixedPosition={true}
+                        itemDef={itemDef}
+                        onPlugClick={(socketIndex, plugHash) =>
+                            handleEquipPlug(socketIndex, plugHash)
+                        }
+                        showWishListSection={true}
+                    />
+                </div>
+            )}
+        </div>,
         document.body
     );
 

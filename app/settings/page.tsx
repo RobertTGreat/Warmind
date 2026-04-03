@@ -16,6 +16,7 @@ import {
 } from "@/store/settingsStore";
 import { clearCache } from "@/lib/activityCache";
 import { cn } from "@/lib/utils";
+import { PretextLineClamp } from "@/components/PretextLineClamp";
 import { 
     Palette, 
     Clock, 
@@ -493,7 +494,11 @@ function WishListSection() {
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{preset.description}</p>
+                                            <PretextLineClamp
+                                                className="text-xs text-slate-500 mt-0.5 line-clamp-2"
+                                                maxLines={2}
+                                                text={preset.description ?? ""}
+                                            />
                                             {preset.author && (
                                                 <p className="text-[10px] text-slate-600 mt-1">By {preset.author}</p>
                                             )}
@@ -588,7 +593,11 @@ function WishListSection() {
                                             )}
                                         </div>
                                         {wishList.description && (
-                                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{wishList.description}</p>
+                                            <PretextLineClamp
+                                                className="text-xs text-slate-500 mt-0.5 line-clamp-2"
+                                                maxLines={2}
+                                                text={wishList.description}
+                                            />
                                         )}
                                         <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                                             <span className="flex items-center gap-1">

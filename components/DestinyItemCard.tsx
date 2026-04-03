@@ -1,6 +1,8 @@
 import useSWR from 'swr';
 import Image from 'next/image';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
+import { displayPixelsForCssEdge, itemIconDecodeBudgetPx, itemIconSizes } from '@/lib/itemIconImage';
+import { buildBungieImageProxyUrl, normalizeBungieAssetPath } from '@/lib/bungieImageProxy';
 import { cn } from '@/lib/utils';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { ItemTooltip } from './ItemTooltip';
@@ -33,6 +35,9 @@ interface DestinyItemCardProps {
     size?: 'small' | 'medium' | 'large';
     reusablePlugs?: any[]; // Passed from profile.itemComponents.reusablePlugs
     tierAsNumber?: boolean; // If true, show tier as a number in top right instead of stars
+    imagePriority?: boolean;
+    /** Use `low` in vault / virtualized grids so icons don’t compete with visible content. */
+    imageFetchPriority?: 'auto' | 'high' | 'low';
 }
 
 // Element Icons (Updated with transparent PNGs where possible)
@@ -73,8 +78,12 @@ export function DestinyItemCard({
     showClassSymbolOnMismatch,
     size = 'medium',
     reusablePlugs,
-    tierAsNumber
+    tierAsNumber,
+    imagePriority,
+    imageFetchPriority,
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
+  "use no memo"; // Opt out — avoids compiler/runtime `icon is not defined` in this component.
+
   const { data: defResponse, error } = useSWR(
     !definition && itemHash ? endpoints.getItemDefinition(itemHash) : null,
     fetcher,
@@ -268,15 +277,49 @@ export function DestinyItemCard({
 
   const isLoading = !def && !error;
   const isDimmed = isHighlighted === false;
-  
-  // Calculate display properties (safely handle missing def)
-  const icon = def ? getBungieImage(def.displayProperties?.icon) : null;
+
+  const itemIconPack = useMemo(() => {
+    if (!def) {
+      return {
+        itemIconSrc: null as string | null,
+        watermarkSrc: null as string | null,
+      };
+    }
+    const w = itemIconDecodeBudgetPx(size, 2);
+    const iconPath = normalizeBungieAssetPath(def.displayProperties?.icon);
+    const itemIconSrc = iconPath
+      ? buildBungieImageProxyUrl(iconPath, w)
+      : def.displayProperties?.icon
+        ? getBungieImage(def.displayProperties.icon)
+        : null;
+    const wm = def.iconWatermark || def.iconWatermarkShelved;
+    const wmPath = wm ? normalizeBungieAssetPath(wm) : null;
+    const watermarkSrc = wmPath
+      ? buildBungieImageProxyUrl(wmPath, w)
+      : wm
+        ? getBungieImage(wm)
+        : null;
+    return { itemIconSrc, watermarkSrc };
+  }, [def, size]);
+  const itemIconSrc = itemIconPack.itemIconSrc;
+  const watermarkSrc = itemIconPack.watermarkSrc;
+
   const name = def?.displayProperties?.name;
   const rarity = def?.inventory?.tierTypeName; 
   const itemType = def?.itemTypeDisplayName;
   const screenshot = def ? getBungieImage(def.screenshot) : null;
   const damageTypeHash = instanceData?.damageTypeHash || def?.defaultDamageTypeHash;
   const elementIcon = ELEMENT_ICONS[damageTypeHash];
+  const elementIconSrc = useMemo(() => {
+    if (!elementIcon) {
+      return null;
+    }
+    const p = normalizeBungieAssetPath(elementIcon);
+    if (!p) {
+      return elementIcon;
+    }
+    return buildBungieImageProxyUrl(p, displayPixelsForCssEdge(12, 2));
+  }, [elementIcon]);
 
   // Plugs Logic (Mods/Perks) - Moved logic into useMemo to be hook-safe
   // We already compute 'detailedPerks' with useMemo which iterates sockets.
@@ -542,6 +585,96 @@ export function DestinyItemCard({
       large: { text: 'text-[13px]', top: 'top-5.5', left: 'left-[0.45rem]', gap: 'gap-0' }
   }[size];
 
+  const wantsStatsRow = !!(
+    instanceData?.primaryStat?.value ||
+    elementIcon ||
+    quantity ||
+    timeLeft ||
+    wishListInfo.isWishListed
+  );
+  const showExpandedBottom =
+    !minimal &&
+    !hidePower &&
+    !!(
+      instanceData?.primaryStat?.value ||
+      elementIcon ||
+      quantity ||
+      (objectives && objectives.length > 0) ||
+      timeLeft ||
+      wishListInfo.isWishListed
+    );
+
+  const statsRowEl = (
+    <div className="flex items-center justify-between w-full gap-1 min-h-3">
+      {quantity ? (
+        <span className="text-[10px] font-bold leading-none text-white">{quantity}</span>
+      ) : timeLeft ? (
+        <span className="text-[10px] font-bold leading-none text-yellow-400 flex items-center gap-1">
+          <span className="text-[8px]">⏳</span> {timeLeft}
+        </span>
+      ) : (
+        <div className="flex flex-col leading-none">
+          <span
+            className={cn(
+              'text-[10px] font-bold',
+              instanceData?.primaryStat?.value ? 'text-destiny-gold' : 'text-transparent'
+            )}
+          >
+            {instanceData?.primaryStat?.value || '0'}
+          </span>
+          {powerDiff !== undefined && powerDiff !== 0 && (
+            <span
+              className={cn(
+                'text-[9px] font-bold',
+                powerDiff > 0 ? 'text-green-400' : 'text-red-400'
+              )}
+            >
+              {powerDiff > 0 ? '+' : ''}
+              {powerDiff}
+            </span>
+          )}
+        </div>
+      )}
+
+      {wishListInfo.isWishListed && !wishListInfo.isTrash && (
+        <div className="flex items-center gap-px">
+          {Array.from({
+            length:
+              wishListInfo.matchType === 'exact'
+                ? 3
+                : wishListInfo.matchType === 'partial'
+                  ? 2
+                  : 1,
+          }).map((_, i) => (
+            <span
+              key={i}
+              className={cn(
+                'text-[8px] drop-shadow-sm leading-none',
+                wishListInfo.matchType === 'exact' ? 'text-destiny-gold' : 'text-green-400'
+              )}
+            >
+              ★
+            </span>
+          ))}
+        </div>
+      )}
+
+      {elementIcon && (
+        // Native img: lighter than next/image for hundreds of 12px chips in dense grids
+        <img
+          src={elementIconSrc || elementIcon}
+          width={12}
+          height={12}
+          alt=""
+          decoding="async"
+          loading="lazy"
+          fetchPriority={imageFetchPriority}
+          className="object-contain shrink-0"
+        />
+      )}
+    </div>
+  );
+
   // RENDER LOGIC START
 
   if (shouldHideItem) return null;
@@ -607,25 +740,30 @@ export function DestinyItemCard({
                 rarityBorder,
                 isDimmed ? "opacity-20 grayscale" : ""
             )}>
-                {icon && (
+                {itemIconSrc && (
                   <Image 
-                    src={icon} 
+                    src={itemIconSrc} 
                     alt={name || "Item Icon"} 
                     title=""
                     fill
-                    sizes="(max-width: 768px) 15vw, 10vw"
+                    sizes={itemIconSizes(size)}
+                    priority={imagePriority}
+                    fetchPriority={imageFetchPriority}
+                    decoding="async"
                     className="object-cover"
                   />
                 )}
                 
                 {/* Seasonal Badge */}
-                {(def.iconWatermark || def.iconWatermarkShelved) && (
+                {watermarkSrc && (
                     <div className="absolute inset-0 z-10 pointer-events-none">
                         <Image 
-                            src={getBungieImage(def.iconWatermark || def.iconWatermarkShelved)} 
+                            src={watermarkSrc} 
                             alt="Season"
                             fill
-                            sizes="10vw"
+                            sizes={itemIconSizes(size)}
+                            fetchPriority={imageFetchPriority}
+                            decoding="async"
                             className="object-cover opacity-100" 
                         />
                     </div>
@@ -701,76 +839,11 @@ export function DestinyItemCard({
                 <div className="absolute inset-0 border-2 border-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
             </div>
 
-            {/* Bottom Section */}
-            {(!minimal && !hidePower && (instanceData?.primaryStat?.value || elementIcon || quantity || (objectives && objectives.length > 0) || timeLeft || wishListInfo.isWishListed)) && (
-                <div className="mt-1 w-full flex flex-col gap-1 bg-slate-900/90 border border-white/10 px-1.5 py-0.5 rounded-sm backdrop-blur-sm">
-                    {/* Stats/Quantity/Expiration Row */}
-                    {(instanceData?.primaryStat?.value || elementIcon || quantity || timeLeft || wishListInfo.isWishListed) && (
-                        <div className="flex items-center justify-between w-full">
-                            {quantity ? (
-                                <span className="text-[10px] font-bold leading-none text-white">
-                                    {quantity}
-                                </span>
-                            ) : timeLeft ? (
-                                <span className="text-[10px] font-bold leading-none text-yellow-400 flex items-center gap-1">
-                                    <span className="text-[8px]">⏳</span> {timeLeft}
-                                </span>
-                            ) : (
-                                <div className="flex flex-col leading-none">
-                                    <span className={cn(
-                                        "text-[10px] font-bold",
-                                        instanceData?.primaryStat?.value ? "text-destiny-gold" : "text-transparent"
-                                    )}>
-                                        {instanceData?.primaryStat?.value || "0"}
-                                    </span>
-                                    {powerDiff !== undefined && powerDiff !== 0 && (
-                                        <span className={cn(
-                                            "text-[9px] font-bold",
-                                            powerDiff > 0 ? "text-green-400" : "text-red-400"
-                                        )}>
-                                            {powerDiff > 0 ? '+' : ''}{powerDiff}
-                                        </span>
-                                    )}
-                                </div>
-                            )}
+            {showExpandedBottom && (
+                <div className="mt-1 w-full flex flex-col gap-1 bg-slate-950/95 border border-white/10 px-1.5 py-0.5 rounded-sm [contain:layout]">
+                    {wantsStatsRow && statsRowEl}
 
-                            {/* Wish List Star Rating System */}
-                            {wishListInfo.isWishListed && !wishListInfo.isTrash && (
-                                <div className="flex items-center gap-px">
-                                    {Array.from({ 
-                                        length: wishListInfo.matchType === 'exact' ? 3 : 
-                                                wishListInfo.matchType === 'partial' ? 2 : 1 
-                                    }).map((_, i) => (
-                                        <span 
-                                            key={i}
-                                            className={cn(
-                                                "text-[8px] drop-shadow-sm leading-none",
-                                                wishListInfo.matchType === 'exact' ? "text-destiny-gold" : "text-green-400"
-                                            )}
-                                        >
-                                            ★
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                            
-                            {elementIcon && (
-                                <Image 
-                                    src={elementIcon} 
-                                    width={12} 
-                                    height={12} 
-                                    className="object-contain" 
-                                    alt="Element" 
-                                />
-                            )}
-                        </div>
-                    )}
-
-                    {/* Objectives Progress (for Quests/Bounties) */}
                     {objectives?.map((obj: any, i: number) => {
-                         // Find matching objective definition
-                         // Note: We need the objective definition to get the completionValue if not in instance
-                         // Usually instance has progress and completionValue
                          const progress = obj.progress || 0;
                          const total = obj.completionValue || 100;
                          const percent = Math.min(100, (progress / total) * 100);
@@ -795,6 +868,7 @@ export function DestinyItemCard({
                 name={name} 
                 itemType={itemType} 
                 rarity={rarity} 
+                icon={itemIconSrc || undefined}
                 power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
                 screenshot={screenshot || undefined}
                 flavorText={def.flavorText}
@@ -839,6 +913,12 @@ export function DestinyItemCard({
                 wishListInfo={wishListInfo}
                 socketsData={socketsData}
                 plugDefs={plugDefs}
+                tooltipSeasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
+                tooltipElementIcon={elementIcon}
+                tooltipTier={tier}
+                tooltipEnhancementTier={enhancementTier}
+                tooltipIsShiny={isShiny}
+                tooltipArmorQuality={armorQuality}
             />
         )}
     </>

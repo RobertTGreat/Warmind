@@ -9,6 +9,7 @@ import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
 import { toast } from 'sonner';
+import { PretextLineClamp } from '@/components/PretextLineClamp';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -753,9 +754,11 @@ function SubclassStats({ sockets, itemDef, profile, item }: any) {
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                                            {opt.def.displayProperties?.description}
-                                        </p>
+                                        <PretextLineClamp
+                                            className="text-xs text-slate-400 mt-1 line-clamp-2"
+                                            maxLines={2}
+                                            text={opt.def.displayProperties?.description ?? ''}
+                                        />
                                     </div>
                                 </button>
                             );

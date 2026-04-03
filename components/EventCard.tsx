@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+'use client';
+
 import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { Loader2, Sparkles, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RewardItem } from './RewardItem';
 import { ScrollingText } from '@/components/ScrollingText';
+import { PretextLineClamp } from '@/components/PretextLineClamp';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -48,7 +50,11 @@ function EventCardView({ eventCardHash }: { eventCardHash: number }) {
                 <div className="lg:col-span-1 relative h-48 lg:h-auto rounded-sm overflow-hidden border border-white/10 group">
                     <img src={getBungieImage(def.displayProperties.icon)} alt="" className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col justify-end p-6">
-                        <p className="text-sm text-slate-200 line-clamp-3">{def.displayProperties.description}</p>
+                        <PretextLineClamp
+                            className="text-sm text-slate-200 line-clamp-3"
+                            maxLines={3}
+                            text={def.displayProperties.description ?? ''}
+                        />
                     </div>
                 </div>
 
