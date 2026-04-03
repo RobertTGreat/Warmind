@@ -248,19 +248,21 @@ export class WarmindDB extends Dexie {
 
 export const db = new WarmindDB();
 
-// Handle version errors by deleting and recreating
-db.open().catch(async (err) => {
-    if (err.name === 'VersionError') {
-        console.warn('[WarmindDB] Version conflict detected, clearing database...');
-        await Dexie.delete('WarmindDB');
-        // Reload the page to reinitialize
-        if (typeof window !== 'undefined') {
-            window.location.reload();
+// Eager open is only for the browser. Next.js imports this module during SSG/SSR where
+// IndexedDB does not exist; Dexie throws MissingAPIError if we call open() there.
+if (typeof indexedDB !== 'undefined') {
+    db.open().catch(async (err) => {
+        if (err.name === 'VersionError') {
+            console.warn('[WarmindDB] Version conflict detected, clearing database...');
+            await Dexie.delete('WarmindDB');
+            if (typeof window !== 'undefined') {
+                window.location.reload();
+            }
+        } else {
+            console.error('[WarmindDB] Failed to open database:', err);
         }
-    } else {
-        console.error('[WarmindDB] Failed to open database:', err);
-    }
-});
+    });
+}
 
 // ============================================================================
 // HELPER FUNCTIONS

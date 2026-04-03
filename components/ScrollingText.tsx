@@ -1,15 +1,9 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useElementCanvasFont } from "@/hooks/useElementCanvasFont";
-import {
-  extractPlainTextFromReactNode,
-  normalizeForSingleLineMeasure,
-} from "@/lib/pretextPlainText";
-import { measureUnwrappedLineWidthPx } from "@/lib/pretextMeasure";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
-/** Avoid marquee when width is within a few px (Pretext vs DOM / subpixels). */
+/** Subpixel / rounding slack so we don’t marquee when text visually fits. */
 const OVERFLOW_THRESHOLD_PX = 4;
 
 interface ScrollingTextProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -28,32 +22,9 @@ export function ScrollingText({
 }: ScrollingTextProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [domShouldScroll, setDomShouldScroll] = useState(false);
+  const [shouldScroll, setShouldScroll] = useState(false);
 
-  const plainText = useMemo(
-    () => extractPlainTextFromReactNode(children),
-    [children],
-  );
-  const fontRevision = `${className ?? ""}`;
-  const canvasFont = useElementCanvasFont(containerRef, fontRevision);
-
-  const pretextLineWidth = useMemo(() => {
-    if (plainText === null || !canvasFont) {
-      return null;
-    }
-    const t = normalizeForSingleLineMeasure(plainText);
-    if (!t) {
-      return 0;
-    }
-    try {
-      return measureUnwrappedLineWidthPx(t, canvasFont);
-    } catch {
-      return null;
-    }
-  }, [plainText, canvasFont]);
-
-  /** Always measure real DOM overflow — Pretext/canvas ignores letter-spacing etc., and we used to skip DOM when plainText was set. */
+  /** Only DOM overflow — canvas/Pretext width often overshoots real layout and forced marquee (duplicate segments). */
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) {
@@ -61,15 +32,12 @@ export function ScrollingText({
     }
     const measure = () => {
       const cw = el.clientWidth;
-      setContainerWidth(cw);
       const textEl = textRef.current;
       if (!textEl || cw <= 0) {
-        setDomShouldScroll(false);
+        setShouldScroll(false);
         return;
       }
-      setDomShouldScroll(
-        textEl.scrollWidth > cw + OVERFLOW_THRESHOLD_PX,
-      );
+      setShouldScroll(textEl.scrollWidth > cw + OVERFLOW_THRESHOLD_PX);
     };
     measure();
     const ro = new ResizeObserver(() => measure());
@@ -81,14 +49,7 @@ export function ScrollingText({
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [children, className, fontRevision]);
-
-  const usePretextPath = plainText !== null && pretextLineWidth !== null;
-  const pretextOverflow =
-    usePretextPath &&
-    containerWidth > 0 &&
-    pretextLineWidth > containerWidth + OVERFLOW_THRESHOLD_PX;
-  const shouldScroll = domShouldScroll || pretextOverflow;
+  }, [children, className]);
 
   if (!shouldScroll) {
     return (
