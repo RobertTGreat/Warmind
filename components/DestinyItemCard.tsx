@@ -57,6 +57,21 @@ const CLASS_ICONS: Record<number, string> = {
     2: '/class-warlock.svg', // Warlock
 };
 
+function getReusablePlugsForSocket(reusablePlugs: any, socket: any, socketIndex: number): any[] {
+    const profileReusablePlugs =
+        reusablePlugs?.[socketIndex] ?? reusablePlugs?.[String(socketIndex)];
+
+    if (Array.isArray(profileReusablePlugs)) {
+        return profileReusablePlugs;
+    }
+
+    if (Array.isArray(socket?.reusablePlugs)) {
+        return socket.reusablePlugs;
+    }
+
+    return [];
+}
+
 export function DestinyItemCard({ 
     itemHash, 
     instanceData, 
@@ -136,7 +151,7 @@ export function DestinyItemCard({
               // Active plug
               if (s.plugHash) allHashes.push(s.plugHash);
               // Reusable plugs (options) - Check prop or socket
-              const options = reusablePlugs?.[index] || s.reusablePlugs;
+              const options = getReusablePlugsForSocket(reusablePlugs, s, index);
               if (options) {
                   options.forEach((rp: any) => allHashes.push(rp.plugItemHash));
               }
@@ -200,7 +215,11 @@ export function DestinyItemCard({
                 typeName.includes("barrel") ||
                 typeName.includes("sight");
 
-           const options = reusablePlugs?.[socketsData.sockets.indexOf(socket)] || socket.reusablePlugs;
+           const options = getReusablePlugsForSocket(
+               reusablePlugs,
+               socket,
+               socketsData.sockets.indexOf(socket)
+           );
            if (isGameplaySocket && options?.length > 1) {
                multiPerkColumns++;
            }
@@ -246,7 +265,7 @@ export function DestinyItemCard({
         if (isPerk) {
              // Gather options
              let options: any[] = [];
-             const socketOptions = reusablePlugs?.[idx] || s.reusablePlugs;
+             const socketOptions = getReusablePlugsForSocket(reusablePlugs, s, idx);
              
              if (socketOptions) {
                  options = socketOptions.map((rp: any) => plugDefs[rp.plugItemHash]).filter(Boolean);
@@ -495,8 +514,9 @@ export function DestinyItemCard({
               
               // Use the reusablePlugs prop (from itemComponents.reusablePlugs.data)
               // This is indexed by socket index
-              if (reusablePlugs?.[index]) {
-                  reusablePlugs[index].forEach((plug: any) => {
+              const profileReusablePlugOptions = getReusablePlugsForSocket(reusablePlugs, socket, index);
+              if (profileReusablePlugOptions.length > 0) {
+                  profileReusablePlugOptions.forEach((plug: any) => {
                       const hash = plug.plugItemHash || plug;
                       if (hash && !hashes.includes(hash)) {
                           hashes.push(hash);

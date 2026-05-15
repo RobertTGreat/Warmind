@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlugFree } from '@/lib/bungie';
 import { toast } from 'sonner';
@@ -49,6 +50,7 @@ export function ItemContextMenu({
     /** Mount rich tooltip after first paint so equip/transfer UI shows immediately. */
     const [tooltipReady, setTooltipReady] = useState(false);
     const { profile, stats, membershipInfo } = useDestinyProfileContext();
+    const router = useRouter();
     const addOperation = useTransferStore(state => state.addOperation);
     const removeOperation = useTransferStore(state => state.removeOperation);
     const setDetailsItem = useUIStore(state => state.setDetailsItem);
@@ -422,6 +424,23 @@ export function ItemContextMenu({
                     className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-gray-800/30 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
                 >
                     Details
+                </button>
+            </div>
+
+            <div className="px-3 pb-2">
+                <button
+                    onClick={() => {
+                        const query = new URLSearchParams();
+
+                        if (itemInstanceId) query.set('instanceId', itemInstanceId);
+                        if (ownerId) query.set('ownerId', ownerId);
+
+                        router.push(`/item/${itemHash}?${query.toString()}`);
+                        onClose();
+                    }}
+                    className="h-8 w-full bg-transparent text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800/30 hover:text-white"
+                >
+                    Full Details
                 </button>
             </div>
             </div>

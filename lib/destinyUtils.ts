@@ -2,6 +2,11 @@
 /**
  * Utilities for Destiny 2 item logic, tiering, and categorization.
  */
+import {
+    isEnhancedWeaponPlug,
+    isMasterworkPlug,
+    parseMasterworkTierFromPlug,
+} from './weaponPlugAnalysis';
 
 // Bucket Hashes
 export const BUCKETS = {
@@ -169,7 +174,7 @@ export function getItemTier(
     socketsData: any,
     plugDefinitions: Record<number, any>,
     instanceData?: any,
-    reusablePlugsData?: Record<number, any[]> // Socket index -> array of available plugs
+    reusablePlugsData?: Record<number | string, any[]> | any[] // Socket index -> array of available plugs
 ): number {
     if (!itemDef) return 1;
 
@@ -264,24 +269,24 @@ export function getItemTier(
         let hasEnhancedOrigin = false;
         let hasOrnament = false;
         let hasMemento = false; 
-        let isMasterworkPlug = false;
+        let hasMasterworkPlug = false;
 
         // Check if item is Crafted or Masterworked
         const isMasterwork = (instanceData?.state & 4) === 4;
         const isCrafted = (instanceData?.state & 8) === 8;
 
-        socketsData.sockets?.forEach((socket: any) => {
+        socketsData.sockets?.forEach((socket: any, socketIndex: number) => {
             const plug = plugDefinitions[socket.plugHash];
             if (!plug) return;
 
             const name = plug.displayProperties?.name || "";
             const typeName = plug.itemTypeDisplayName?.toLowerCase() || "";
             const category = plug.plug?.plugCategoryIdentifier || "";
-            const isEnhanced = name.includes("Enhanced") || typeName.includes("enhanced");
+            const isEnhanced = isEnhancedWeaponPlug(plug);
             
             // Check for Masterwork Plug (Tier 10)
-            if ((typeName.includes("masterwork") || category.includes("masterwork")) && name.includes("Tier 10")) {
-                isMasterworkPlug = true;
+            if (isMasterworkPlug(plug) && parseMasterworkTierFromPlug(plug) === 10) {
+                hasMasterworkPlug = true;
             }
 
             // Check Multi-Perk
@@ -296,7 +301,13 @@ export function getItemTier(
                 typeName.includes("barrel") ||
                 typeName.includes("sight");
 
-            if (isGameplaySocket && socket.reusablePlugs?.length > 1) {
+            const reusablePlugOptions =
+                (reusablePlugsData as any)?.[socketIndex] ??
+                (reusablePlugsData as any)?.[String(socketIndex)] ??
+                socket.reusablePlugs ??
+                [];
+
+            if (isGameplaySocket && reusablePlugOptions.length > 1) {
                 multiPerkColumns++;
             }
 
@@ -323,7 +334,7 @@ export function getItemTier(
         
         // Effective Multi-Perk Count: Real Multi-Perks OR (2 if Crafted/Masterworked + Enhanced Traits present)
         // Fix: Allow weapons with 2+ Enhanced Traits to bypass multi-perk check (as they are "finished" weapons)
-        const effectiveMultiPerk = (isCrafted || isMasterwork || isMasterworkPlug || enhancedTraits >= 2) ? Math.max(multiPerkColumns, 3) : multiPerkColumns;
+        const effectiveMultiPerk = (isCrafted || isMasterwork || hasMasterworkPlug || enhancedTraits >= 2) ? Math.max(multiPerkColumns, 3) : multiPerkColumns;
 
         const tier2Criteria = enhancedTraits >= 2;
         const tier3Criteria = tier2Criteria && effectiveMultiPerk >= 2;
