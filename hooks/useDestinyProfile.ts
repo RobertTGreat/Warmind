@@ -25,14 +25,31 @@ const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
 const CORE_PROFILE_COMPONENTS = [
   100, // profiles
+  102, // profile inventory
+  103, // profile currencies
+  104, // profile progression
   200, // characters
+  201, // character inventories
   202, // character progression
+  203, // character render data
   204, // character activities
   205, // character equipment
+  206, // character loadouts
   300, // item instances
+  301, // item objectives
+  302, // item perks
   304, // item stats
   305, // item sockets
+  306, // item talent grids
+  307, // item common data
+  308, // item plug states
+  309, // item plug objectives
+  310, // item reusable plugs
+  700, // character collectibles
+  701, // item collectibles
   800, // profile records
+  900, // profile records
+  901, // character records
   1100, // profile string variables
 ] as const;
 
