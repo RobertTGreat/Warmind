@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
@@ -42,9 +43,6 @@ export function ItemDetailsOverlay() {
   const { detailsItem, setDetailsItem } = useUIStore();
   const { profile, membershipInfo } = useDestinyProfileContext();
   
-  // Always declare hooks at the top level
-  const [showAllPerks, setShowAllPerks] = useState(false);
-
   // Fetch definition for the item
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
   const itemDef = definitions[detailsItem?.itemHash || 0];
@@ -65,11 +63,6 @@ export function ItemDetailsOverlay() {
   const tierNumber = useMemo(() => {
       return getItemTier(itemDef, { sockets }, plugDefs, instance);
   }, [itemDef, sockets, plugDefs, instance]);
-
-  // Reset showAllPerks when item changes
-  useEffect(() => {
-      setShowAllPerks(false);
-  }, [detailsItem]);
 
   if (!detailsItem) return null;
 
@@ -107,21 +100,13 @@ export function ItemDetailsOverlay() {
              {/* Controls */}
              <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
                 {isWeapon && (
-                    <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                        <span className="text-xs font-bold uppercase text-slate-300">All Perks</span>
-                        <button 
-                            onClick={() => setShowAllPerks(!showAllPerks)}
-                            className={cn(
-                                "w-10 h-5 rounded-full relative transition-colors duration-200",
-                                showAllPerks ? "bg-destiny-gold" : "bg-slate-600"
-                            )}
-                        >
-                            <div className={cn(
-                                "absolute top-1 w-3 h-3 rounded-full bg-white transition-transform duration-200",
-                                showAllPerks ? "left-6" : "left-1"
-                            )} />
-                        </button>
-                    </div>
+                    <Link
+                        href={`/item/${detailsItem.itemHash}`}
+                        onClick={() => setDetailsItem(null)}
+                        className="border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-bold uppercase text-slate-300 transition-colors hover:border-destiny-gold/50 hover:text-destiny-gold"
+                    >
+                        Show Perks
+                    </Link>
                 )}
 
                 <button 
@@ -206,17 +191,10 @@ export function ItemDetailsOverlay() {
 
              {/* Middle Spacer (Allows background to show) */}
              <div className="hidden md:block flex-1 relative overflow-hidden">
-                {showAllPerks ? (
-                    <div className="absolute inset-0 overflow-y-auto p-8 scrollbar-hide">
-                         <PerkExplorer itemDef={itemDef} />
-                    </div>
-                ) : (
-                    /* Info Overlay (Watermark style) */
-                    <div className="absolute bottom-12 left-12 text-white/20 text-sm font-bold uppercase tracking-[0.2em] space-y-1 select-none pointer-events-none">
-                        <p>Item Hash: {detailsItem.itemHash}</p>
-                        {instance?.itemInstanceId && <p>ID: {instance.itemInstanceId}</p>}
-                    </div>
-                )}
+                <div className="absolute bottom-12 left-12 text-white/20 text-sm font-bold uppercase tracking-[0.2em] space-y-1 select-none pointer-events-none">
+                    <p>Item Hash: {detailsItem.itemHash}</p>
+                    {instance?.itemInstanceId && <p>ID: {instance.itemInstanceId}</p>}
+                </div>
              </div>
 
             {/* Right Panel: Stats & History */}

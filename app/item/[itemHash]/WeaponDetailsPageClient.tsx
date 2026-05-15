@@ -11,13 +11,13 @@ import { getBungieImage } from "@/lib/bungie";
 import {
   buildWeaponSocketGroups,
   collectWeaponPlugHashes,
-  getMasterworkPlugInfo,
   getWeaponPlugSetHashes,
   isFunctionalWeaponPerk,
   type WeaponPlugOption,
   type WeaponSocketGroup,
 } from "@/lib/weaponPlugAnalysis";
 import { cn } from "@/lib/utils";
+import { STAT_NAMES_BY_HASH } from "@/lib/dim-stats";
 
 interface WeaponDetailsPageClientProps {
   itemHash: number;
@@ -39,6 +39,10 @@ const weaponStatHashes = [
   4188031367, // Reload Speed
   4284893193, // Rounds Per Minute
   3871231066, // Magazine
+  1345609583, // Aim Assistance
+  2714457168, // Airborne Effectiveness
+  2715839340, // Recoil Direction
+  3555269338, // Zoom
 ];
 
 function getCharacterOwnerName(profile: any, characterId: string): string {
@@ -119,6 +123,23 @@ function getDefinitionStatValue(itemDefinition: any, statHash: number): number |
   return stat?.value ?? investmentStat?.value ?? null;
 }
 
+function getWeaponStatName(statHash: number): string {
+  return STAT_NAMES_BY_HASH[statHash] ?? `Stat ${statHash}`;
+}
+
+function sortEnhancedOptionsFirst(options: WeaponPlugOption[]): WeaponPlugOption[] {
+  return [...options].sort((firstOption, secondOption) => {
+    if (firstOption.isEnhanced !== secondOption.isEnhanced) {
+      return firstOption.isEnhanced ? -1 : 1;
+    }
+
+    const firstName = firstOption.definition?.displayProperties?.name ?? "";
+    const secondName = secondOption.definition?.displayProperties?.name ?? "";
+
+    return firstName.localeCompare(secondName);
+  });
+}
+
 function PossiblePerkOption({ option }: { option: WeaponPlugOption }) {
   const icon = getOptionIcon(option);
   const name = option.definition?.displayProperties?.name ?? String(option.plugHash);
@@ -127,11 +148,11 @@ function PossiblePerkOption({ option }: { option: WeaponPlugOption }) {
   return (
     <div
       className={cn(
-        "flex gap-3 border border-white/10 bg-slate-950/70 p-2",
-        option.isActive && "border-destiny-gold/70 bg-destiny-gold/10"
+        "flex gap-3 border border-white/10 p-2 transition-colors",
+        option.isActive && "border-destiny-gold/70"
       )}
     >
-      <div className="relative h-10 w-10 shrink-0 bg-slate-900">
+      <div className="relative h-10 w-10 shrink-0 border border-white/10">
         {icon && (
           <Image
             src={icon}
@@ -172,7 +193,9 @@ function SocketColumn({ socketGroup }: { socketGroup: WeaponSocketGroup }) {
       ? option.isMasterwork
       : isFunctionalWeaponPerk(option.definition)
   );
-  const optionsToRender = functionalOptions.length > 0 ? functionalOptions : socketGroup.options;
+  const optionsToRender = sortEnhancedOptionsFirst(
+    functionalOptions.length > 0 ? functionalOptions : socketGroup.options
+  );
 
   return (
     <section className="min-w-0">
@@ -252,10 +275,6 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
   const perkColumns = socketGroups.filter(
     (socketGroup) => socketGroup.isPerkColumn || socketGroup.isOriginColumn
   );
-  const masterworkInfo = getMasterworkPlugInfo(socketGroups);
-  const screenshot = itemDefinition?.screenshot
-    ? getBungieImage(itemDefinition.screenshot)
-    : null;
   const icon = itemDefinition?.displayProperties?.icon
     ? getBungieImage(itemDefinition.displayProperties.icon)
     : null;
@@ -271,58 +290,61 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
   const isWeapon = itemDefinition.itemType === 3;
   const title = itemDefinition.displayProperties?.name ?? `Item ${itemHash}`;
   const description = itemDefinition.displayProperties?.description;
+  const statRows = weaponStatHashes
+    .map((statHash) => {
+      const value =
+        instanceData?.stats?.[statHash]?.value ??
+        instanceData?.stats?.[String(statHash)]?.value ??
+        getDefinitionStatValue(itemDefinition, statHash);
+
+      return value === null || value === undefined
+        ? null
+        : {
+            statHash,
+            name: getWeaponStatName(statHash),
+            value,
+          };
+    })
+    .filter((statRow): statRow is { statHash: number; name: string; value: number } =>
+      Boolean(statRow)
+    );
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
-      <section className="relative min-h-[300px] overflow-hidden border border-white/10 bg-slate-950">
-        {screenshot && (
-          <Image
-            src={screenshot}
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="object-cover opacity-45"
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/20" />
-        <div className="relative z-10 flex min-h-[300px] flex-col justify-end gap-5 p-6 sm:p-8">
-          <div className="flex flex-wrap items-end gap-5">
-            {icon && (
-              <div className="relative h-20 w-20 border-2 border-white/20 bg-slate-900">
-                <Image src={icon} alt="" fill sizes="80px" className="object-cover" />
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="font-condensed text-sm font-semibold uppercase tracking-wide text-destiny-gold">
-                {itemDefinition.inventory?.tierTypeName} {itemDefinition.itemTypeDisplayName}
-              </p>
-              <h1 className="font-condensed text-5xl font-bold uppercase leading-none text-white sm:text-6xl">
-                {title}
-              </h1>
-              {description && (
-                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
-                  {description}
-                </p>
-              )}
+    <div className="flex w-full flex-col gap-8">
+      <section className="border-b border-white/10 pb-8">
+        <div className="flex flex-wrap items-end gap-5">
+          {icon && (
+            <div className="relative h-20 w-20 border-2 border-white/20">
+              <Image src={icon} alt="" fill sizes="80px" className="object-cover" />
             </div>
+          )}
+          <div className="min-w-0">
+            <p className="font-condensed text-sm font-semibold uppercase tracking-wide text-destiny-gold">
+              {itemDefinition.inventory?.tierTypeName} {itemDefinition.itemTypeDisplayName}
+            </p>
+            <h1 className="font-condensed text-5xl font-bold uppercase leading-none text-white sm:text-6xl">
+              {title}
+            </h1>
+            {description && (
+              <p className="mt-3 max-w-4xl text-sm leading-relaxed text-slate-300">
+                {description}
+              </p>
+            )}
           </div>
+        </div>
 
-          <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-            <span className="border border-white/10 bg-black/30 px-2 py-1">
-              Hash {itemHash}
+        <div className="mt-5 flex flex-wrap gap-2 text-xs text-slate-300">
+          <span className="border border-white/10 px-2 py-1">Hash {itemHash}</span>
+          {instanceData?.primaryStat?.value && (
+            <span className="border border-destiny-gold/30 px-2 py-1 text-destiny-gold">
+              Power {instanceData.primaryStat.value}
             </span>
-            {instanceData?.primaryStat?.value && (
-              <span className="border border-destiny-gold/30 bg-destiny-gold/10 px-2 py-1 text-destiny-gold">
-                Power {instanceData.primaryStat.value}
-              </span>
-            )}
-            {selectedCopy && (
-              <span className="border border-white/10 bg-black/30 px-2 py-1">
-                {selectedCopy.locationName} on {selectedCopy.ownerName}
-              </span>
-            )}
-          </div>
+          )}
+          {selectedCopy && (
+            <span className="border border-white/10 px-2 py-1">
+              {selectedCopy.locationName} on {selectedCopy.ownerName}
+            </span>
+          )}
         </div>
       </section>
 
@@ -333,7 +355,7 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
         </div>
       )}
 
-      <div className="grid gap-8 xl:grid-cols-[1fr_280px]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <main className="space-y-8">
           <section>
             <div className="mb-4 flex items-end justify-between gap-4">
@@ -347,69 +369,40 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
               </div>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {perkColumns.map((socketGroup) => (
                 <SocketColumn key={socketGroup.socketIndex} socketGroup={socketGroup} />
               ))}
             </div>
           </section>
-
-          <section className="grid gap-6 lg:grid-cols-[280px_1fr]">
-            <div>
-              <h2 className="font-condensed text-3xl font-semibold uppercase text-white">
-                Masterwork
-              </h2>
-              <p className="mt-2 text-sm text-slate-400">
-                Active and available masterwork plugs are read from the same live reusable plug data as user rolls.
-              </p>
-            </div>
-            <div className="space-y-2">
-              {masterworkInfo.availablePlugs.length > 0 ? (
-                masterworkInfo.availablePlugs.map((option) => (
-                  <PossiblePerkOption key={option.plugHash} option={option} />
-                ))
-              ) : (
-                <div className="border border-white/10 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  No masterwork plugs were exposed for this weapon.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="mb-4 font-condensed text-3xl font-semibold uppercase text-white">
-              Stats
-            </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {weaponStatHashes.map((statHash) => {
-                const value =
-                  instanceData?.stats?.[statHash]?.value ??
-                  instanceData?.stats?.[String(statHash)]?.value ??
-                  getDefinitionStatValue(itemDefinition, statHash);
-
-                if (value === null || value === undefined) return null;
-
-                return (
-                  <div key={statHash} className="border border-white/10 bg-slate-950/70 p-3">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>{statHash}</span>
-                      <span className="font-semibold text-white">{value}</span>
-                    </div>
-                    <div className="mt-2 h-1.5 bg-slate-800">
-                      <div
-                        className="h-full bg-destiny-gold"
-                        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
         </main>
 
         <aside className="space-y-4">
-          <section className="border border-white/10 bg-slate-950/70 p-4">
+          <section className="border border-white/10 p-4">
+            <h2 className="font-condensed text-2xl font-semibold uppercase text-white">
+              Stats
+            </h2>
+            <div className="mt-4 space-y-3">
+              {statRows.map((statRow) => (
+                <div key={statRow.statHash}>
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>{statRow.name}</span>
+                    <span className="font-semibold text-white">{statRow.value}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-white/10">
+                    <div
+                      className="h-full bg-destiny-gold"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, statRow.value))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="border border-white/10 p-4">
             <h2 className="font-condensed text-2xl font-semibold uppercase text-white">
               Your Copies
             </h2>
@@ -420,7 +413,7 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
                     key={copy.itemInstanceId}
                     href={`/item/${itemHash}?instanceId=${copy.itemInstanceId}&ownerId=${copy.ownerId}`}
                     className={cn(
-                      "block border border-white/10 bg-black/20 p-3 text-sm text-slate-300 transition-colors hover:border-white/30 hover:text-white",
+                      "block border border-white/10 p-3 text-sm text-slate-300 transition-colors hover:border-white/30 hover:text-white",
                       copy.itemInstanceId === selectedInstanceId &&
                         "border-destiny-gold/60 text-destiny-gold"
                     )}
@@ -436,30 +429,6 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
                     : "Log in to compare this database roll with your own copies."}
                 </p>
               )}
-            </div>
-          </section>
-
-          <section className="border border-white/10 bg-slate-950/70 p-4">
-            <h2 className="font-condensed text-2xl font-semibold uppercase text-white">
-              Enhancements
-            </h2>
-            <div className="mt-3 space-y-2 text-sm text-slate-300">
-              <div className="flex justify-between gap-3">
-                <span>Enhanced options</span>
-                <span className="text-cyan-200">
-                  {
-                    socketGroups.flatMap((socketGroup) =>
-                      socketGroup.options.filter((option) => option.isEnhanced)
-                    ).length
-                  }
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span>Masterwork tier</span>
-                <span className="text-destiny-gold">
-                  {masterworkInfo.tier ? `Tier ${masterworkInfo.tier}` : "Unknown"}
-                </span>
-              </div>
             </div>
           </section>
         </aside>
