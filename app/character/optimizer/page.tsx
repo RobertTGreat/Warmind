@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { getBungieImage, moveItem, equipItem } from '@/lib/bungie';
 
@@ -1730,7 +1730,7 @@ function ArmorSetCard({ set, profile, membershipInfo, activeCharacterId, selecte
 // ===== Main Page =====
 
 export default function OptimizerPage() {
-    const { profile, stats, isLoading: profileLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
+    const { profile, stats, isLoading: profileLoading, isLoggedIn, membershipInfo } = useDestinyProfileContext();
     const [selectedClass, setSelectedClass] = useState<number>(0);
     const [results, setResults] = useState<ArmorSet[]>([]);
     const [isOptimizing, setIsOptimizing] = useState(false);

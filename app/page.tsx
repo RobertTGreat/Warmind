@@ -15,7 +15,7 @@ import {
   Sparkles,
   Heart
 } from "lucide-react";
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 
 // Lazy load heavy components to reduce initial JS bundle
 const NewsFeed = dynamic(
@@ -76,7 +76,7 @@ const features = [
 ];
 
 export default function Home() {
-  const { isLoggedIn } = useDestinyProfile();
+  const { isLoggedIn } = useDestinyProfileContext();
   const [mounted, setMounted] = useState(false);
 
   // Always call useEffect unconditionally to prevent hook order issues
@@ -97,9 +97,8 @@ export default function Home() {
     };
   }, [mounted, isLoggedIn]);
 
-  // Show nothing during hydration to prevent mismatch
   if (!mounted) {
-    return null;
+    return <LandingPage />;
   }
 
   if (!isLoggedIn) {

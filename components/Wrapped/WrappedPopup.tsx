@@ -5,14 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles, ChevronRight, Calendar } from 'lucide-react';
 import { useWrappedStore, getWrappedExpansions } from '@/store/wrappedStore';
 import { Expansion, getCurrentExpansion, EXPANSIONS } from '@/data/d2/expansions';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 
 interface WrappedPopupProps {
   onViewWrapped?: (expansion: Expansion) => void;
 }
 
 export function WrappedPopup({ onViewWrapped }: WrappedPopupProps) {
-  const { isLoggedIn } = useDestinyProfile();
+  const { isLoggedIn } = useDestinyProfileContext();
   const {
     isPopupOpen,
     closePopup,

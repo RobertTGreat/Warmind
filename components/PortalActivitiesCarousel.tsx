@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { 
     Loader2, 
     ChevronLeft, 
@@ -118,7 +118,7 @@ async function fetchItemDefinition(hash: number): Promise<any> {
 }
 
 export function PortalActivitiesCarousel() {
-    const { membershipInfo, stats, isLoggedIn } = useDestinyProfile();
+    const { membershipInfo, stats, isLoggedIn } = useDestinyProfileContext();
     const [categories, setCategories] = useState<PortalCategory[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

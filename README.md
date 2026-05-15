@@ -2,6 +2,14 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Create a local `.env` file with the Bungie credentials used by the server proxy and OAuth flow:
+
+```env
+BUNGIE_API_KEY=your_key_here
+NEXT_PUBLIC_BUNGIE_CLIENT_ID=your_client_id_here
+BUNGIE_CLIENT_SECRET=your_secret_here
+```
+
 First, run the development server:
 
 ```bash

@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { usePresentationNode, useRecord } from '@/hooks/useDefinitions';
 import { ChevronRight, ArrowLeft, CheckCircle2, Trophy, Search, X, AlertTriangle } from 'lucide-react';
 import { getBungieImage, bungieApi, endpoints } from '@/lib/bungie';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
 import { ScrollingText } from '@/components/ScrollingText';
@@ -25,7 +25,7 @@ export function TriumphsBrowser({ rootHash }: TriumphsBrowserProps) {
     const [showCompleted, setShowCompleted] = useState(true);
 
     const { node, isLoading, isError } = usePresentationNode(currentHash);
-    const { profile } = useDestinyProfile();
+    const { profile } = useDestinyProfileContext();
 
     // Reset when rootHash changes (e.g. switching tabs)
     useEffect(() => {

@@ -34,7 +34,12 @@ export async function GET() {
             // Remove CDATA if present
             const clean = (str: string | null) => {
                 if (!str) return "";
-                return str.replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1');
+                return str
+                    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+                    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+                    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+                    .replace(/<[^>]+>/g, "")
+                    .trim();
             };
 
             items.push({

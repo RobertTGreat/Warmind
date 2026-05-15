@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { bungieApi, endpoints } from '@/lib/bungie';
-import { clearDB } from '@/lib/indexedDB';
+import { db } from '@/lib/db';
+import { clearManifestCache } from '@/lib/manifestCache';
+import { clearItemDefinitionCache } from '@/hooks/useItemDefinitions';
 import { toast } from 'sonner';
 
 export function useManifestManager() {
@@ -21,8 +23,12 @@ export function useManifestManager() {
                 if (storedVersion !== latestVersion) {
                     console.log(`[Manifest] Update detected: ${storedVersion} -> ${latestVersion}`);
                     
-                    // 1. Clear IndexedDB (remove stale items)
-                    await clearDB();
+                    await Promise.all([
+                        clearManifestCache(),
+                        db.manifestIndex.clear(),
+                    ]);
+
+                    clearItemDefinitionCache();
                     
                     // 2. Update Local Storage
                     localStorage.setItem('destiny_manifest_version', latestVersion);

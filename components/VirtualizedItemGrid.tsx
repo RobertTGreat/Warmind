@@ -15,6 +15,7 @@ export interface VirtualizedItem {
     instanceData?: any;
     socketsData?: any;
     reusablePlugs?: any[];
+    definition?: any;
 }
 
 export interface VirtualizedItemGridProps {
@@ -77,6 +78,7 @@ const ItemRenderer = memo(({
     return (
         <DestinyItemCard
             itemHash={item.itemHash}
+            definition={item.definition}
             instanceData={item.instanceData}
             socketsData={item.socketsData}
             reusablePlugs={item.reusablePlugs}
@@ -204,7 +206,7 @@ export function VirtualizedItemGrid({
 // --- Grouped Virtualized Grid (for vault sections) ---
 export interface GroupedVirtualizedGridProps {
     groups: {
-        key: string;
+        key: string | number;
         label: string;
         items: VirtualizedItem[];
         labelClassName?: string;
@@ -254,6 +256,7 @@ export function GroupedVirtualizedGrid({
                                     <DestinyItemCard
                                         key={`${item.itemHash}-${item.itemInstanceId || idx}`}
                                         itemHash={item.itemHash}
+                                        definition={item.definition}
                                         instanceData={item.instanceData}
                                         socketsData={item.socketsData}
                                         reusablePlugs={item.reusablePlugs}

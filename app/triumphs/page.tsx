@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import dynamic from 'next/dynamic';
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 
@@ -21,7 +21,7 @@ const TriumphsBrowser = dynamic(
 );
 
 export default function TriumphsPage() {
-  const { profile, recordCategoriesRootNodeHash, recordSealsRootNodeHash, isLoading, isError } = useDestinyProfile();
+  const { profile, recordCategoriesRootNodeHash, recordSealsRootNodeHash, isLoading, isError } = useDestinyProfileContext();
   const score = profile?.profile?.data?.lifetimeScore || 0;
   const activeScore = profile?.profile?.data?.activeScore || 0;
 

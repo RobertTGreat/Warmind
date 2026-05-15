@@ -1,11 +1,11 @@
 'use client';
 
 import { PageHeader } from "@/components/PageHeader";
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { bungieApi, endpoints, getBungieImage as getImg } from "@/lib/bungie";
 import useSWR from "swr";
 import { Loader2, Shield, Users, Search, Star, Calendar, Info, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
 import { cn } from "@/lib/utils";
 import { ClanMemberCard, MemberStats } from "@/components/ClanMemberCard";
@@ -17,7 +17,7 @@ type SortOption = 'joined_desc' | 'joined_asc' | 'name_asc' | 'rank_desc' | 'onl
 const ITEMS_PER_PAGE = 12;
 
 export function ClanBrowser() {
-  const { membershipInfo, isLoggedIn } = useDestinyProfile();
+  const { membershipInfo, isLoggedIn } = useDestinyProfileContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('online');
@@ -49,73 +49,9 @@ export function ClanBrowser() {
 
   const members = membersData?.Response?.results;
 
-  // Fetch stats logic
-  useEffect(() => {
-      if (!members || members.length === 0) return;
-
-      const fetchStats = async () => {
-          setIsLoadingStats(true);
-          
-          // Filter members we don't have stats for yet
-          const membersToFetch = members.filter((m: any) => !memberStats[m.destinyUserInfo.membershipId]);
-          
-          // Simple chunking to avoid rate limits (5 concurrent requests)
-          const CHUNK_SIZE = 5;
-          for (let i = 0; i < membersToFetch.length; i += CHUNK_SIZE) {
-              const chunk = membersToFetch.slice(i, i + CHUNK_SIZE);
-              
-              await Promise.all(chunk.map(async (member: any) => {
-                  const user = member.destinyUserInfo;
-                  try {
-                      const res = await bungieApi.get(
-                          endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])
-                      );
-                      const profile = res.data.Response;
-                      const characters = profile?.characters?.data;
-                      const guardianRank = profile?.profile?.data?.currentGuardianRank || 0;
-                      
-                      // Get most recently played character
-                      const lastPlayedCharacterId = characters 
-                        ? Object.keys(characters).sort((a, b) => {
-                            return new Date(characters[b].dateLastPlayed).getTime() - new Date(characters[a].dateLastPlayed).getTime();
-                        })[0]
-                        : null;
-                    
-                      const character = lastPlayedCharacterId ? characters[lastPlayedCharacterId] : null;
-                      
-                      if (character) {
-                          setMemberStats(prev => ({
-                              ...prev,
-                              [user.membershipId]: {
-                                  power: character.light,
-                                  guardianRank: guardianRank,
-                                  emblemPath: character.emblemPath
-                              }
-                          }));
-                      }
-                  } catch {
-                      // Expected for private profiles, inactive accounts, or cross-save issues
-                      // Mark as attempted so we don't retry
-                      setMemberStats(prev => ({
-                          ...prev,
-                          [user.membershipId]: { power: 0, guardianRank: 0, emblemPath: '' }
-                      }));
-                  }
-              }));
-              
-              // Small delay between chunks to be nice to API
-              await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          setIsLoadingStats(false);
-      };
-
-      // Trigger fetch
-      fetchStats();
-      
-  }, [members]); // Run when members list loads
-
-  const filteredAndSortedMembers = members
-    ?.filter((member: any) => {
+  const filteredAndSortedMembers = useMemo(() => {
+    return (members ?? [])
+    .filter((member: any) => {
       const user = member.destinyUserInfo;
       const name = user.bungieGlobalDisplayName || user.displayName || "";
       const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -124,7 +60,8 @@ export function ClanBrowser() {
       if (showFavoritesOnly && !isFavorite) return false;
       return matchesSearch;
     })
-    ?.sort((a: any, b: any) => {
+    .slice()
+    .sort((a: any, b: any) => {
         const idA = a.destinyUserInfo.membershipId;
         const idB = b.destinyUserInfo.membershipId;
         const statsA = memberStats[idA];
@@ -152,12 +89,103 @@ export function ClanBrowser() {
                 return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
         }
     });
+  }, [members, searchQuery, showFavoritesOnly, favoriteMembers, sortBy, memberStats]);
 
   // Pagination Logic
   const totalItems = filteredAndSortedMembers?.length || 0;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedMembers = filteredAndSortedMembers?.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedMembers = useMemo(() => {
+      return filteredAndSortedMembers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredAndSortedMembers, startIndex]);
+
+  useEffect(() => {
+      if (!paginatedMembers || paginatedMembers.length === 0) return;
+
+      let cancelled = false;
+
+      async function fetchVisibleStats() {
+          setIsLoadingStats(true);
+
+          const membersToFetch = paginatedMembers.filter((member: any) => {
+              const membershipId = member.destinyUserInfo.membershipId;
+              return !memberStats[membershipId];
+          });
+
+          if (membersToFetch.length === 0) {
+              setIsLoadingStats(false);
+              return;
+          }
+
+          const CHUNK_SIZE = 4;
+          const nextStats: Record<string, MemberStats> = {};
+
+          for (let i = 0; i < membersToFetch.length; i += CHUNK_SIZE) {
+              const chunk = membersToFetch.slice(i, i + CHUNK_SIZE);
+
+              await Promise.all(
+                  chunk.map(async (member: any) => {
+                      const user = member.destinyUserInfo;
+
+                      try {
+                          const res = await bungieApi.get(
+                              endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])
+                          );
+                          const profile = res.data.Response;
+                          const characters = profile?.characters?.data;
+                          const guardianRank = profile?.profile?.data?.currentGuardianRank || 0;
+
+                          const lastPlayedCharacterId = characters
+                            ? Object.keys(characters).sort((a, b) => {
+                                return new Date(characters[b].dateLastPlayed).getTime() - new Date(characters[a].dateLastPlayed).getTime();
+                            })[0]
+                            : null;
+
+                          const character = lastPlayedCharacterId ? characters[lastPlayedCharacterId] : null;
+
+                          nextStats[user.membershipId] = character
+                              ? {
+                                  power: character.light,
+                                  guardianRank,
+                                  emblemPath: character.emblemPath,
+                              }
+                              : {
+                                  power: 0,
+                                  guardianRank: 0,
+                                  emblemPath: '',
+                              };
+                      } catch {
+                          nextStats[user.membershipId] = {
+                              power: 0,
+                              guardianRank: 0,
+                              emblemPath: '',
+                          };
+                      }
+                  })
+              );
+
+              if (cancelled) return;
+              await new Promise((resolve) => setTimeout(resolve, 150));
+          }
+
+          if (!cancelled && Object.keys(nextStats).length > 0) {
+              setMemberStats((previousStats) => ({
+                  ...previousStats,
+                  ...nextStats,
+              }));
+          }
+
+          if (!cancelled) {
+              setIsLoadingStats(false);
+          }
+      }
+
+      fetchVisibleStats();
+
+      return () => {
+          cancelled = true;
+      };
+  }, [paginatedMembers, memberStats]);
 
   if (!isLoggedIn) return <div className="p-8 text-center text-slate-400">Please login to view clan.</div>;
   if (groupsLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-destiny-gold" /></div>;

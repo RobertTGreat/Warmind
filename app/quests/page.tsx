@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { loginWithBungie } from "@/lib/bungie";
 import { Loader2, Filter } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -22,7 +22,7 @@ const QuestItemCard = dynamic(
 type FilterType = 'All' | 'Exotic' | 'New Light' | 'Seasonal';
 
 export default function QuestsPage() {
-  const { profile, stats, isLoading, isLoggedIn } = useDestinyProfile();
+  const { profile, stats, isLoading, isLoggedIn } = useDestinyProfileContext();
   const characterId = stats?.characterId;
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
 

@@ -10,6 +10,15 @@ const REDIRECT_URI = process.env.NEXT_PUBLIC_APP_URL
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
+  const state = searchParams.get('state');
+  const cookieStore = await cookies();
+  const storedState = cookieStore.get('bungie_oauth_state')?.value;
+
+  if (!state || !storedState || state !== storedState) {
+    return NextResponse.redirect(new URL('/?error=invalid_oauth_state', request.url));
+  }
+
+  cookieStore.delete('bungie_oauth_state');
 
   if (!code) {
     return NextResponse.redirect(new URL('/?error=no_code', request.url));
@@ -50,8 +59,6 @@ export async function GET(request: NextRequest) {
     const { access_token, refresh_token, membership_id } = data;
 
     // Store tokens in httpOnly cookies
-    const cookieStore = await cookies();
-    
     cookieStore.set('bungie_access_token', access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

@@ -19,7 +19,7 @@ import {
     Target,
     Sparkles
 } from "lucide-react";
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { transferItem } from "@/lib/bungie";
 import { Tooltip } from "@/components/ui/Tooltip";
 
@@ -61,7 +61,7 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
 
 export function Sidebar() {
     const pathname = usePathname();
-    const { stats, membershipInfo } = useDestinyProfile();
+    const { stats, membershipInfo } = useDestinyProfileContext();
     
     // Find the current section key that matches the pathname
     const currentSection = Object.keys(SUB_NAV_MAP).find(key => pathname.startsWith(key));

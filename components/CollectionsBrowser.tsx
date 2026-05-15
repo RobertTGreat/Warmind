@@ -3,10 +3,11 @@ import Image from 'next/image';
 import { usePresentationNode } from '@/hooks/useDefinitions';
 import { ChevronRight, Search, Lock, Eye, EyeOff } from 'lucide-react';
 import { getBungieImage } from '@/lib/bungie';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
 import { DestinyItemCard } from './DestinyItemCard';
 import { useCollectible } from '@/hooks/useDefinitions';
+import { useManifestDefinition } from '@/hooks/useManifestTable';
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
 
 interface CollectionsBrowserProps {
@@ -318,7 +319,7 @@ function Tier3Button({ hash, isSelected, onClick }: { hash: number, isSelected: 
 
 function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) {
     const { node, isLoading } = usePresentationNode(hash);
-    const { profile } = useDestinyProfile();
+    const { profile } = useDestinyProfileContext();
 
     if (isLoading) return <div className="p-8 text-slate-500">Loading content...</div>;
     if (!node) return null;
@@ -400,6 +401,10 @@ function CollectionGroup({ hash, profile, showAll }: { hash: number, profile: an
 
 function CollectionItem({ hash, profile, showAll }: { hash: number, profile: any, showAll: boolean }) {
     const { collectible, isLoading } = useCollectible(hash);
+    const { definition: itemDefinition } = useManifestDefinition(
+        "DestinyInventoryItemDefinition",
+        collectible?.itemHash
+    );
 
     if (isLoading) return <div className="aspect-square bg-white/5 animate-pulse rounded-none" />;
     if (!collectible) return null;
@@ -433,6 +438,7 @@ function CollectionItem({ hash, profile, showAll }: { hash: number, profile: any
         <div className={cn("relative group w-full aspect-square transition-opacity", !isAcquired && "opacity-40 grayscale hover:opacity-100")}>
             <DestinyItemCard 
                 itemHash={collectible.itemHash} 
+                definition={itemDefinition}
                 hidePower 
                 hideBorder={!isAcquired}
                 className="rounded-none w-full h-full"

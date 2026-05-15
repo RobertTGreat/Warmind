@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from 'next/dynamic';
-import { useDestinyProfile, DestinyStats } from "@/hooks/useDestinyProfile";
+import { DestinyStats } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { BUCKETS, CURRENCIES, MATERIALS, calculateBasePowerLevel, getBestItemsPerSlot } from "@/lib/destinyUtils";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
@@ -197,7 +198,7 @@ function CurrencyRow({ name, value, icon }: { name: string, value: number, icon?
 }
 
 export default function CharacterPage() {
-    const { profile, stats, isLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
+    const { profile, stats, isLoading, isLoggedIn, membershipInfo } = useDestinyProfileContext();
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
     const { addOperation, removeOperation, pendingOperations } = useTransferStore();
     const { setDetailsItem } = useUIStore();
@@ -923,6 +924,7 @@ export default function CharacterPage() {
                                                             items={vault}
                                                             iconSize={iconSize}
                                                             ownerId="VAULT"
+                                                            definitions={vaultDefs}
                                                             checkMatch={checkMatch}
                                                             getInstanceData={getInstanceData}
                                                             getSocketsData={getSocketsData}
@@ -948,6 +950,7 @@ export default function CharacterPage() {
                                                             groups={groups}
                                                             iconSize={iconSize}
                                                             ownerId="VAULT"
+                                                            definitions={vaultDefs}
                                                             checkMatch={checkMatch}
                                                             getInstanceData={getInstanceData}
                                                             getSocketsData={getSocketsData}
@@ -974,6 +977,7 @@ export default function CharacterPage() {
                                                             groups={groups}
                                                             iconSize={iconSize}
                                                             ownerId="VAULT"
+                                                            definitions={vaultDefs}
                                                             checkMatch={checkMatch}
                                                             getInstanceData={getInstanceData}
                                                             getSocketsData={getSocketsData}
@@ -1013,6 +1017,7 @@ export default function CharacterPage() {
                                                                             groups={tierGroups}
                                                                             iconSize={iconSize}
                                                                             ownerId="VAULT"
+                                                                            definitions={vaultDefs}
                                                                             checkMatch={checkMatch}
                                                                             getInstanceData={getInstanceData}
                                                                             getSocketsData={getSocketsData}
@@ -1032,6 +1037,7 @@ export default function CharacterPage() {
                                                         items={vault}
                                                         iconSize={iconSize}
                                                         ownerId="VAULT"
+                                                        definitions={vaultDefs}
                                                         checkMatch={checkMatch}
                                                         getInstanceData={getInstanceData}
                                                         getSocketsData={getSocketsData}

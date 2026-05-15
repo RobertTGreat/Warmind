@@ -158,16 +158,14 @@ export function NewsFeed() {
 
                                 {/* Content */}
                                 <div className="flex flex-col flex-1 p-5 gap-3">
-                                    <h3 
-                                        className="text-lg font-bold text-white leading-tight group-hover:text-amber-400 transition-colors line-clamp-2"
-                                        dangerouslySetInnerHTML={{ __html: item.title }}
-                                    />
+                                    <h3 className="text-lg font-bold text-white leading-tight group-hover:text-amber-400 transition-colors line-clamp-2">
+                                        {item.title}
+                                    </h3>
                                     
                                     {item.description && (
-                                        <p 
-                                            className="text-sm text-slate-400 line-clamp-2 leading-relaxed"
-                                            dangerouslySetInnerHTML={{ __html: item.description }}
-                                        />
+                                        <p className="text-sm text-slate-400 line-clamp-2 leading-relaxed">
+                                            {item.description}
+                                        </p>
                                     )}
 
                                     <div className="mt-auto pt-4 flex items-center text-xs font-bold text-slate-500 uppercase tracking-widest group-hover:text-white transition-colors">

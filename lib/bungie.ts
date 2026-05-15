@@ -1,20 +1,9 @@
-import axios, { InternalAxiosRequestConfig } from 'axios';
+import axios from 'axios';
 
-const API_KEY = process.env.NEXT_PUBLIC_BUNGIE_API_KEY || '';
 const BASE_URL = '/api/bungie';
 
 export const bungieApi = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    'X-API-Key': API_KEY,
-  },
-});
-
-// Interceptor to keep API key attached to all requests
-bungieApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // Ensure the API Key is always set, even if retrying
-  config.headers['X-API-Key'] = API_KEY;
-  return config;
 });
 
 // Interceptor to handle token refresh on 401
@@ -271,16 +260,7 @@ export const insertSocketPlugFree = async (
 
 // Auth helper to redirect to Bungie
 export const loginWithBungie = () => {
-  const clientId = process.env.NEXT_PUBLIC_BUNGIE_CLIENT_ID; // NOTE: User needs to expose this if doing client-side redirect or handle server-side
-  // However, safer to do server-side redirect usually, but for simplicity often client redirect is used in SPA
-  // Let's assume we handle the initial redirect logic in a component or API route
-  // For now, we'll just export the URL construction logic if needed
-  if (!clientId) {
-    console.error("Bungie Client ID is missing. Please set NEXT_PUBLIC_BUNGIE_CLIENT_ID in your .env file.");
-    alert("Bungie Client ID is missing. Check console for details.");
-    return;
-  }
-  window.location.href = `https://www.bungie.net/en/OAuth/Authorize?client_id=${clientId}&response_type=code&state=${crypto.randomUUID()}`;
+  window.location.href = '/api/auth/login';
 };
 
 export const logout = () => {

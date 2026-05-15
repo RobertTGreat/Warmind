@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useDestinyProfile } from './useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { getActivityHistory } from '@/lib/bungie';
 import { Expansion, isDateInExpansion } from '@/data/d2/expansions';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
@@ -7,6 +7,9 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 // ===== Types =====
 
 export interface WrappedActivity {
+  cacheKey: string;
+  membershipId: string;
+  expansionId: string;
   instanceId: string;
   period: string;
   mode: number;
@@ -63,6 +66,8 @@ interface WrappedDB extends DBSchema {
     key: string;
     value: WrappedActivity;
     indexes: {
+      'by-membership': string;
+      'by-expansion': string;
       'by-period': string;
       'by-mode': number;
     };
@@ -82,13 +87,13 @@ interface WrappedDB extends DBSchema {
 }
 
 const DB_NAME = 'warmind-wrapped';
-const DB_VERSION = 2; // Bumped for new schema
+const DB_VERSION = 3; // Bumped for membership-scoped activity cache
 
 async function getDB(): Promise<IDBPDatabase<WrappedDB>> {
   return openDB<WrappedDB>(DB_NAME, DB_VERSION, {
     upgrade(db, oldVersion) {
       // Delete old stores if upgrading
-      if (oldVersion < 2) {
+      if (oldVersion < 3) {
         if (db.objectStoreNames.contains('activities')) {
           db.deleteObjectStore('activities');
         }
@@ -102,7 +107,9 @@ async function getDB(): Promise<IDBPDatabase<WrappedDB>> {
       
       // Activities store
       if (!db.objectStoreNames.contains('activities')) {
-        const activityStore = db.createObjectStore('activities', { keyPath: 'instanceId' });
+        const activityStore = db.createObjectStore('activities', { keyPath: 'cacheKey' });
+        activityStore.createIndex('by-membership', 'membershipId');
+        activityStore.createIndex('by-expansion', 'expansionId');
         activityStore.createIndex('by-period', 'period');
         activityStore.createIndex('by-mode', 'mode');
       }
@@ -120,139 +127,74 @@ async function getDB(): Promise<IDBPDatabase<WrappedDB>> {
 
 // ===== PGCR Fetching with Concurrency =====
 
-const MAX_CONCURRENT_REQUESTS = 20;
-const MAX_RETRIES = 3;
+const PGCR_BATCH_SIZE = 50;
 
-async function fetchPGCRWithRetry(
-  instanceId: string,
-  retryCount = 0
-): Promise<WrappedPGCR | null> {
-  try {
-    const res = await fetch(`/api/pgcr/${instanceId}`);
-    if (!res.ok) {
-      if (res.status === 429 && retryCount < MAX_RETRIES) {
-        // Rate limited - exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return fetchPGCRWithRetry(instanceId, retryCount + 1);
-      }
-      return null;
-    }
-    
-    const data = await res.json();
-    const pgcr = data.Response;
-    
-    if (!pgcr || !pgcr.entries) return null;
+function transformPGCR(instanceId: string, pgcr: any): WrappedPGCR {
+  return {
+    instanceId,
+    period: pgcr.period,
+    entries: pgcr.entries.map((entry: any) => {
+      const weaponKills: WeaponKillData[] = [];
+      const extended = entry.extended;
 
-    // Transform to our format with extended stats
-    return {
-      instanceId,
-      period: pgcr.period,
-      entries: pgcr.entries.map((entry: any) => {
-        // Extract weapon kills from extended values
-        const weaponKills: WeaponKillData[] = [];
-        const extended = entry.extended;
-        
-        if (extended?.weapons) {
-          for (const weapon of extended.weapons) {
-            weaponKills.push({
-              weaponHash: weapon.referenceId,
-              kills: weapon.values?.uniqueWeaponKills?.basic?.value || 0,
-              precisionKills: weapon.values?.uniqueWeaponPrecisionKills?.basic?.value || 0,
-            });
-          }
+      if (extended?.weapons) {
+        for (const weapon of extended.weapons) {
+          weaponKills.push({
+            weaponHash: weapon.referenceId,
+            kills: weapon.values?.uniqueWeaponKills?.basic?.value || 0,
+            precisionKills: weapon.values?.uniqueWeaponPrecisionKills?.basic?.value || 0,
+          });
         }
+      }
 
-        return {
-          membershipId: entry.player?.destinyUserInfo?.membershipId || '',
-          displayName: entry.player?.destinyUserInfo?.displayName || 
-                       entry.player?.destinyUserInfo?.bungieGlobalDisplayName || 'Unknown',
-          iconPath: entry.player?.destinyUserInfo?.iconPath || '',
-          characterClass: entry.player?.characterClass || '',
-          classHash: entry.player?.classHash || 0,
-          emblemHash: entry.player?.emblemHash || 0,
-          kills: entry.values?.kills?.basic?.value || 0,
-          deaths: entry.values?.deaths?.basic?.value || 0,
-          assists: entry.values?.assists?.basic?.value || 0,
-          completed: entry.values?.completed?.basic?.value === 1,
-          timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value || 
-                             entry.values?.activityDurationSeconds?.basic?.value || 0,
-          // Extended stats
-          precisionKills: extended?.values?.precisionKills?.basic?.value || 0,
-          superKills: extended?.values?.weaponKillsSuper?.basic?.value || 0,
-          grenadeKills: extended?.values?.weaponKillsGrenade?.basic?.value || 0,
-          meleeKills: extended?.values?.weaponKillsMelee?.basic?.value || 0,
-          abilityKills: extended?.values?.weaponKillsAbility?.basic?.value || 0,
-          weaponKills,
-        };
-      }),
-      activityDetails: {
-        referenceId: pgcr.activityDetails?.referenceId || 0,
-        mode: pgcr.activityDetails?.mode || 0,
-      },
-    };
-  } catch (error) {
-    if (retryCount < MAX_RETRIES) {
-      const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return fetchPGCRWithRetry(instanceId, retryCount + 1);
-    }
-    console.error(`Failed to fetch PGCR ${instanceId}:`, error);
-    return null;
-  }
+      return {
+        membershipId: entry.player?.destinyUserInfo?.membershipId || '',
+        displayName: entry.player?.destinyUserInfo?.displayName ||
+                     entry.player?.destinyUserInfo?.bungieGlobalDisplayName || 'Unknown',
+        iconPath: entry.player?.destinyUserInfo?.iconPath || '',
+        characterClass: entry.player?.characterClass || '',
+        classHash: entry.player?.classHash || 0,
+        emblemHash: entry.player?.emblemHash || 0,
+        kills: entry.values?.kills?.basic?.value || 0,
+        deaths: entry.values?.deaths?.basic?.value || 0,
+        assists: entry.values?.assists?.basic?.value || 0,
+        completed: entry.values?.completed?.basic?.value === 1,
+        timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value ||
+                           entry.values?.activityDurationSeconds?.basic?.value || 0,
+        precisionKills: extended?.values?.precisionKills?.basic?.value || 0,
+        superKills: extended?.values?.weaponKillsSuper?.basic?.value || 0,
+        grenadeKills: extended?.values?.weaponKillsGrenade?.basic?.value || 0,
+        meleeKills: extended?.values?.weaponKillsMelee?.basic?.value || 0,
+        abilityKills: extended?.values?.weaponKillsAbility?.basic?.value || 0,
+        weaponKills,
+      };
+    }),
+    activityDetails: {
+      referenceId: pgcr.activityDetails?.referenceId || 0,
+      mode: pgcr.activityDetails?.mode || 0,
+    },
+  };
 }
 
-// Streaming PGCR fetcher with high concurrency
-async function* streamPGCRs(
-  activityIds: string[],
-  onProgress: (completed: number, total: number) => void,
+async function fetchPGCRBatch(
+  ids: string[],
   signal?: AbortSignal
-): AsyncGenerator<{ instanceId: string; pgcr: WrappedPGCR }, void, unknown> {
-  const total = activityIds.length;
-  let completedCount = 0;
-  
-  // Track active requests
-  const activeRequests = new Map<string, Promise<{ instanceId: string; pgcr: WrappedPGCR | null }>>();
-  let index = 0;
+): Promise<Record<string, any | null>> {
+  const response = await fetch('/api/pgcr/batch', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ids }),
+    signal,
+  });
 
-  // Helper to process a single request
-  const processRequest = async (instanceId: string) => {
-    const pgcr = await fetchPGCRWithRetry(instanceId);
-    return { instanceId, pgcr };
-  };
-
-  // Fill initial batch
-  while (index < activityIds.length && activeRequests.size < MAX_CONCURRENT_REQUESTS) {
-    const id = activityIds[index];
-    activeRequests.set(id, processRequest(id));
-    index++;
+  if (!response.ok) {
+    throw new Error(`Failed to fetch PGCR batch: ${response.status}`);
   }
 
-  // Process as they complete
-  while (activeRequests.size > 0) {
-    if (signal?.aborted) {
-      throw new Error('Download cancelled');
-    }
-
-    // Wait for any request to complete
-    const completed = await Promise.race(Array.from(activeRequests.values()));
-    activeRequests.delete(completed.instanceId);
-    completedCount++;
-    
-    onProgress(completedCount, total);
-
-    // Yield result if successful
-    if (completed.pgcr) {
-      yield { instanceId: completed.instanceId, pgcr: completed.pgcr };
-    }
-
-    // Add next request if available
-    if (index < activityIds.length) {
-      const id = activityIds[index];
-      activeRequests.set(id, processRequest(id));
-      index++;
-    }
-  }
+  const data = await response.json();
+  return data.reports ?? {};
 }
 
 // ===== Main Hook =====
@@ -278,7 +220,7 @@ interface UseWrappedDataResult {
 }
 
 export function useWrappedData({ expansion, enabled = true }: UseWrappedDataOptions): UseWrappedDataResult {
-  const { profile } = useDestinyProfile();
+  const { profile } = useDestinyProfileContext();
   const [activities, setActivities] = useState<WrappedActivity[]>([]);
   const [pgcrs, setPgcrs] = useState<Map<string, WrappedPGCR>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
@@ -329,10 +271,14 @@ export function useWrappedData({ expansion, enabled = true }: UseWrappedDataOpti
 
       if (cacheValid) {
         setProgress({ phase: 'fetching-activities', current: 50, total: 100, message: 'Loading cached data...' });
-        const cachedActivities = await db.getAll('activities');
+        const cachedActivities = await db.getAllFromIndex(
+          'activities',
+          'by-membership',
+          membershipId
+        );
         allActivities = cachedActivities.filter(a => {
           const activityDate = new Date(a.period);
-          return isDateInExpansion(activityDate, expansion);
+          return a.expansionId === expansion.id && isDateInExpansion(activityDate, expansion);
         });
       } else {
         // Fetch fresh data - Mode 0 = All activities
@@ -375,8 +321,12 @@ export function useWrappedData({ expansion, enabled = true }: UseWrappedDataOpti
                 }
 
                 if (activityDate <= expansionEnd) {
+                  const instanceId = activity.activityDetails.instanceId;
                   const wrappedActivity: WrappedActivity = {
-                    instanceId: activity.activityDetails.instanceId,
+                    cacheKey: `${membershipId}:${instanceId}`,
+                    membershipId,
+                    expansionId: expansion.id,
+                    instanceId,
                     period: activity.period,
                     mode: activity.activityDetails.mode,
                     referenceId: activity.activityDetails.referenceId,
@@ -457,25 +407,27 @@ export function useWrappedData({ expansion, enabled = true }: UseWrappedDataOpti
           message: `${cachedCount} cached, fetching ${totalToFetch} new reports...`,
         });
 
-        // Stream PGCRs with high concurrency
-        const stream = streamPGCRs(
-          uncachedIds,
-          (completed, _total) => {
-            setProgress({
-              phase: 'fetching-pgcrs',
-              current: cachedCount + completed,
-              total: activitiesToFetch.length,
-              message: `Fetching detailed reports (${cachedCount + completed}/${activitiesToFetch.length})...`,
-            });
-          },
-          signal
-        );
+        for (let index = 0; index < uncachedIds.length; index += PGCR_BATCH_SIZE) {
+          if (signal.aborted) throw new Error('Download cancelled');
 
-        // Process streamed results
-        for await (const { instanceId, pgcr } of stream) {
-          pgcrMap.set(instanceId, pgcr);
-          // Store in IndexedDB for future use
-          await db.put('pgcrs', pgcr);
+          const batch = uncachedIds.slice(index, index + PGCR_BATCH_SIZE);
+          const reports = await fetchPGCRBatch(batch, signal);
+
+          for (const [instanceId, rawReport] of Object.entries(reports)) {
+            if (!rawReport?.Response?.entries) continue;
+
+            const pgcr = transformPGCR(instanceId, rawReport.Response);
+            pgcrMap.set(instanceId, pgcr);
+            await db.put('pgcrs', pgcr);
+          }
+
+          const completedCount = Math.min(index + PGCR_BATCH_SIZE, uncachedIds.length);
+          setProgress({
+            phase: 'fetching-pgcrs',
+            current: cachedCount + completedCount,
+            total: activitiesToFetch.length,
+            message: `Fetching detailed reports (${cachedCount + completedCount}/${activitiesToFetch.length})...`,
+          });
         }
       }
 

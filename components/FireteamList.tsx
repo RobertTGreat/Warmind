@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { Loader2, Users, Shield, Star } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -25,7 +25,7 @@ interface FireteamMember {
 
 // Reusing styles from ClanMemberCard slightly modified for Fireteam context
 export function FireteamList() {
-    const { membershipInfo } = useDestinyProfile();
+    const { membershipInfo } = useDestinyProfileContext();
     const [members, setMembers] = useState<FireteamMember[]>([]);
     const [isLoadingMembers, setIsLoadingMembers] = useState(false);
     const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
@@ -41,20 +41,28 @@ export function FireteamList() {
 
     const transitoryData = profileData?.Response?.profileTransitoryData?.data;
     const partyMembers = transitoryData?.partyMembers;
+    const partyMemberIds = useMemo(() => {
+        return (partyMembers ?? [])
+            .map((member: any) => member.membershipId)
+            .sort()
+            .join(',');
+    }, [partyMembers]);
 
     // 2. Fetch Details for Party Members
     useEffect(() => {
-        if (!partyMembers || partyMembers.length === 0) {
+        if (!partyMemberIds) {
             setMembers([]);
             return;
         }
+
+        let cancelled = false;
 
         const fetchMemberDetails = async () => {
             setIsLoadingMembers(true);
             const details: FireteamMember[] = [];
 
             // Fetch in parallel
-            await Promise.all(partyMembers.map(async (member: any) => {
+            await Promise.all((partyMembers ?? []).map(async (member: any) => {
                 try {
                     // First, look up the member's actual memberships using BungieNext type (254)
                     // This handles cross-platform players
@@ -114,12 +122,18 @@ export function FireteamList() {
                 }
             }));
 
-            setMembers(details);
-            setIsLoadingMembers(false);
+            if (!cancelled) {
+                setMembers(details);
+                setIsLoadingMembers(false);
+            }
         };
 
         fetchMemberDetails();
-    }, [partyMembers, membershipInfo]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [partyMemberIds, membershipInfo?.membershipId, membershipInfo?.membershipType]);
 
     if (!membershipInfo) return null;
 

@@ -4,7 +4,7 @@ import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { displayPixelsForCssEdge, itemIconDecodeBudgetPx, itemIconSizes } from '@/lib/itemIconImage';
 import { buildBungieImageProxyUrl, normalizeBungieAssetPath } from '@/lib/bungieImageProxy';
 import { cn } from '@/lib/utils';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { ItemTooltip } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
@@ -94,12 +94,21 @@ export function DestinyItemCard({
   );
   
   // Watch store for this item's transfer status
-  const pendingOperations = useTransferStore(state => state.pendingOperations);
-  const transferOperation = itemInstanceId 
-    ? pendingOperations.find(op => op.itemInstanceId === itemInstanceId) 
-    : null;
-  const transferStatus: TransferStatus | null = transferOperation?.status ?? null;
-  const isPending = !!transferOperation;
+  const transferStatus = useTransferStore(
+    useCallback(
+      (state) => {
+        if (!itemInstanceId) return null;
+
+        return (
+          state.pendingOperations.find(
+            (operation) => operation.itemInstanceId === itemInstanceId
+          )?.status ?? null
+        );
+      },
+      [itemInstanceId]
+    )
+  ) as TransferStatus | null;
+  const isPending = transferStatus !== null;
   const isSyncing = transferStatus === 'syncing';
   const isError = transferStatus === 'error';
   

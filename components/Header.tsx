@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { 
     Shield, 
@@ -27,10 +26,12 @@ import {
     Check,
     Heart
 } from 'lucide-react';
-import { useDestinyProfile, CLASS_NAMES } from '@/hooks/useDestinyProfile';
+import { CLASS_NAMES } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { logout, getBungieImage } from '@/lib/bungie';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useEffect, useState, useRef } from 'react';
+import { CacheStatusBadge } from '@/components/CacheStatusBadge';
 
 type SubNavItem = { name: string; href: string; icon: any };
 
@@ -71,7 +72,7 @@ const navItems: {
 
 export function Header() {
   const pathname = usePathname();
-  const { stats, displayName, isLoggedIn, allCharacters, selectCharacter } = useDestinyProfile();
+  const { stats, displayName, isLoggedIn, allCharacters, selectCharacter } = useDestinyProfileContext();
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [characterSelectorOpen, setCharacterSelectorOpen] = useState(false);
@@ -175,16 +176,12 @@ export function Header() {
                       <span>Season {stats.seasonRank ?? '-'}</span>
                     </div>
                   </button>
+                  <CacheStatusBadge />
                   
                   {/* Character Selector Dropdown */}
-                  <AnimatePresence>
                     {characterSelectorOpen && allCharacters.length > 1 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                        className="absolute left-28 top-full mt-2 z-100 w-64 bg-gray-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-black/70 overflow-hidden isolate"
+                      <div
+                        className="absolute left-28 top-full mt-2 z-100 w-64 bg-gray-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-black/70 overflow-hidden isolate animate-in fade-in slide-in-from-top-2 duration-150"
                         style={{ backdropFilter: 'blur(24px) saturate(180%)' }}
                       >
                         <div className="p-2 border-b border-white/5">
@@ -238,9 +235,8 @@ export function Header() {
                             );
                           })}
                         </div>
-                      </motion.div>
+                      </div>
                     )}
-                  </AnimatePresence>
                 </div>
               ) : (
                 <div className="w-8 h-8" /> 
@@ -248,15 +244,8 @@ export function Header() {
             </div>
 
             {/* Center: Navigation (Desktop, only when menu closed) */}
-            <AnimatePresence mode="wait">
               {!menuOpen && (
-                <motion.nav 
-                  className="flex-1 justify-center mx-4 overflow-hidden hidden lg:flex"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                >
+                <nav className="flex-1 justify-center mx-4 overflow-hidden hidden lg:flex animate-in fade-in duration-150">
                   {isLoggedIn && (
                     <ul className="flex items-center gap-1 sm:gap-4 flex-nowrap">
                       {navItems.map((item) => {
@@ -292,11 +281,7 @@ export function Header() {
                               <span className="hidden xl:inline">{item.name}</span>
                               
                               {isActive && (
-                                <motion.div
-                                  layoutId="activeTab"
-                                  className="absolute bottom-0 left-0 right-0 h-[2px] bg-destiny-gold shadow-[0_0_8px_rgba(227,206,98,0.5)]"
-                                  initial={false}
-                                />
+                                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-destiny-gold shadow-[0_0_8px_rgba(227,206,98,0.5)]" />
                               )}
                             </Link>
                           </li>
@@ -304,20 +289,12 @@ export function Header() {
                       })}
                     </ul>
                   )}
-                </motion.nav>
+                </nav>
               )}
-            </AnimatePresence>
 
             {/* Center: Settings & Logout (only when menu open) */}
-            <AnimatePresence mode="wait">
               {menuOpen && (
-                <motion.div 
-                  className="flex-1 flex items-center justify-end gap-3 mx-4"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2 }}
-                >
+                <div className="flex-1 flex items-center justify-end gap-3 mx-4 animate-in fade-in slide-in-from-right-2 duration-200">
                   <Link
                     href="/settings"
                     onClick={() => setMenuOpen(false)}
@@ -341,9 +318,8 @@ export function Header() {
                   >
                     <LogOut className="w-5 h-5" />
                   </button>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
 
             {/* Right: Hamburger Menu Button */}
             <div className="flex items-center justify-end min-w-[48px] gap-2">
@@ -375,29 +351,11 @@ export function Header() {
                   )}
                   title={menuOpen ? "Close Menu" : "Open Menu"}
                 >
-                  <AnimatePresence mode="wait">
-                    {menuOpen ? (
-                      <motion.div
-                        key="close"
-                        initial={{ rotate: -90, opacity: 0 }}
-                        animate={{ rotate: 0, opacity: 1 }}
-                        exit={{ rotate: 90, opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                      >
-                        <X className="w-5 h-5" />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="menu"
-                        initial={{ rotate: 90, opacity: 0 }}
-                        animate={{ rotate: 0, opacity: 1 }}
-                        exit={{ rotate: -90, opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                      >
-                        <Menu className="w-5 h-5" />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {menuOpen ? (
+                    <X className="w-5 h-5" />
+                  ) : (
+                    <Menu className="w-5 h-5" />
+                  )}
                 </button>
               )}
             </div>
@@ -407,31 +365,22 @@ export function Header() {
       </header>
 
       {/* Overlay Menu Panel */}
-      <AnimatePresence>
         {menuOpen && (
           <>
             {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 top-16 z-40 bg-black/60 backdrop-blur-sm"
+            <div
+              className="fixed inset-0 top-16 z-40 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
               onClick={() => setMenuOpen(false)}
             />
             
             {/* Menu Panel */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-              className="fixed top-16 left-0 right-0 z-50 bg-gray-800/20 backdrop-blur-xl border-b border-white/10"
+            <div
+              className="fixed top-16 left-0 right-0 z-50 bg-gray-800/20 backdrop-blur-xl border-b border-white/10 animate-in fade-in slide-in-from-top-2 duration-200"
             >
               <div className="px-6 sm:px-12 py-6 max-w-7xl mx-auto">
                 {/* Navigation Cards Grid */}
                 <div className="flex flex-wrap gap-x-6 gap-y-4 justify-center">
-                  {navItems.map((item, index) => {
+                  {navItems.map((item) => {
                     const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
                     const Icon = item.icon;
                     const hasSubNav = item.subNav && item.subNav.length > 0;
@@ -439,12 +388,8 @@ export function Header() {
                     // Handle disabled items
                     if (item.disabled) {
                       return (
-                        <motion.div
+                        <div
                           key={item.name}
-                          initial={{ opacity: 0, y: 15 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ delay: index * 0.03, duration: 0.2 }}
                           className="group relative flex transition-all duration-200 border border-transparent opacity-40 cursor-not-allowed"
                           title="Coming Soon"
                         >
@@ -459,17 +404,13 @@ export function Header() {
                               Coming Soon
                             </div>
                           </div>
-                        </motion.div>
+                        </div>
                       );
                     }
                     
                     return (
-                      <motion.div
+                      <div
                         key={item.name}
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ delay: index * 0.03, duration: 0.2 }}
                         className={cn(
                           "group relative flex transition-all duration-200 border border-transparent",
                           isActive 
@@ -508,10 +449,7 @@ export function Header() {
 
                           {/* Active Indicator - Left border accent */}
                           {isActive && (
-                            <motion.div
-                              layoutId="activeMenuCard"
-                              className="absolute left-0 top-3 bottom-3 w-0.5 bg-destiny-gold"
-                            />
+                            <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-destiny-gold" />
                           )}
                         </Link>
 
@@ -541,18 +479,13 @@ export function Header() {
                             })}
                           </div>
                         )}
-                      </motion.div>
+                      </div>
                     );
                   })}
                 </div>
 
                 {/* Support and other projects links */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3 }}
-                  className="flex justify-center mt-4 pt-3 border-t border-white/5"
-                >
+                <div className="flex justify-center mt-4 pt-3 border-t border-white/5">
                   <div className="inline-flex items-center gap-3 text-xs text-slate-500">
                     <a
                       href="https://ko-fi.com/roberttgreat"
@@ -580,12 +513,11 @@ export function Header() {
                       <span>pleiades.chat</span>
                     </a>
                   </div>
-                </motion.div>
+                </div>
               </div>
-            </motion.div>
+            </div>
           </>
         )}
-      </AnimatePresence>
     </>
   );
 }

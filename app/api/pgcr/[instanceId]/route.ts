@@ -1,48 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
+import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
 export const revalidate = 86400;
 
 export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ instanceId: string }> }
+  _request: NextRequest,
+  { params }: { params: Promise<{ instanceId: string }> }
 ) {
-    const { instanceId } = await params;
-    const apiKey = process.env.NEXT_PUBLIC_BUNGIE_API_KEY;
+  const { instanceId } = await params;
+  const apiKey = process.env.BUNGIE_API_KEY;
 
-    if (!apiKey) {
-        console.error("Missing NEXT_PUBLIC_BUNGIE_API_KEY environment variable");
-        return NextResponse.json({ error: 'Server configuration error: API Key missing' }, { status: 500 });
-    }
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Server configuration error: API Key missing" },
+      { status: 500 }
+    );
+  }
 
-    if (!instanceId) {
-        return NextResponse.json({ error: 'Missing instanceId' }, { status: 400 });
-    }
+  if (!instanceId || !/^\d+$/.test(instanceId)) {
+    return NextResponse.json({ error: "Invalid instanceId" }, { status: 400 });
+  }
 
-    try {
-        // Fetch from Bungie
-        const response = await axios.get(
-            `https://www.bungie.net/Platform/Destiny2/Stats/PostGameCarnageReport/${instanceId}/`,
-            {
-                headers: {
-                    'X-API-Key': apiKey
-                }
-            }
-        );
-        
-        return NextResponse.json(response.data);
-    } catch (error: any) {
-        console.error('PGCR Fetch Error for instance:', instanceId, error.message);
-        
-        // Handle Bungie API errors
-        if (error.response) {
-             console.error('Bungie API Response:', error.response.status, error.response.data);
-             return NextResponse.json(error.response.data, { status: error.response.status });
-        }
-        
-        return NextResponse.json(
-            { error: 'Failed to fetch PGCR from Bungie' },
-            { status: 500 }
-        );
+  const response = await fetch(
+    `https://www.bungie.net/Platform/Destiny2/Stats/PostGameCarnageReport/${instanceId}/`,
+    {
+      headers: {
+        "X-API-Key": apiKey,
+      },
+      next: { revalidate: 86_400 },
     }
+  );
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    return NextResponse.json(data ?? { error: "Bungie PGCR error" }, {
+      status: response.status,
+    });
+  }
+
+  return NextResponse.json(data, {
+    headers: {
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+    },
+  });
 }

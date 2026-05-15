@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlugFree } from '@/lib/bungie';
 import { toast } from 'sonner';
 import { useTransferStore } from '@/store/transferStore';
@@ -48,7 +48,7 @@ export function ItemContextMenu({
     const tooltipRef = useRef<HTMLDivElement>(null);
     /** Mount rich tooltip after first paint so equip/transfer UI shows immediately. */
     const [tooltipReady, setTooltipReady] = useState(false);
-    const { profile, stats, membershipInfo } = useDestinyProfile();
+    const { profile, stats, membershipInfo } = useDestinyProfileContext();
     const addOperation = useTransferStore(state => state.addOperation);
     const removeOperation = useTransferStore(state => state.removeOperation);
     const setDetailsItem = useUIStore(state => state.setDetailsItem);

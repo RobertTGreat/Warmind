@@ -1,9 +1,17 @@
 'use client';
 
 import { AnimatePresence } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import { useWrappedStore } from '@/store/wrappedStore';
 import { WrappedPopup } from './WrappedPopup';
-import { WrappedView } from './WrappedView';
+
+const WrappedView = dynamic(
+  () => import('./WrappedView').then((mod) => mod.WrappedView),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 /**
  * Main Wrapped component that handles both the popup and the full wrapped view.
@@ -42,7 +50,6 @@ export function DestinyWrapped() {
 
 // Re-export components for direct use
 export { WrappedPopup } from './WrappedPopup';
-export { WrappedView } from './WrappedView';
 export { WrappedCard, StatBlock } from './WrappedCard';
 
 // Re-export card components

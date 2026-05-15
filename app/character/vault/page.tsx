@@ -1,10 +1,10 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { useItemDefinitions, ItemDefinition } from "@/hooks/useItemDefinitions";
 import { Loader2, Search, Settings, Archive } from "lucide-react";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from "react";
 import { moveItem } from "@/lib/bungie";
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
@@ -15,13 +15,13 @@ const DestinyItemCard = dynamic(
   { ssr: false }
 );
 
-const VaultGrid = dynamic(
-  () => import("@/components/VaultGrid").then((mod) => mod.VaultGrid),
+const VirtualizedItemGrid = dynamic(
+  () => import("@/components/VirtualizedItemGrid").then((mod) => mod.VirtualizedItemGrid),
   { ssr: false }
 );
 
-const GroupedVaultGrid = dynamic(
-  () => import("@/components/VaultGrid").then((mod) => mod.GroupedVaultGrid),
+const GroupedVirtualizedGrid = dynamic(
+  () => import("@/components/VirtualizedItemGrid").then((mod) => mod.GroupedVirtualizedGrid),
   { ssr: false }
 );
 
@@ -71,7 +71,7 @@ function getInstanceDataWithStats(profile: any, itemInstanceId: string) {
 }
 
 export default function VaultPage() {
-  const { profile, isLoading: profileLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
+  const { profile, isLoading: profileLoading, isLoggedIn, membershipInfo } = useDestinyProfileContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [hiddenCharacters, setHiddenCharacters] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -138,7 +138,8 @@ export default function VaultPage() {
   const { definitions, isLoading: defsLoading } = useItemDefinitions(allItems);
 
   // 3. Search Logic
-  const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const parsedQuery = useMemo(() => parseSearchQuery(deferredSearchQuery), [deferredSearchQuery]);
   
   // Full Inventory List for Dupe Check
   const fullInventoryList = useMemo(() => {
@@ -151,13 +152,63 @@ export default function VaultPage() {
   }, [profile]);
 
   const checkMatch = useCallback((item: any) => {
-      if (!searchQuery) return true;
+      if (!deferredSearchQuery) return true;
       const def = definitions[item.itemHash];
       const instance = profile?.itemComponents?.instances?.data?.[item.itemInstanceId];
       return checkItemMatch(item, def, parsedQuery, instance, fullInventoryList);
-  }, [searchQuery, definitions, profile, parsedQuery, fullInventoryList]);
+  }, [deferredSearchQuery, definitions, profile, parsedQuery, fullInventoryList]);
 
-  // Data accessor callbacks for VaultGrid
+  const toVirtualizedItems = useCallback(
+      (items: any[]) =>
+          items.map((item) => ({
+              itemHash: item.itemHash,
+              itemInstanceId: item.itemInstanceId,
+              quantity: item.quantity,
+              bucketHash: item.bucketHash,
+              definition: definitions[item.itemHash],
+              instanceData: item.itemInstanceId
+                  ? getInstanceDataWithStats(profile, item.itemInstanceId)
+                  : undefined,
+              socketsData: item.itemInstanceId
+                  ? profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]
+                  : undefined,
+              reusablePlugs: item.itemInstanceId
+                  ? profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs
+                  : undefined,
+          })),
+      [definitions, profile]
+  );
+
+  const inventoryByOwnerBucket = useMemo(() => {
+      const map = new Map<string, any[]>();
+
+      const addItem = (ownerId: string, item: any, bucketHash = item.bucketHash) => {
+          if (!bucketHash) return;
+
+          const key = `${ownerId}:${bucketHash}`;
+          const existingItems = map.get(key) ?? [];
+          existingItems.push(item);
+          map.set(key, existingItems);
+      };
+
+      for (const [characterId, inventory] of Object.entries(profile?.characterInventories?.data ?? {})) {
+          for (const item of (inventory as any).items ?? []) {
+              addItem(characterId, item);
+          }
+      }
+
+      for (const item of profile?.profileInventory?.data?.items ?? []) {
+          if (item.bucketHash !== 138197802) continue;
+
+          const definition = definitions[item.itemHash];
+          const bucketHash = definition?.inventory?.bucketTypeHash;
+          addItem('VAULT', item, bucketHash);
+      }
+
+      return map;
+  }, [profile, definitions]);
+
+  // Data accessor callbacks for item cards
   const getInstanceData = useCallback((itemInstanceId: string) => {
       return getInstanceDataWithStats(profile, itemInstanceId);
   }, [profile]);
@@ -327,18 +378,9 @@ export default function VaultPage() {
   if (profileLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-destiny-gold" /></div>;
 
   const characters = profile?.characters?.data ? Object.values(profile.characters.data) : [];
-  const vaultItems = (profile?.profileInventory?.data?.items || []).filter((item: any) => item.bucketHash === 138197802);
-
-  // Group Vault Items by Type
-  const groupedVault: Record<number, any[]> = {};
-  vaultItems.forEach((item: any) => {
-      const def = definitions[item.itemHash];
-      if (def?.inventory?.bucketTypeHash) {
-          const bucket = def.inventory.bucketTypeHash;
-          if (!groupedVault[bucket]) groupedVault[bucket] = [];
-          groupedVault[bucket].push(item);
-      }
-  });
+  const vaultItemCount = (profile?.profileInventory?.data?.items || [])
+      .filter((item: any) => item.bucketHash === 138197802)
+      .length;
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] space-y-4">
@@ -506,7 +548,7 @@ export default function VaultPage() {
                                      </div>
                                      <div className="flex items-center gap-1">
                                          <span className="text-slate-300 text-xl font-bold tabular-nums">
-                                             {vaultItems.length}
+                                             {vaultItemCount}
                                          </span>
                                          <span className="text-slate-500 text-sm">/500</span>
                                      </div>
@@ -542,7 +584,7 @@ export default function VaultPage() {
                          if (bucketHash === BUCKETS.CLASS) bucketName = "Class Item";
 
                          // Vault items for this bucket
-                         let vItems = groupedVault[bucketHash] || [];
+                         let vItems = inventoryByOwnerBucket.get(`VAULT:${bucketHash}`) ?? [];
                          
                          // OPTIMISTIC UI: Add pending items TO vault
                          const pendingToVault = pendingOperations.filter(op => 
@@ -579,8 +621,7 @@ export default function VaultPage() {
                                      }
 
                                      // Inventory for this bucket
-                                     let inventory = (profile?.characterInventories?.data?.[charId]?.items || [])
-                                        .filter((i: any) => i.bucketHash === bucketHash);
+                                     let inventory = inventoryByOwnerBucket.get(`${charId}:${bucketHash}`) ?? [];
                                      
                                      // OPTIMISTIC UI: Add pending items TO this character
                                      const pendingToChar = pendingOperations.filter(op => 
@@ -622,6 +663,7 @@ export default function VaultPage() {
                                                {equipped ? (
                                                    <DestinyItemCard 
                                                       itemHash={equipped.itemHash}
+                                                      definition={definitions[equipped.itemHash]}
                                                       instanceData={getInstanceDataWithStats(profile, equipped.itemInstanceId)}
                                                       socketsData={profile?.itemComponents?.sockets?.data?.[equipped.itemInstanceId]}
                                                       reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[equipped.itemInstanceId]?.plugs}
@@ -642,6 +684,7 @@ export default function VaultPage() {
                                                     <DestinyItemCard 
                                                        key={`${item.itemHash}-${idx}`}
                                                        itemHash={item.itemHash}
+                                                       definition={definitions[item.itemHash]}
                                                        instanceData={getInstanceDataWithStats(profile, item.itemInstanceId)}
                                                        socketsData={profile?.itemComponents?.sockets?.data?.[item.itemInstanceId]}
                                                        reusablePlugs={profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs}
@@ -689,18 +732,19 @@ export default function VaultPage() {
                                              2: 'text-slate-500'
                                          };
                                          const classNames: Record<number, string> = { 0: 'Titan', 1: 'Hunter', 2: 'Warlock', 3: 'General' };
+                                         const virtualVItems = toVirtualizedItems(sortedVItems);
+                                         const virtualGridHeight = Math.min(420, Math.max(160, virtualVItems.length * 20));
 
-                                         // 1. No grouping - use VaultGrid directly
+                                         // 1. No grouping - use virtualized grid directly
                                          if (!vaultGrouping.byRarity && !vaultGrouping.byClass) {
                                             return (
-                                                <VaultGrid
-                                                    items={sortedVItems}
+                                                <VirtualizedItemGrid
+                                                    items={virtualVItems}
                                                     iconSize={iconSize}
                                                     ownerId="VAULT"
                                                     checkMatch={checkMatch}
-                                                    getInstanceData={getInstanceData}
-                                                    getSocketsData={getSocketsData}
-                                                    getReusablePlugs={getReusablePlugs}
+                                                    containerHeight={virtualGridHeight}
+                                                    overscan={160}
                                                     gap={1}
                                                 />
                                             );
@@ -712,20 +756,18 @@ export default function VaultPage() {
                                                  key: tier,
                                                  label: tierNames[tier],
                                                  labelClassName: tierColors[tier],
-                                                 items: sortedVItems.filter((item: any) => 
-                                                     (definitions[item.itemHash]?.inventory?.tierType || 0) === tier
+                                                 items: virtualVItems.filter((item: any) =>
+                                                     (item.definition?.inventory?.tierType || 0) === tier
                                                  )
                                              })).filter(g => g.items.length > 0);
 
                                              return (
-                                                 <GroupedVaultGrid
+                                                 <GroupedVirtualizedGrid
                                                      groups={groups}
                                                      iconSize={iconSize}
                                                      ownerId="VAULT"
                                                      checkMatch={checkMatch}
-                                                     getInstanceData={getInstanceData}
-                                                     getSocketsData={getSocketsData}
-                                                     getReusablePlugs={getReusablePlugs}
+                                                     containerHeight={virtualGridHeight}
                                                      gap={1}
                                                  />
                                              );
@@ -737,21 +779,19 @@ export default function VaultPage() {
                                                  key: cls,
                                                  label: classNames[cls],
                                                  labelClassName: 'text-slate-500',
-                                                 items: sortedVItems.filter((item: any) => {
-                                                     const def = definitions[item.itemHash];
+                                                 items: virtualVItems.filter((item: any) => {
+                                                     const def = item.definition;
                                                      return (def?.classType ?? 3) === cls;
                                                  })
                                              })).filter(g => g.items.length > 0);
 
                                              return (
-                                                 <GroupedVaultGrid
+                                                 <GroupedVirtualizedGrid
                                                      groups={groups}
                                                      iconSize={iconSize}
                                                      ownerId="VAULT"
                                                      checkMatch={checkMatch}
-                                                     getInstanceData={getInstanceData}
-                                                     getSocketsData={getSocketsData}
-                                                     getReusablePlugs={getReusablePlugs}
+                                                     containerHeight={virtualGridHeight}
                                                      gap={1}
                                                  />
                                              );
@@ -762,8 +802,8 @@ export default function VaultPage() {
                                              return (
                                                  <div className="flex flex-col gap-8 min-h-[60px]">
                                                      {[0, 1, 2, 3].map(cls => {
-                                                         const clsItems = sortedVItems.filter((item: any) => {
-                                                             const def = definitions[item.itemHash];
+                                                         const clsItems = virtualVItems.filter((item: any) => {
+                                                             const def = item.definition;
                                                              return (def?.classType ?? 3) === cls;
                                                          });
                                                          
@@ -774,7 +814,7 @@ export default function VaultPage() {
                                                              label: tierNames[tier],
                                                              labelClassName: tierColors[tier],
                                                              items: clsItems.filter((item: any) => 
-                                                                 (definitions[item.itemHash]?.inventory?.tierType || 0) === tier
+                                                                 (item.definition?.inventory?.tierType || 0) === tier
                                                              )
                                                          })).filter(g => g.items.length > 0);
 
@@ -783,14 +823,12 @@ export default function VaultPage() {
                                                                  <h4 className="text-[10px] uppercase font-bold text-slate-300 mb-2">
                                                                      {classNames[cls]}
                                                                  </h4>
-                                                                 <GroupedVaultGrid
+                                                                 <GroupedVirtualizedGrid
                                                                      groups={tierGroups}
                                                                      iconSize={iconSize}
                                                                      ownerId="VAULT"
                                                                      checkMatch={checkMatch}
-                                                                     getInstanceData={getInstanceData}
-                                                                     getSocketsData={getSocketsData}
-                                                                     getReusablePlugs={getReusablePlugs}
+                                                                     containerHeight={Math.min(360, Math.max(140, clsItems.length * 20))}
                                                                      gap={1}
                                                                  />
                                                              </div>

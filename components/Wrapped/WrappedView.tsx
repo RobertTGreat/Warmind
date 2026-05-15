@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { X, ChevronLeft, ChevronRight, Loader2, Download, Sparkles, Database, AlertCircle } from 'lucide-react';
 import { useWrappedStore, useWrappedStats } from '@/store/wrappedStore';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useWrappedData } from '@/hooks/useWrappedData';
 import { calculateWrappedStatsFromData } from '@/lib/wrappedStats';
 import { Expansion } from '@/data/d2/expansions';
@@ -27,7 +27,7 @@ interface WrappedViewProps {
 }
 
 export function WrappedView({ expansion, onClose }: WrappedViewProps) {
-  const { profile } = useDestinyProfile();
+  const { profile } = useDestinyProfileContext();
   const [hasStartedDownload, setHasStartedDownload] = useState(false);
   
   // Use the new wrapped data hook - only enabled after user clicks download

@@ -16,6 +16,7 @@ export interface VaultGridProps {
     items: VaultItem[];
     iconSize: 'small' | 'medium' | 'large';
     ownerId: string;
+    definitions?: Record<number, any>;
     checkMatch?: (item: VaultItem) => boolean;
     getInstanceData?: (itemInstanceId: string) => any;
     getSocketsData?: (itemInstanceId: string) => any;
@@ -46,6 +47,7 @@ export function VaultGrid({
     items,
     iconSize,
     ownerId,
+    definitions,
     checkMatch,
     getInstanceData,
     getSocketsData,
@@ -94,6 +96,7 @@ export function VaultGrid({
                     <DestinyItemCard
                         key={`${item.itemHash}-${item.itemInstanceId || idx}`}
                         itemHash={item.itemHash}
+                        definition={definitions?.[item.itemHash]}
                         instanceData={item.itemInstanceId ? getInstanceData?.(item.itemInstanceId) : undefined}
                         socketsData={item.itemInstanceId ? getSocketsData?.(item.itemInstanceId) : undefined}
                         reusablePlugs={item.itemInstanceId ? getReusablePlugs?.(item.itemInstanceId) : undefined}
@@ -121,6 +124,7 @@ export interface GroupedVaultGridProps {
     }[];
     iconSize: 'small' | 'medium' | 'large';
     ownerId: string;
+    definitions?: Record<number, any>;
     checkMatch?: (item: VaultItem) => boolean;
     getInstanceData?: (itemInstanceId: string) => any;
     getSocketsData?: (itemInstanceId: string) => any;
@@ -139,6 +143,7 @@ export function GroupedVaultGrid({
     groups,
     iconSize,
     ownerId,
+    definitions,
     checkMatch,
     getInstanceData,
     getSocketsData,
@@ -171,6 +176,7 @@ export function GroupedVaultGrid({
                             items={group.items}
                             iconSize={iconSize}
                             ownerId={ownerId}
+                            definitions={definitions}
                             checkMatch={checkMatch}
                             getInstanceData={getInstanceData}
                             getSocketsData={getSocketsData}

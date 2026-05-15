@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { Loader2, Search, Settings } from "lucide-react";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
@@ -16,7 +16,7 @@ const VaultGrid = dynamic(
 );
 
 export default function InventoryPage() {
-  const { profile, isLoggedIn, isLoading: profileLoading } = useDestinyProfile();
+  const { profile, isLoggedIn, isLoading: profileLoading } = useDestinyProfileContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
 
@@ -226,6 +226,7 @@ export default function InventoryPage() {
                             }))}
                             iconSize={iconSize}
                             ownerId="PROFILE"
+                            definitions={definitions}
                             checkMatch={checkMatchCallback}
                             getInstanceData={getInstanceData}
                             getSocketsData={getSocketsData}
@@ -250,6 +251,7 @@ export default function InventoryPage() {
                             }))}
                             iconSize={iconSize}
                             ownerId="PROFILE"
+                            definitions={definitions}
                             checkMatch={checkMatchCallback}
                             getInstanceData={getInstanceData}
                             getSocketsData={getSocketsData}

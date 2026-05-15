@@ -1,41 +1,40 @@
-import useSWR from 'swr';
-import { bungieApi, endpoints } from '@/lib/bungie';
-
-const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
+import { useManifestDefinition } from "@/hooks/useManifestTable";
 
 export function usePresentationNode(hash: number | undefined) {
-  const { data, error, isLoading } = useSWR(
-    hash ? endpoints.getPresentationNodeDefinition(hash) : null,
-    fetcher
+  const { definition, isLoading, isError } = useManifestDefinition(
+    "DestinyPresentationNodeDefinition",
+    hash
   );
+
   return {
-    node: data?.Response,
+    node: definition,
     isLoading,
-    isError: error
+    isError,
   };
 }
 
 export function useCollectible(hash: number | undefined) {
-  const { data, error, isLoading } = useSWR(
-    hash ? endpoints.getCollectibleDefinition(hash) : null,
-    fetcher
+  const { definition, isLoading, isError } = useManifestDefinition(
+    "DestinyCollectibleDefinition",
+    hash
   );
+
   return {
-    collectible: data?.Response,
+    collectible: definition,
     isLoading,
-    isError: error
+    isError,
   };
 }
 
 export function useRecord(hash: number | undefined) {
-  const { data, error, isLoading } = useSWR(
-    hash ? endpoints.getRecordDefinition(hash) : null,
-    fetcher
+  const { definition, isLoading, isError } = useManifestDefinition(
+    "DestinyRecordDefinition",
+    hash
   );
+
   return {
-    record: data?.Response,
+    record: definition,
     isLoading,
-    isError: error
+    isError,
   };
 }
-

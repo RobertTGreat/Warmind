@@ -8,7 +8,7 @@ type RouteParams = {
 };
 
 async function proxyToBungie(request: NextRequest, { params }: RouteParams) {
-  const apiKey = process.env.NEXT_PUBLIC_BUNGIE_API_KEY;
+  const apiKey = process.env.BUNGIE_API_KEY;
 
   if (!apiKey) {
     return NextResponse.json(
@@ -43,11 +43,17 @@ async function proxyToBungie(request: NextRequest, { params }: RouteParams) {
   const isBodyAllowed = request.method !== 'GET' && request.method !== 'HEAD';
   const rawBody = isBodyAllowed ? await request.text() : undefined;
 
+  const isGet = request.method === 'GET';
+  const isManifestRequest =
+    isGet && path[0] === 'Destiny2' && path[1] === 'Manifest';
+
   const response = await fetch(targetUrl, {
     method: request.method,
     headers,
-    body: rawBody ? rawBody : undefined,
-    cache: 'no-store',
+    body: rawBody || undefined,
+    ...(isManifestRequest
+      ? { next: { revalidate: 86_400 } }
+      : { cache: 'no-store' }),
   });
 
   const payload = await response.text();
@@ -55,6 +61,13 @@ async function proxyToBungie(request: NextRequest, { params }: RouteParams) {
   const responseType = response.headers.get('content-type');
   if (responseType) {
     responseHeaders.set('content-type', responseType);
+  }
+
+  if (isManifestRequest) {
+    responseHeaders.set(
+      'Cache-Control',
+      'public, max-age=3600, stale-while-revalidate=86400'
+    );
   }
 
   return new NextResponse(payload, {

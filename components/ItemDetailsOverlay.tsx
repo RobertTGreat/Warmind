@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { getBungieImage, bungieApi, endpoints, insertSocketPlug, insertSocketPlugFree } from '@/lib/bungie';
 import { BUCKETS, getItemTier } from '@/lib/destinyUtils';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
@@ -40,7 +40,7 @@ const WEAPON_STAT_ORDER = [
 
 export function ItemDetailsOverlay() {
   const { detailsItem, setDetailsItem } = useUIStore();
-  const { profile, membershipInfo } = useDestinyProfile();
+  const { profile, membershipInfo } = useDestinyProfileContext();
   
   // Always declare hooks at the top level
   const [showAllPerks, setShowAllPerks] = useState(false);
@@ -375,7 +375,7 @@ function usePlugSets(hashes: number[]) {
 }
 
 function SubclassStats({ sockets, itemDef, profile, item }: any) {
-    const { membershipInfo } = useDestinyProfile();
+    const { membershipInfo } = useDestinyProfileContext();
     const [selectedSocket, setSelectedSocket] = useState<{ socketIndex: number, category: string } | null>(null);
     const [hoveredPlug, setHoveredPlug] = useState<any>(null);
     

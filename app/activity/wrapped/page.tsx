@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageHeader } from '@/components/PageHeader';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { EXPANSIONS, getCurrentExpansion, Expansion } from '@/data/d2/expansions';
 import { useWrappedStore } from '@/store/wrappedStore';
 import { WrappedView } from '@/components/Wrapped/WrappedView';
@@ -23,7 +23,7 @@ const LIFETIME_EXPANSION: Expansion = {
 };
 
 export default function WrappedPage() {
-  const { isLoggedIn, isLoading } = useDestinyProfile();
+  const { isLoggedIn, isLoading } = useDestinyProfileContext();
   const { openWrappedView, isWrappedViewOpen, selectedExpansion, closeWrappedView } = useWrappedStore();
   
   const currentExpansion = getCurrentExpansion();

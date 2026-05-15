@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 import { getActivityHistory } from '@/lib/bungie';
-import { useDestinyProfile } from './useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useState, useEffect, useCallback } from 'react';
 import { getCachedHistory, setCachedHistory, clearCache, getInvalidInstanceIds } from '@/lib/activityCache';
 
@@ -48,7 +48,7 @@ export interface PGCRPlayer {
 }
 
 export function useActivityHistory() {
-    const { profile } = useDestinyProfile();
+    const { profile } = useDestinyProfileContext();
     const characterIds = profile?.characters?.data ? Object.keys(profile.characters.data) : [];
     const membershipType = profile?.profile?.data?.userInfo?.membershipType;
     const membershipId = profile?.profile?.data?.userInfo?.membershipId;

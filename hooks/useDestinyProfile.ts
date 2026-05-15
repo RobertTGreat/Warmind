@@ -23,6 +23,33 @@ import type { CachedProfile } from '@/lib/db';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
+const CORE_PROFILE_COMPONENTS = [
+  100, // profiles
+  200, // characters
+  202, // character progression
+  204, // character activities
+  205, // character equipment
+  300, // item instances
+  304, // item stats
+  305, // item sockets
+  800, // profile records
+  1100, // profile string variables
+] as const;
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshAuthOnce() {
+  if (!refreshPromise) {
+    refreshPromise = fetch("/api/auth/refresh", { method: "POST" })
+      .then((response) => response.ok)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
 export interface DestinyStats {
   characterId: string;
   classType: number; // 0: Titan, 1: Hunter, 2: Warlock
@@ -64,6 +91,7 @@ export function useDestinyProfile() {
   // Initialize to false to match server-side rendering and prevent hydration mismatch
   const [hasToken, setHasToken] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   
   // Cache state
   const [cachedProfileData, setCachedProfileData] = useState<any>(null);
@@ -76,37 +104,40 @@ export function useDestinyProfile() {
   });
   const cacheLoadedRef = useRef(false);
 
-  // Check for token on mount (client-side only)
   useEffect(() => {
-    const membershipId = Cookies.get('bungie_membership_id');
-    if (membershipId) {
-      setHasToken(true);
+    let cancelled = false;
+
+    async function checkAuth() {
+      const membershipId = Cookies.get('bungie_membership_id');
+
+      if (membershipId) {
+        if (!cancelled) {
+          setHasToken(true);
+          setAuthReady(true);
+        }
+        return;
+      }
+
+      setIsRefreshing(true);
+
+      const refreshed = await refreshAuthOnce().catch(() => false);
+
+      if (!cancelled) {
+        setHasToken(refreshed);
+        setIsRefreshing(false);
+        setAuthReady(true);
+      }
     }
+
+    checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // On mount, if no token, try silent refresh (in case we have a valid refresh token in httpOnly cookie)
-  useEffect(() => {
-      // Only try refresh if we've already checked for the token and didn't find one
-      // We use a slight timeout or check to ensure we don't run this immediately if cookie reading was just delayed
-      const membershipId = Cookies.get('bungie_membership_id');
-      
-      if (!membershipId && !isRefreshing) {
-          setIsRefreshing(true);
-          fetch('/api/auth/refresh', { method: 'POST' })
-            .then(async (res) => {
-                if (res.ok) {
-                    setHasToken(true);
-                }
-            })
-            .catch(() => {
-                // Silent fail - user is truly logged out
-            })
-            .finally(() => setIsRefreshing(false));
-      }
-  }, []); // Run once on mount
-
   const { data: userMemberships, error: userError, isLoading: userLoading } = useSWR(
-    hasToken ? endpoints.getCurrentUser() : null,
+    authReady && hasToken ? endpoints.getCurrentUser() : null,
     fetcher
   );
 
@@ -137,14 +168,27 @@ export function useDestinyProfile() {
     }
   }, [destinyMembershipId]);
 
-  const { data: profileResponse, error: profileError, isLoading: profileLoading } = useSWR(
-    membershipType && destinyMembershipId ? endpoints.getProfile(membershipType, destinyMembershipId) : null,
+  const profileKey =
+    membershipType && destinyMembershipId
+      ? endpoints.getProfile(
+          membershipType,
+          destinyMembershipId,
+          [...CORE_PROFILE_COMPONENTS]
+        )
+      : null;
+
+  const {
+    data: profileResponse,
+    error: profileError,
+    isLoading: profileLoading,
+  } = useSWR(
+    profileKey,
     fetcher,
     {
-      // Keep stale data while revalidating
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      dedupingInterval: 30000, // 30 seconds
+      dedupingInterval: 60_000,
+      focusThrottleInterval: 120_000,
     }
   );
 
@@ -181,8 +225,7 @@ export function useDestinyProfile() {
   const recordCategoriesRootNodeHash = profile?.profileRecords?.data?.recordCategoriesRootNodeHash;
   const recordSealsRootNodeHash = profile?.profileRecords?.data?.recordSealsRootNodeHash;
   
-  // Fallback: Hardcode Season 27 Hash (Season of the Heresy/Current) if 0 or missing
-  const currentSeasonHash = profile?.profile?.data?.currentSeasonHash || 2956006050; // Fallback to Season 27 (Revenant)
+  const currentSeasonHash = profile?.profile?.data?.currentSeasonHash;
 
   const { data: seasonDefData } = useSWR(
       currentSeasonHash ? endpoints.getSeasonDefinition(currentSeasonHash) : null,
@@ -295,7 +338,13 @@ export function useDestinyProfile() {
   // Force refresh function
   const forceRefresh = useCallback(async () => {
     if (membershipType && destinyMembershipId) {
-      const response = await bungieApi.get(endpoints.getProfile(membershipType, destinyMembershipId));
+      const response = await bungieApi.get(
+        endpoints.getProfile(
+          membershipType,
+          destinyMembershipId,
+          [...CORE_PROFILE_COMPONENTS]
+        )
+      );
       if (response.data?.Response) {
         await cacheProfile(
           destinyMembershipId,

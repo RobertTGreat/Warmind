@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { 
     useLoadoutStore, 
@@ -20,7 +20,7 @@ import {
     decodeLoadoutShareCode,
     getLoadoutShareUrl,
 } from '@/store/loadoutStore';
-import { getBungieImage, moveItem, equipItem, insertSocketPlugFree } from '@/lib/bungie';
+import { bungieApi, endpoints, getBungieImage, moveItem, equipItem, insertSocketPlugFree } from '@/lib/bungie';
 
 // Lazy load heavy item card component
 const DestinyItemCard = dynamic(
@@ -1378,12 +1378,9 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
             // Fetch each plug set definition
             for (const hash of plugSetHashes) {
                 try {
-                    const response = await fetch(`https://www.bungie.net/Platform/Destiny2/Manifest/DestinyPlugSetDefinition/${hash}/`, {
-                        headers: { 'X-API-Key': process.env.NEXT_PUBLIC_BUNGIE_API_KEY || '' }
-                    });
-                    const data = await response.json();
-                    if (data.Response) {
-                        results[hash] = data.Response;
+                    const response = await bungieApi.get(endpoints.getPlugSetDefinition(hash));
+                    if (response.data.Response) {
+                        results[hash] = response.data.Response;
                     }
                 } catch (e) {
                     console.warn(`Failed to fetch plug set ${hash}:`, e);
@@ -2663,7 +2660,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
 // ===== Main Page =====
 
 export default function LoadoutsPage() {
-    const { profile, stats, isLoading, isLoggedIn, membershipInfo } = useDestinyProfile();
+    const { profile, stats, isLoading, isLoggedIn, membershipInfo } = useDestinyProfileContext();
     const { loadouts, createLoadout, updateLoadout, importLoadouts } = useLoadoutStore();
     const [selectedClass, setSelectedClass] = useState<number>(0);
     const [editingLoadout, setEditingLoadout] = useState<CustomLoadout | null | 'new'>(null);

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { useWishListStore } from './wishlistStore';
 
 // ===== Type Definitions =====
@@ -220,7 +220,7 @@ const safeLocalStorage: StateStorage = {
 
 let supabaseClient: SupabaseClient | null = null;
 
-function getSupabaseClient(): SupabaseClient | null {
+async function getSupabaseClient(): Promise<SupabaseClient | null> {
     if (typeof window === 'undefined') return null;
     
     if (!supabaseClient) {
@@ -228,6 +228,7 @@ function getSupabaseClient(): SupabaseClient | null {
         const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
         
         if (url && anonKey) {
+            const { createClient } = await import('@supabase/supabase-js');
             supabaseClient = createClient(url, anonKey);
         }
     }
@@ -238,7 +239,7 @@ function getSupabaseClient(): SupabaseClient | null {
 // ===== Sync Helper Functions =====
 
 async function pushSettingsToCloud(bungieId: string, settings: SyncableSettings): Promise<void> {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available');
     
     const { error } = await supabase
@@ -255,7 +256,7 @@ async function pushSettingsToCloud(bungieId: string, settings: SyncableSettings)
 }
 
 async function pullSettingsFromCloud(bungieId: string): Promise<SyncableSettings | null> {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not available');
     
     const { data, error } = await supabase

@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useDestinyProfile } from '@/hooks/useDestinyProfile';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useActivityHistory } from '@/hooks/useActivityHistory';
 import { useOtherUserProfile } from '@/hooks/useOtherUserProfile';
 import { useOtherUserActivityHistory } from '@/hooks/useOtherUserActivityHistory';
@@ -38,7 +38,7 @@ export default function ActivityPage() {
         isLoading, 
         isError, 
         isLoggedIn,
-    } = useDestinyProfile();
+    } = useDestinyProfileContext();
 
     const { raidHistory: myRaidHistory, dungeonHistory: myDungeonHistory, isLoadingHistory: myIsLoadingHistory } = useActivityHistory();
     
