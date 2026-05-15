@@ -17,21 +17,6 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ['entertainment', 'utilities', 'games'],
     icons: [
       {
-        src: '/favicon.ico',
-        sizes: 'any',
-        type: 'image/x-icon',
-      },
-      {
-        src: '/favicon-32.ico',
-        sizes: '32x32',
-        type: 'image/x-icon',
-      },
-      {
-        src: '/favicon-64.ico',
-        sizes: '64x64',
-        type: 'image/x-icon',
-      },
-      {
         src: '/icon-256.png',
         sizes: '256x256',
         type: 'image/png',

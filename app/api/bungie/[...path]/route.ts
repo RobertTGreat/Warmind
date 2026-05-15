@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerBungieApiKey } from '@/lib/serverBungie';
 
 const BUNGIE_API_BASE = 'https://www.bungie.net/Platform';
 
@@ -8,7 +9,7 @@ type RouteParams = {
 };
 
 async function proxyToBungie(request: NextRequest, { params }: RouteParams) {
-  const apiKey = process.env.BUNGIE_API_KEY;
+  const apiKey = getServerBungieApiKey();
 
   if (!apiKey) {
     return NextResponse.json(

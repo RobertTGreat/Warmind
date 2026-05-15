@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerBungieApiKey } from "@/lib/serverBungie";
 
 const ALLOWED_TYPES = new Set([
   "DestinyInventoryItemDefinition",
@@ -17,7 +18,7 @@ export async function GET(
     return NextResponse.json({ error: "Unsupported definition type" }, { status: 400 });
   }
 
-  const apiKey = process.env.BUNGIE_API_KEY;
+  const apiKey = getServerBungieApiKey();
 
   if (!apiKey) {
     return NextResponse.json({ error: "Missing Bungie API key" }, { status: 500 });

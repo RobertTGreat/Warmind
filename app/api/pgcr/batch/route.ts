@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerBungieApiKey } from "@/lib/serverBungie";
 
 const MAX_IDS = 50;
 const CONCURRENCY = 5;
@@ -25,7 +26,7 @@ async function runPool<T, R>(
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.BUNGIE_API_KEY;
+  const apiKey = getServerBungieApiKey();
 
   if (!apiKey) {
     return NextResponse.json({ error: "Missing API key" }, { status: 500 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerBungieApiKey } from "@/lib/serverBungie";
 
 export const runtime = "nodejs";
 export const revalidate = 86400;
@@ -8,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ instanceId: string }> }
 ) {
   const { instanceId } = await params;
-  const apiKey = process.env.BUNGIE_API_KEY;
+  const apiKey = getServerBungieApiKey();
 
   if (!apiKey) {
     return NextResponse.json(
