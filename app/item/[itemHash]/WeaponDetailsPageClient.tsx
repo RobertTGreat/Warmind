@@ -6,8 +6,14 @@ import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
+import { useManifestTable } from "@/hooks/useManifestTable";
 import { usePlugSetDefinitions } from "@/hooks/usePlugSetDefinitions";
 import { getBungieImage } from "@/lib/bungie";
+import {
+  formatArmorSetBonusRequirement,
+  getArmorSetBonusInfo,
+  type ArmorSetBonusInfo,
+} from "@/lib/armorSetBonus";
 import {
   buildWeaponSocketGroups,
   collectWeaponPlugHashes,
@@ -220,11 +226,66 @@ function SocketColumn({ socketGroup }: { socketGroup: WeaponSocketGroup }) {
   );
 }
 
+function ArmorSetBonusFullPage({ armorSetBonus }: { armorSetBonus: ArmorSetBonusInfo }) {
+  return (
+    <section className="border border-white/10 p-4">
+      <div className="flex items-start gap-3">
+        {armorSetBonus.icon && (
+          <div className="relative h-10 w-10 shrink-0 border border-white/10 bg-white/5">
+            <Image
+              src={getBungieImage(armorSetBonus.icon)}
+              alt=""
+              fill
+              sizes="40px"
+              className="object-cover"
+            />
+          </div>
+        )}
+        <div className="min-w-0">
+          <h2 className="font-condensed text-2xl font-semibold uppercase text-white">
+            Armor Set Bonus
+          </h2>
+          <p className="mt-1 text-sm font-semibold text-destiny-gold">
+            {armorSetBonus.name}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {armorSetBonus.bonuses.map((bonusTier) => (
+          <div
+            key={`${bonusTier.requiredSetCount ?? "bonus"}-${bonusTier.sandboxPerkHash ?? bonusTier.name}`}
+            className="border border-white/10 bg-black/20 p-3"
+          >
+            <p className="text-xs font-bold uppercase tracking-wide text-destiny-gold">
+              {formatArmorSetBonusRequirement(bonusTier.requiredSetCount)}
+              {bonusTier.name && (
+                <span className="ml-1 normal-case tracking-normal text-white">
+                  - {bonusTier.name}
+                </span>
+              )}
+            </p>
+            {bonusTier.description && (
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                {bonusTier.description}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientProps) {
   const searchParams = useSearchParams();
   const requestedInstanceId = searchParams.get("instanceId") ?? undefined;
   const { profile, isLoggedIn } = useDestinyProfileContext();
   const { definitions } = useItemDefinitions(Number.isFinite(itemHash) ? [itemHash] : []);
+  const { table: equipableItemSetDefinitions } =
+    useManifestTable<any>("DestinyEquipableItemSetDefinition");
+  const { table: sandboxPerkDefinitions } =
+    useManifestTable<any>("DestinySandboxPerkDefinition");
   const itemDefinition = definitions[itemHash];
   const ownedCopies = useMemo(
     () => getOwnedWeaponCopies(profile, itemHash),
@@ -275,6 +336,14 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
   const perkColumns = socketGroups.filter(
     (socketGroup) => socketGroup.isPerkColumn || socketGroup.isOriginColumn
   );
+  const armorSetBonus = useMemo(() => {
+    return getArmorSetBonusInfo({
+      itemDefinition,
+      itemType: itemDefinition?.itemTypeDisplayName ?? "",
+      equipableItemSetDefinitions,
+      sandboxPerkDefinitions,
+    });
+  }, [equipableItemSetDefinitions, itemDefinition, sandboxPerkDefinitions]);
   const icon = itemDefinition?.displayProperties?.icon
     ? getBungieImage(itemDefinition.displayProperties.icon)
     : null;
@@ -378,6 +447,8 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
         </main>
 
         <aside className="space-y-4">
+          {armorSetBonus && <ArmorSetBonusFullPage armorSetBonus={armorSetBonus} />}
+
           <section className="border border-white/10 p-4">
             <h2 className="font-condensed text-2xl font-semibold uppercase text-white">
               Stats

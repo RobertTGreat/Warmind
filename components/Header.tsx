@@ -16,7 +16,6 @@ import {
     Menu, 
     X, 
     Settings,
-    Box,
     Backpack,
     Home,
     Medal,
@@ -24,14 +23,15 @@ import {
     Swords,
     ChevronDown,
     Check,
-    Heart
+    Heart,
+    Search
 } from 'lucide-react';
 import { CLASS_NAMES } from '@/hooks/useDestinyProfile';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { logout, getBungieImage } from '@/lib/bungie';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useEffect, useState, useRef } from 'react';
-import { CacheStatusBadge } from '@/components/CacheStatusBadge';
+import { useUIStore } from '@/store/uiStore';
 
 type SubNavItem = { name: string; href: string; icon: any };
 
@@ -53,7 +53,6 @@ const navItems: {
     description: 'Inventory & Loadouts',
     subNav: [
       { name: 'Overview', href: '/character', icon: Home },
-      { name: 'Vault', href: '/character/vault', icon: Box },
       { name: 'Inventory', href: '/character/inventory', icon: Backpack },
     ]
   },
@@ -73,6 +72,11 @@ const navItems: {
 export function Header() {
   const pathname = usePathname();
   const { stats, displayName, isLoggedIn, allCharacters, selectCharacter } = useDestinyProfileContext();
+  const {
+    characterSearchQuery,
+    characterSearchVisible,
+    setCharacterSearchQuery,
+  } = useUIStore();
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [characterSelectorOpen, setCharacterSelectorOpen] = useState(false);
@@ -135,7 +139,7 @@ export function Header() {
 
       {/* Fixed header bar - always 64px */}
       <header className="sticky top-0 z-50 w-full h-16">
-        <div className="h-16 border-b border-white/5 bg-gray-800/20 backdrop-blur-xl">
+        <div className="h-16">
           <div className="px-4 sm:px-8 w-full mx-auto h-full">
           {/* Top Bar - Always visible */}
           <div className="flex h-16 items-center justify-between">
@@ -176,7 +180,6 @@ export function Header() {
                       <span>Season {stats.seasonRank ?? '-'}</span>
                     </div>
                   </button>
-                  <CacheStatusBadge />
                   
                   {/* Character Selector Dropdown */}
                     {characterSelectorOpen && allCharacters.length > 1 && (
@@ -323,6 +326,19 @@ export function Header() {
 
             {/* Right: Hamburger Menu Button */}
             <div className="flex items-center justify-end min-w-[48px] gap-2">
+              {!menuOpen && characterSearchVisible && (
+                <div className="relative hidden w-80 max-w-[26vw] lg:block">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search, or h: to hide non-matches"
+                    className="w-full border border-white/10 bg-black/45 py-2 pl-9 pr-4 text-sm text-white outline-none transition-colors focus:border-destiny-gold/60"
+                    value={characterSearchQuery}
+                    onChange={(event) => setCharacterSearchQuery(event.target.value)}
+                  />
+                </div>
+              )}
+
               {/* Settings Link (Desktop only, when menu closed) */}
               {!menuOpen && (
                 <Link
@@ -369,13 +385,13 @@ export function Header() {
           <>
             {/* Backdrop */}
             <div
-              className="fixed inset-0 top-16 z-40 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+              className="fixed inset-0 top-16 z-40 bg-black/60 animate-in fade-in duration-200"
               onClick={() => setMenuOpen(false)}
             />
             
             {/* Menu Panel */}
             <div
-              className="fixed top-16 left-0 right-0 z-50 bg-gray-800/20 backdrop-blur-xl border-b border-white/10 animate-in fade-in slide-in-from-top-2 duration-200"
+              className="fixed top-16 left-0 right-0 z-50 border-b border-white/10 bg-[#0b0f14]/95 animate-in fade-in slide-in-from-top-2 duration-200"
             >
               <div className="px-6 sm:px-12 py-6 max-w-7xl mx-auto">
                 {/* Navigation Cards Grid */}

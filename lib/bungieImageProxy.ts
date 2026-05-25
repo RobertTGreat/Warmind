@@ -29,11 +29,56 @@ export function normalizeBungieAssetPath(pathOrUrl: string | undefined | null): 
   return null;
 }
 
-export function buildBungieImageProxyUrl(assetPath: string, widthPx: number): string {
+export const USE_BUNGIE_ICON_PROXY =
+  process.env.NEXT_PUBLIC_USE_BUNGIE_ICON_PROXY === "true";
+
+export function buildBungieImageProxyUrl(
+  assetPath: string,
+  widthPx: number,
+  version?: string,
+): string {
   const params = new URLSearchParams();
   params.set("path", assetPath);
   params.set("w", String(widthPx));
+
+  if (version) {
+    params.set("v", version);
+  }
+
   return `/api/bungie-image?${params.toString()}`;
+}
+
+export function getClientManifestVersionCacheKey(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const simpleVersion = window.localStorage.getItem("destiny_manifest_version");
+  if (simpleVersion) {
+    return simpleVersion;
+  }
+
+  const storedVersionInfo = window.localStorage.getItem("warmind-manifest-version");
+  if (!storedVersionInfo) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(storedVersionInfo) as { version?: string };
+    return parsed.version;
+  } catch {
+    return storedVersionInfo;
+  }
+}
+
+export function buildBungieIconUrl(
+  assetPath: string,
+  widthPx: number,
+  version?: string,
+): string {
+  return USE_BUNGIE_ICON_PROXY
+    ? buildBungieImageProxyUrl(assetPath, widthPx, version)
+    : getBungieImage(assetPath);
 }
 
 /**
@@ -54,7 +99,7 @@ export function tooltipBungieImageSrc(
   const trimmed = pathOrFullUrl.trim();
   const p = normalizeBungieAssetPath(trimmed);
   if (p) {
-    return buildBungieImageProxyUrl(p, w);
+    return buildBungieImageProxyUrl(p, w, getClientManifestVersionCacheKey());
   }
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;

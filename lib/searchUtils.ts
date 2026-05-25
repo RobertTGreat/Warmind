@@ -1,223 +1,350 @@
 import { BUCKETS } from "./destinyUtils";
+import type { DimItemMini } from "./dimItemMini";
+import {
+  dimItemFilters,
+  hasDisabledMod,
+  hasMemento,
+  hasOriginTrait,
+  hasRetiredPerk,
+  isArtifice,
+} from "./dimItemMini";
 
 export interface ParsedSearch {
-    text: string;
-    filters: SearchFilter[];
-    hideNonMatches: boolean; // True if query starts with 'h:' or contains 'is:dupe' (maybe?)
+  text: string;
+  filters: SearchFilter[];
+  hideNonMatches: boolean;
 }
 
 export interface SearchFilter {
-    type: 'is' | 'power' | 'slot' | 'element' | 'season' | 'tag' | 'tier';
-    value: string;
-    op?: '>' | '<' | '=' | '>=' | '<=';
+  type: "is" | "power" | "slot" | "element" | "season" | "tag" | "tier" | "masterwork" | "perk" | "set";
+  value: string;
+  op?: ">" | "<" | "=" | ">=" | "<=" | ":";
 }
 
 const DAMAGE_TYPE_HASHES: Record<string, number> = {
-    'kinetic': 3373582085,
-    'arc': 2303181850,
-    'solar': 1847026933,
-    'void': 3454344768,
-    'stasis': 151347233,
-    'strand': 3949783978
+  kinetic: 3373582085,
+  arc: 2303181850,
+  solar: 1847026933,
+  void: 3454344768,
+  stasis: 151347233,
+  strand: 3949783978,
 };
 
 const SLOT_BUCKETS: Record<string, number> = {
-    'kinetic': BUCKETS.KINETIC_WEAPON,
-    'energy': BUCKETS.ENERGY_WEAPON,
-    'power': BUCKETS.POWER_WEAPON,
-    'helmet': BUCKETS.HELMET,
-    'gauntlets': BUCKETS.GAUNTLETS,
-    'chest': BUCKETS.CHEST_ARMOR,
-    'leg': BUCKETS.LEG_ARMOR,
-    'class': BUCKETS.CLASS_ARMOR
+  kinetic: BUCKETS.KINETIC_WEAPON,
+  energy: BUCKETS.ENERGY_WEAPON,
+  power: BUCKETS.POWER_WEAPON,
+  helmet: BUCKETS.HELMET,
+  gauntlets: BUCKETS.GAUNTLETS,
+  chest: BUCKETS.CHEST_ARMOR,
+  leg: BUCKETS.LEG_ARMOR,
+  class: BUCKETS.CLASS_ARMOR,
 };
 
 export function parseSearchQuery(query: string): ParsedSearch {
-    if (!query) return { text: "", filters: [], hideNonMatches: false };
+  if (!query) return { text: "", filters: [], hideNonMatches: false };
 
-    let rawQuery = query.trim();
-    const hideNonMatches = rawQuery.startsWith("h:");
-    
-    if (hideNonMatches) {
-        rawQuery = rawQuery.substring(2).trim();
+  let rawQuery = query.trim();
+  const hideNonMatches = rawQuery.startsWith("h:");
+
+  if (hideNonMatches) {
+    rawQuery = rawQuery.substring(2).trim();
+  }
+
+  const terms: string[] = [];
+  const filters: SearchFilter[] = [];
+
+  for (const part of rawQuery.split(/\s+/)) {
+    const lower = part.toLowerCase();
+    const numberFilter = lower.match(/^(tier|masterwork)(>=|<=|>|<|=|:)(.+)$/);
+
+    if (lower.startsWith("power") || lower.startsWith("light")) {
+      const match = lower.match(/(?:power|light)([><]=?|=)(.+)/);
+      if (match) {
+        filters.push({ type: "power", op: match[1] as SearchFilter["op"], value: match[2] });
+        continue;
+      }
     }
 
-    const terms: string[] = [];
-    const filters: SearchFilter[] = [];
+    if (lower.startsWith("is:")) {
+      filters.push({ type: "is", value: lower.substring(3) });
+      continue;
+    }
 
-    const parts = rawQuery.split(/\s+/);
+    if (numberFilter) {
+      let operator = numberFilter[2] as SearchFilter["op"];
+      let value = numberFilter[3];
+      const colonOperator = operator === ":" ? value.match(/^([><]=?|=)(.+)$/) : null;
 
-    parts.forEach(part => {
-        const lower = part.toLowerCase();
-        
-        // Power Filters
-        if (lower.startsWith("power") || lower.startsWith("light")) {
-            const match = lower.match(/(?:power|light)([><]=?|=)(.+)/);
-            if (match) {
-                filters.push({ type: 'power', op: match[1] as any, value: match[2] });
-                return;
-            }
-        }
+      if (colonOperator) {
+        operator = colonOperator[1] as SearchFilter["op"];
+        value = colonOperator[2];
+      }
 
-        // IS: Filters
-        if (lower.startsWith("is:")) {
-            const value = lower.substring(3);
-            filters.push({ type: 'is', value });
-            return;
-        }
+      filters.push({
+        type: numberFilter[1] as "tier" | "masterwork",
+        op: operator,
+        value,
+      });
+      continue;
+    }
 
-        // Tier Filters (tier:5 or is:tier5)
-        if (lower.startsWith("tier:")) {
-            const value = lower.substring(5);
-            filters.push({ type: 'tier', value });
-            return;
-        }
+    if (lower.startsWith("perk:") || lower.startsWith("exactperk:")) {
+      filters.push({ type: "perk", value: lower.split(":").slice(1).join(":") });
+      continue;
+    }
 
-        // Normal terms
-        terms.push(lower);
-    });
+    if (lower.startsWith("set:")) {
+      filters.push({ type: "set", value: lower.substring(4) });
+      continue;
+    }
 
-    return {
-        text: terms.join(" "),
-        filters,
-        hideNonMatches
-    };
+    if (lower.startsWith("slot:")) {
+      filters.push({ type: "slot", value: lower.substring(5) });
+      continue;
+    }
+
+    terms.push(lower);
+  }
+
+  return {
+    text: terms.join(" "),
+    filters,
+    hideNonMatches,
+  };
 }
 
 export function checkItemMatch(
-    item: any, 
-    def: any, 
-    parsed: ParsedSearch, 
-    instance?: any,
-    allInventory?: any[] // Needed for dupe check
+  item: any,
+  def: any,
+  parsed: ParsedSearch,
+  instance?: any,
+  allInventory?: any[],
+  normalizedItem?: DimItemMini
 ): boolean {
-    if (!item || !def) return false;
+  if (!item || !def) return false;
 
-    // 1. Check Text
-    if (parsed.text) {
-        const name = def.displayProperties?.name?.toLowerCase() || "";
-        const type = def.itemTypeDisplayName?.toLowerCase() || "";
-        if (!name.includes(parsed.text) && !type.includes(parsed.text)) {
-            return false;
-        }
+  if (parsed.text && !checkTextMatch(parsed.text, def, normalizedItem)) {
+    return false;
+  }
+
+  for (const filter of parsed.filters) {
+    switch (filter.type) {
+      case "is":
+        if (!checkIsFilter(filter.value, item, def, instance, allInventory, normalizedItem)) return false;
+        break;
+      case "power":
+        if (!checkPowerFilter(filter.value, filter.op, instance)) return false;
+        break;
+      case "tier":
+        if (!checkTierFilter(filter.value, filter.op, item, instance, normalizedItem)) return false;
+        break;
+      case "masterwork":
+        if (!checkMasterworkFilter(filter.value, filter.op, normalizedItem)) return false;
+        break;
+      case "perk":
+        if (!normalizedItem || !dimItemFilters.perk(filter.value)(normalizedItem)) return false;
+        break;
+      case "set":
+        if (!checkSetFilter(filter.value, normalizedItem)) return false;
+        break;
+      case "slot":
+        if (!checkSlotFilter(filter.value, item, def)) return false;
+        break;
     }
+  }
 
-    // 2. Check Filters
-    for (const filter of parsed.filters) {
-        switch (filter.type) {
-            case 'is':
-                if (!checkIsFilter(filter.value, item, def, instance, allInventory)) return false;
-                break;
-            case 'power':
-                if (!checkPowerFilter(filter.value, filter.op, instance)) return false;
-                break;
-            case 'tier': // Added Tier Check
-                if (!checkTierFilter(filter.value, item, def, instance, allInventory)) return false;
-                break;
-            // Future: slot, element
-        }
-    }
-
-    return true;
+  return true;
 }
 
-function checkTierFilter(value: string, item: any, def: any, instance: any, allInventory?: any[]): boolean {
-    // Tier Logic requires full socket analysis which is heavy if we don't have cached tier data.
-    // But checkIsFilter and checkItemMatch don't have access to sockets/plugDefs easily here unless passed.
-    // We might need to rely on `item.tier` if we pre-calculated it, OR just skip complex tier logic for now 
-    // and only support if `item` object has `tier` property attached (which we might need to ensure in the caller).
-    
-    // However, the `item` passed here is usually the raw item component from API + some context.
-    // It doesn't have the calculated Tier (1-5) attached by default.
-    // The caller (VaultPage/CharacterPage) calculates tier for display but doesn't attach it to the item object used for filtering.
-    
-    // To support `is:tier5`, we need to either:
-    // 1. Pass calculated tier to this function
-    // 2. Or re-calculate it here (needs plug definitions which we don't have)
-    
-    // OPTION 1 is best: Attach `tier` to the item object passed to `checkItemMatch` if possible.
-    // But `checkItemMatch` signature is fixed for now.
-    // Let's allow `instance` to carry it or check `item.calculatedTier`?
-    
-    // Let's assume the caller will attach `calculatedTier` to `item` if available.
-    const tier = (item as any).calculatedTier;
-    if (tier === undefined) return false; // Can't check if missing
-    
-    const targetTier = parseInt(value, 10);
-    if (isNaN(targetTier)) return false;
-    
-    return tier === targetTier;
+function checkTextMatch(text: string, def: any, normalizedItem?: DimItemMini): boolean {
+  const name = String(def.displayProperties?.name ?? "").toLowerCase();
+  const type = String(def.itemTypeDisplayName ?? "").toLowerCase();
+  const setName = String(normalizedItem?.setBonus?.displayProperties?.name ?? "").toLowerCase();
+
+  return name.includes(text) || type.includes(text) || setName.includes(text);
 }
 
-function checkIsFilter(value: string, item: any, def: any, instance: any, allInventory?: any[]): boolean {
-    // ...
-    // Handle `is:tierX` alias
-    if (value.startsWith("tier")) {
-        const tierVal = value.replace("tier", "");
-        return checkTierFilter(tierVal, item, def, instance, allInventory);
-    }
+function compareNumber(value: number, target: number, op: SearchFilter["op"]): boolean {
+  switch (op) {
+    case ">":
+      return value > target;
+    case "<":
+      return value < target;
+    case ">=":
+      return value >= target;
+    case "<=":
+      return value <= target;
+    case "=":
+    case ":":
+    default:
+      return value === target;
+  }
+}
 
+function checkTierFilter(
+  value: string,
+  op: SearchFilter["op"],
+  item: any,
+  instance: any,
+  normalizedItem?: DimItemMini
+): boolean {
+  const itemTier = normalizedItem?.tier ?? item?.calculatedTier ?? instance?.gearTier;
+  const targetTier = Number(value);
+
+  if (!Number.isFinite(itemTier) || !Number.isFinite(targetTier)) {
+    return false;
+  }
+
+  return compareNumber(Number(itemTier), targetTier, op);
+}
+
+function checkMasterworkFilter(
+  value: string,
+  op: SearchFilter["op"],
+  normalizedItem?: DimItemMini
+): boolean {
+  if (!normalizedItem) {
+    return false;
+  }
+
+  const targetTier = Number(value);
+  if (!Number.isFinite(targetTier)) {
+    const normalizedValue = value.toLowerCase();
+
+    return Boolean(
+      normalizedItem.masterworkInfo?.stats?.some((stat) =>
+        stat.name.toLowerCase().includes(normalizedValue)
+      )
+    );
+  }
+
+  return compareNumber(normalizedItem.masterworkInfo?.tier ?? 0, targetTier, op);
+}
+
+function checkSetFilter(value: string, normalizedItem?: DimItemMini): boolean {
+  if (!normalizedItem?.setBonus) {
+    return false;
+  }
+
+  const setHash = Number(value);
+  if (Number.isFinite(setHash)) {
+    return normalizedItem.setBonus.hash === setHash;
+  }
+
+  return String(normalizedItem.setBonus.displayProperties?.name ?? "")
+    .toLowerCase()
+    .includes(value.toLowerCase());
+}
+
+function checkIsFilter(
+  value: string,
+  item: any,
+  def: any,
+  instance: any,
+  allInventory?: any[],
+  normalizedItem?: DimItemMini
+): boolean {
+  if (value.startsWith("tier")) {
+    return checkTierFilter(value.replace("tier", ""), ":", item, instance, normalizedItem);
+  }
+
+  if (normalizedItem) {
     switch (value) {
-        // Rarity
-        case 'exotic': return def.inventory?.tierTypeName === 'Exotic';
-        case 'legendary': return def.inventory?.tierTypeName === 'Legendary';
-        case 'rare': return def.inventory?.tierTypeName === 'Rare';
-        case 'common': return def.inventory?.tierTypeName === 'Common';
-        case 'basic': return def.inventory?.tierTypeName === 'Basic';
-        
-        // Type
-        case 'weapon': return def.itemType === 3;
-        case 'armor': return def.itemType === 2;
-        
-        // State
-        case 'crafted': return (instance?.state & 8) === 8;
-        case 'masterwork': return (instance?.state & 4) === 4;
-        case 'locked': return (instance?.state & 1) === 1;
-        
-        // Damage Type (Simple Check via Default Damage)
-        // Note: Instance damage type might differ (e.g. Osmosis), but usually default is fine for search
-        case 'kinetic': return def.defaultDamageTypeHash === DAMAGE_TYPE_HASHES.kinetic || instance?.damageTypeHash === DAMAGE_TYPE_HASHES.kinetic;
-        case 'arc': return def.defaultDamageTypeHash === DAMAGE_TYPE_HASHES.arc || instance?.damageTypeHash === DAMAGE_TYPE_HASHES.arc;
-        case 'solar': return def.defaultDamageTypeHash === DAMAGE_TYPE_HASHES.solar || instance?.damageTypeHash === DAMAGE_TYPE_HASHES.solar;
-        case 'void': return def.defaultDamageTypeHash === DAMAGE_TYPE_HASHES.void || instance?.damageTypeHash === DAMAGE_TYPE_HASHES.void;
-        case 'stasis': return def.defaultDamageTypeHash === DAMAGE_TYPE_HASHES.stasis || instance?.damageTypeHash === DAMAGE_TYPE_HASHES.stasis;
-        case 'strand': return def.defaultDamageTypeHash === DAMAGE_TYPE_HASHES.strand || instance?.damageTypeHash === DAMAGE_TYPE_HASHES.strand;
-
-        // Complex
-        case 'dupe':
-            if (!allInventory) return false;
-            // Count items with same itemHash
-            // Note: Use a cached count map in real app for perf, but this is fine for client side < 600 items
-            const count = allInventory.filter(i => i.itemHash === item.itemHash).length;
-            return count > 1;
-            
-        case 'pattern':
-             // Pattern logic is complex (requires querying presentation nodes or record hashes usually)
-             // Fallback: Check if it has a pattern socket or similar? 
-             // Actually, `inventory.recipeItemHash` exists on definition if it has a pattern usually?
-             // Or `itemDef.sockets` has a recipe socket.
-             // For now, let's skip strict pattern check unless we have profile records data.
-             return false;
-
-        default:
-            return false;
+      case "exotic":
+        return normalizedItem.isExotic;
+      case "legendary":
+        return normalizedItem.rarity === "Legendary";
+      case "rare":
+        return normalizedItem.rarity === "Rare";
+      case "common":
+        return normalizedItem.rarity === "Common";
+      case "basic":
+        return normalizedItem.rarity === "Basic";
+      case "weapon":
+        return Boolean(normalizedItem.bucket.inWeapons);
+      case "armor":
+        return Boolean(normalizedItem.bucket.inArmor);
+      case "crafted":
+        return Boolean(normalizedItem.crafted);
+      case "masterwork":
+        return normalizedItem.masterwork;
+      case "locked":
+        return normalizedItem.locked;
+      case "artifice":
+        return isArtifice(normalizedItem);
+      case "origintrait":
+        return hasOriginTrait(normalizedItem);
+      case "adept":
+        return dimItemFilters.isAdept()(normalizedItem);
+      case "holofoil":
+        return dimItemFilters.isHolofoil()(normalizedItem);
+      case "memento":
+        return hasMemento(normalizedItem);
+      case "retiredperk":
+        return hasRetiredPerk(normalizedItem);
+      case "disabledmod":
+        return hasDisabledMod(normalizedItem);
+      case "setbonus":
+        return Boolean(normalizedItem.setBonus);
     }
+  }
+
+  switch (value) {
+    case "exotic":
+      return def.inventory?.tierTypeName === "Exotic";
+    case "legendary":
+      return def.inventory?.tierTypeName === "Legendary";
+    case "rare":
+      return def.inventory?.tierTypeName === "Rare";
+    case "common":
+      return def.inventory?.tierTypeName === "Common";
+    case "basic":
+      return def.inventory?.tierTypeName === "Basic";
+    case "weapon":
+      return def.itemType === 3;
+    case "armor":
+      return def.itemType === 2;
+    case "crafted":
+      return (instance?.state & 8) === 8;
+    case "masterwork":
+      return (instance?.state & 4) === 4;
+    case "locked":
+      return (instance?.state & 1) === 1;
+    case "kinetic":
+    case "arc":
+    case "solar":
+    case "void":
+    case "stasis":
+    case "strand":
+      return checkElementFilter(value, def, instance);
+    case "dupe":
+      if (!allInventory) return false;
+      return allInventory.filter((inventoryItem) => inventoryItem.itemHash === item.itemHash).length > 1;
+    default:
+      return false;
+  }
 }
 
-function checkPowerFilter(value: string, op: string | undefined, instance: any): boolean {
-    if (!instance?.primaryStat?.value) return false;
-    const itemPower = instance.primaryStat.value;
-    const targetPower = parseInt(value, 10);
-    
-    if (isNaN(targetPower)) return false;
+function checkPowerFilter(value: string, op: SearchFilter["op"], instance: any): boolean {
+  const itemPower = Number(instance?.primaryStat?.value);
+  const targetPower = Number(value);
 
-    switch (op) {
-        case '>': return itemPower > targetPower;
-        case '<': return itemPower < targetPower;
-        case '>=': return itemPower >= targetPower;
-        case '<=': return itemPower <= targetPower;
-        case '=': return itemPower === targetPower;
-        default: return itemPower === targetPower;
-    }
+  if (!Number.isFinite(itemPower) || !Number.isFinite(targetPower)) {
+    return false;
+  }
+
+  return compareNumber(itemPower, targetPower, op);
 }
 
+function checkElementFilter(value: string, def: any, instance: any): boolean {
+  const damageTypeHash = DAMAGE_TYPE_HASHES[value];
+  return def.defaultDamageTypeHash === damageTypeHash || instance?.damageTypeHash === damageTypeHash;
+}
+
+function checkSlotFilter(value: string, item: any, def: any): boolean {
+  const bucketHash = SLOT_BUCKETS[value];
+  if (!bucketHash) return false;
+
+  return item.bucketHash === bucketHash || def.inventory?.bucketTypeHash === bucketHash;
+}

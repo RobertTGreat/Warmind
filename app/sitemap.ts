@@ -23,12 +23,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/character/vault`,
-      lastModified: new Date(),
-      changeFrequency: 'always',
-      priority: 0.8,
-    },
-    {
       url: `${baseUrl}/collections`,
       lastModified: new Date(),
       changeFrequency: 'weekly',

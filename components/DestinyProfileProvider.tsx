@@ -1,7 +1,11 @@
 "use client";
 
-import React, { createContext, useContext } from "react";
-import { useDestinyProfile } from "@/hooks/useDestinyProfile";
+import React, { createContext, useContext, useMemo } from "react";
+import { usePathname } from "next/navigation";
+import {
+  getProfileComponentsForPathname,
+  useDestinyProfile,
+} from "@/hooks/useDestinyProfile";
 
 type DestinyProfileValue = ReturnType<typeof useDestinyProfile>;
 
@@ -12,7 +16,12 @@ export function DestinyProfileProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const profile = useDestinyProfile();
+  const pathname = usePathname();
+  const components = useMemo(
+    () => getProfileComponentsForPathname(pathname),
+    [pathname]
+  );
+  const profile = useDestinyProfile(components);
 
   return (
     <DestinyProfileContext.Provider value={profile}>

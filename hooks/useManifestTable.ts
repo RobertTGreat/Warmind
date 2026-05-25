@@ -1,4 +1,5 @@
 import useSWR from "swr";
+import { useMemo } from "react";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -10,9 +11,27 @@ const fetcher = async (url: string) => {
   return response.json();
 };
 
-export function useManifestTable<T = any>(definitionType: string) {
+type ManifestTableOptions = {
+  view?: string;
+};
+
+export function useManifestTable<T = any>(
+  definitionType: string,
+  options?: ManifestTableOptions
+) {
+  const tableUrl = useMemo(() => {
+    const params = new URLSearchParams();
+
+    if (options?.view) {
+      params.set("view", options.view);
+    }
+
+    const query = params.toString();
+    return `/api/manifest-table/${definitionType}${query ? `?${query}` : ""}`;
+  }, [definitionType, options?.view]);
+
   const { data, error, isLoading } = useSWR<Record<string, T>>(
-    `/api/manifest-table/${definitionType}`,
+    tableUrl,
     fetcher,
     {
       revalidateOnFocus: false,

@@ -459,6 +459,7 @@ export function ItemContextMenu({
                             handleEquipPlug(socketIndex, plugHash)
                         }
                         showWishListSection={true}
+                        showFullSetBonusDescriptions={true}
                     />
                 </div>
             )}

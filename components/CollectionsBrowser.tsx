@@ -1,17 +1,98 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
+import { VirtuosoGrid, type GridComponents } from 'react-virtuoso';
 import { usePresentationNode } from '@/hooks/useDefinitions';
 import { ChevronRight, Search, Lock, Eye, EyeOff } from 'lucide-react';
 import { getBungieImage } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
-import { DestinyItemCard } from './DestinyItemCard';
-import { useCollectible } from '@/hooks/useDefinitions';
-import { useManifestDefinition } from '@/hooks/useManifestTable';
+import { useManifestTable } from '@/hooks/useManifestTable';
+import { ItemTile, type ItemTileModel } from '@/components/ItemTile';
+import { buildBungieIconUrl, getClientManifestVersionCacheKey, normalizeBungieAssetPath } from '@/lib/bungieImageProxy';
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
 
 interface CollectionsBrowserProps {
     rootHash: number;
+}
+
+type CollectionTileModel = ItemTileModel & {
+    collectibleHash: number;
+    isAcquired: boolean;
+};
+
+const COLLECTION_TILE_SIZE_PX = 80;
+const COLLECTION_TILE_DECODE_WIDTH = 160;
+
+function getCollectibleState(profile: any, collectibleHash: number) {
+    let state = profile?.profileCollectibles?.data?.collectibles?.[collectibleHash]?.state;
+
+    if (state === undefined && profile?.characterCollectibles?.data) {
+        const characterIds = Object.keys(profile.characterCollectibles.data);
+
+        for (const characterId of characterIds) {
+            const characterState =
+                profile.characterCollectibles.data[characterId]?.collectibles?.[collectibleHash]?.state;
+
+            if (characterState !== undefined) {
+                if ((characterState & 1) === 0) {
+                    return characterState;
+                }
+
+                if (state === undefined) {
+                    state = characterState;
+                }
+            }
+        }
+    }
+
+    return state ?? 1;
+}
+
+function buildCollectionTileModels(
+    collectibleChildren: any[],
+    collectibleTable: Record<string, any> | undefined,
+    itemTable: Record<string, any> | undefined,
+    profile: any,
+    showAll: boolean
+): CollectionTileModel[] {
+    if (!collectibleTable || !itemTable) return [];
+
+    const manifestVersion = getClientManifestVersionCacheKey();
+
+    return collectibleChildren.flatMap((child: any) => {
+        const collectibleHash = child.collectibleHash;
+        const collectible = collectibleTable[String(collectibleHash)];
+        const itemDefinition = itemTable[String(collectible?.itemHash)];
+
+        if (!collectible || !itemDefinition) return [];
+
+        const state = getCollectibleState(profile, collectibleHash);
+        const isAcquired = (state & 1) === 0;
+        const isVisible = (state & 4) === 0;
+
+        if (!isVisible) return [];
+        if (!showAll && isAcquired) return [];
+
+        const iconPath = normalizeBungieAssetPath(itemDefinition.displayProperties?.icon);
+        const watermarkPath = normalizeBungieAssetPath(
+            itemDefinition.iconWatermark || itemDefinition.iconWatermarkShelved
+        );
+
+        return [{
+            collectibleHash,
+            itemHash: collectible.itemHash,
+            name: itemDefinition.displayProperties?.name ?? String(collectible.itemHash),
+            iconSrc: iconPath
+                ? buildBungieIconUrl(iconPath, COLLECTION_TILE_DECODE_WIDTH, manifestVersion)
+                : null,
+            watermarkSrc: watermarkPath
+                ? buildBungieIconUrl(watermarkPath, COLLECTION_TILE_DECODE_WIDTH, manifestVersion)
+                : null,
+            rarityClassName: isAcquired ? "border-white/20" : "border-white/10",
+            isDimmed: !isAcquired,
+            isAcquired,
+        }];
+    });
 }
 
 export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
@@ -320,8 +401,29 @@ function Tier3Button({ hash, isSelected, onClick }: { hash: number, isSelected: 
 function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) {
     const { node, isLoading } = usePresentationNode(hash);
     const { profile } = useDestinyProfileContext();
+    const {
+        table: collectibleTable,
+        isLoading: collectibleTableLoading,
+    } = useManifestTable<any>("DestinyCollectibleDefinition");
+    const {
+        table: itemTable,
+        isLoading: itemTableLoading,
+    } = useManifestTable<any>("DestinyInventoryItemDefinition", { view: "card" });
 
-    if (isLoading) return <div className="p-8 text-slate-500">Loading content...</div>;
+    const directItems = useMemo(
+        () => buildCollectionTileModels(
+            node?.children?.collectibles ?? [],
+            collectibleTable,
+            itemTable,
+            profile,
+            showAll
+        ),
+        [node, collectibleTable, itemTable, profile, showAll]
+    );
+
+    const isContentLoading = isLoading || collectibleTableLoading || itemTableLoading;
+
+    if (isContentLoading) return <div className="p-8 text-slate-500">Loading content...</div>;
     if (!node) return null;
 
     // Check if node has Presentation Nodes (Tier 4 Groups)
@@ -345,37 +447,61 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
                     hash={child.presentationNodeHash} 
                     profile={profile}
                     showAll={showAll}
+                    collectibleTable={collectibleTable}
+                    itemTable={itemTable}
                 />
             ))}
 
             {/* Case 2: Direct Items (Leaf Node) */}
-            {hasItems && (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
-                     {node.children.collectibles.map((child: any) => (
-                        <CollectionItem 
-                            key={child.collectibleHash} 
-                            hash={child.collectibleHash} 
-                            profile={profile}
-                            showAll={showAll}
-                        />
-                    ))}
-                </div>
+            {hasItems && directItems.length > 0 && (
+                <CollectionTileGrid
+                    items={directItems}
+                    height="calc(85vh - 220px)"
+                />
             )}
             
-            {!hasGroups && !hasItems && (
+            {(!hasGroups && !hasItems) || (hasItems && directItems.length === 0) ? (
                  <div className="text-slate-500 italic p-4">No items found.</div>
-            )}
+            ) : null}
         </div>
     );
 }
 
-function CollectionGroup({ hash, profile, showAll }: { hash: number, profile: any, showAll: boolean }) {
+function CollectionGroup({
+    hash,
+    profile,
+    showAll,
+    collectibleTable,
+    itemTable,
+}: {
+    hash: number;
+    profile: any;
+    showAll: boolean;
+    collectibleTable: Record<string, any> | undefined;
+    itemTable: Record<string, any> | undefined;
+}) {
     const { node } = usePresentationNode(hash);
+    const items = useMemo(
+        () => buildCollectionTileModels(
+            node?.children?.collectibles ?? [],
+            collectibleTable,
+            itemTable,
+            profile,
+            showAll
+        ),
+        [node, collectibleTable, itemTable, profile, showAll]
+    );
     
     if (!node) return null;
     
     const collectibles = node.children?.collectibles || [];
     if (collectibles.length === 0) return null;
+    if (items.length === 0) return null;
+
+    const groupHeight = Math.min(
+        460,
+        Math.max(132, Math.ceil(items.length / 8) * 96)
+    );
 
     return (
         <div className="space-y-3">
@@ -385,71 +511,74 @@ function CollectionGroup({ hash, profile, showAll }: { hash: number, profile: an
                 )}
                 {node.displayProperties?.name}
             </h3>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
-                {collectibles.map((child: any) => (
-                    <CollectionItem 
-                        key={child.collectibleHash} 
-                        hash={child.collectibleHash} 
-                        profile={profile}
-                        showAll={showAll}
-                    />
-                ))}
-            </div>
+            <CollectionTileGrid items={items} height={groupHeight} />
         </div>
     );
 }
 
-function CollectionItem({ hash, profile, showAll }: { hash: number, profile: any, showAll: boolean }) {
-    const { collectible, isLoading } = useCollectible(hash);
-    const { definition: itemDefinition } = useManifestDefinition(
-        "DestinyInventoryItemDefinition",
-        collectible?.itemHash
-    );
+function CollectionTileGrid({
+    items,
+    height,
+}: {
+    items: CollectionTileModel[];
+    height: number | string;
+}) {
+    const components: GridComponents<CollectionTileModel> = useMemo(() => {
+        const List = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
+            <div
+                ref={ref}
+                {...props}
+                style={{
+                    ...props.style,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                }}
+            />
+        ));
+        List.displayName = 'CollectionGridList';
 
-    if (isLoading) return <div className="aspect-square bg-white/5 animate-pulse rounded-none" />;
-    if (!collectible) return null;
+        const Item = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
+            <div
+                ref={ref}
+                {...props}
+                style={{
+                    ...props.style,
+                    width: COLLECTION_TILE_SIZE_PX,
+                    height: COLLECTION_TILE_SIZE_PX + 8,
+                }}
+            />
+        ));
+        Item.displayName = 'CollectionGridItem';
 
-    // --- State Check Logic ---
-    let state = profile?.profileCollectibles?.data?.collectibles?.[hash]?.state;
-    
-    if (state === undefined && profile?.characterCollectibles?.data) {
-         const charIds = Object.keys(profile.characterCollectibles.data);
-         for (const charId of charIds) {
-             const charState = profile.characterCollectibles.data[charId]?.collectibles?.[hash]?.state;
-             if (charState !== undefined) {
-                 if ((charState & 1) === 0) {
-                     state = charState;
-                     break;
-                 }
-                 if (state === undefined) state = charState;
-             }
-         }
+        return { List, Item };
+    }, []);
+
+    if (items.length === 0) {
+        return <div className="text-slate-500 italic p-4">No items found.</div>;
     }
 
-    const finalState = state ?? 1;
-    const isAcquired = (finalState & 1) === 0;
-    const isVisible = (finalState & 4) === 0; // Invisible flag
-
-    // Filter logic
-    if (!isVisible) return null;
-    if (!showAll && isAcquired) return null;
-
     return (
-        <div className={cn("relative group w-full aspect-square transition-opacity", !isAcquired && "opacity-40 grayscale hover:opacity-100")}>
-            <DestinyItemCard 
-                itemHash={collectible.itemHash} 
-                definition={itemDefinition}
-                hidePower 
-                hideBorder={!isAcquired}
-                className="rounded-none w-full h-full"
-                minimal 
-                imageFetchPriority="low"
-            />
-            {!isAcquired && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Lock className="w-4 h-4 text-white/50 drop-shadow-md" />
-                </div>
+        <VirtuosoGrid
+            style={{ height }}
+            data={items}
+            overscan={240}
+            components={components}
+            itemContent={(index, item) => (
+                <ItemTile
+                    item={item}
+                    sizePx={COLLECTION_TILE_SIZE_PX}
+                    className="w-20"
+                    fetchPriority={index < 18 ? "auto" : "low"}
+                >
+                    {!item.isAcquired && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <Lock className="w-4 h-4 text-white/50 drop-shadow-md" />
+                        </div>
+                    )}
+                </ItemTile>
             )}
-        </div>
+            className="custom-scrollbar pb-20"
+        />
     );
 }

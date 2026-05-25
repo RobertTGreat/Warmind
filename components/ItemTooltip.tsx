@@ -5,9 +5,13 @@ import { cn } from '@/lib/utils';
 import { tooltipBungieImageSrc } from '@/lib/bungieImageProxy';
 import { useObjectiveDefinitions } from '@/hooks/useObjectiveDefinitions';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
+import { useManifestTable } from '@/hooks/useManifestTable';
 import { STAT_HASHES, ARMOR_STAT_HASHES, getArmorBaseStats, ArmorQuality } from '@/lib/destinyUtils';
 import { STAT_NAMES_BY_HASH, StatHashes } from '@/lib/dim-stats';
-import { PlugCategoryHashes } from '@/data/d2/generated-enums';
+import {
+    formatArmorSetBonusRequirement,
+    getArmorSetBonusInfo,
+} from '@/lib/armorSetBonus';
 
 // Map common stat hashes to readable names (Edge of Fate / Armor 3.0 names)
 const STAT_NAMES: Record<number, string> = {
@@ -88,6 +92,7 @@ export interface ItemTooltipProps {
     plugDefs?: Record<number, any>; // Plug definitions for archetype lookup
     wishListInfo?: WishListInfo; // Wish list match info
     showWishListSection?: boolean; // Only show wish list section when true (context menu)
+    showFullSetBonusDescriptions?: boolean;
     /** Render body only (no portal) — use inside a parent shell, e.g. context menu + tooltip row. */
     docked?: boolean;
 }
@@ -138,6 +143,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
     plugDefs,
     wishListInfo,
     showWishListSection = false,
+    showFullSetBonusDescriptions = false,
     docked = false,
 }: ItemTooltipProps) {
   const [screenshotFailed, setScreenshotFailed] = useState(false);
@@ -162,158 +168,37 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
         if (i.itemHash) hashes.push(i.itemHash);
       });
     }
-    
-    // Add archetype plug if we can find it
-    if (itemDef?.sockets?.socketEntries && itemDef.sockets.socketEntries.length > 0) {
-      const firstSocket = itemDef.sockets.socketEntries[0];
-      if (firstSocket?.socketCategoryHash === 778194869 && firstSocket.singleInitialItemHash) {
-        hashes.push(firstSocket.singleInitialItemHash);
-      }
-    }
-    
+
     return hashes;
   }, [itemDef]);
   
   // Fetch Definitions
   const { definitions: objectiveDefs } = useObjectiveDefinitions(objectiveHashes);
   const { definitions: stepDefs } = useItemDefinitions(stepHashes);
+  const { table: equipableItemSetDefinitions } =
+    useManifestTable<any>("DestinyEquipableItemSetDefinition");
+  const { table: sandboxPerkDefinitions } =
+    useManifestTable<any>("DestinySandboxPerkDefinition");
   
-  // Extract Armor Set Information
-  const armorSetInfo = useMemo(() => {
-    // Check if it's armor
-    const isArmorItem = 
-      itemDef?.itemType === 2 || 
-      itemType?.includes("Armor") ||
-      itemType?.includes("Helmet") ||
-      itemType?.includes("Gauntlets") ||
-      itemType?.includes("Chest") ||
-      itemType?.includes("Leg") ||
-      itemType?.includes("Class");
-    
-    if (!itemDef || !isArmorItem) return null;
-    
-    // Check for setData - it might be in different locations
-    const setData = itemDef.setData;
-    if (!setData) return null;
-    
-    const setItems = setData.itemList || [];
-    if (!setItems || setItems.length === 0) return null;
-    
-    const setTrackingUnlockValueHash = setData.trackingUnlockValueHash;
-    const setRequirementNodeHash = setData.requirementNodeHash;
-    
-    return {
-      items: setItems,
-      setTrackingUnlockValueHash,
-      setRequirementNodeHash,
-      setName: setData.questLineName || setData.trackingUnlockValueHash || null
-    };
-  }, [itemDef, itemType]);
-  
-  // Extract Armor Archetype - check first socket which is usually the archetype
-  const armorArchetype = useMemo(() => {
-    // Check if it's armor - use multiple detection methods
-    const isArmorItem = 
-      itemDef?.itemType === 2 || 
-      itemType?.includes("Armor") ||
-      itemType?.includes("Helmet") ||
-      itemType?.includes("Gauntlets") ||
-      itemType?.includes("Chest") ||
-      itemType?.includes("Leg") ||
-      itemType?.includes("Class");
-    
-    
-    if (!itemDef || !isArmorItem) return null;
-    
-    const archetypeHash = 778194869; // ArmorArchetypes plug category hash
-    
-    // Method 1: Check itemDef.sockets.socketEntries for archetype socket category
-    // The archetype socket is usually the first socket in the definition
-    if (itemDef.sockets?.socketEntries && itemDef.sockets.socketEntries.length > 0) {
-      for (const socketEntry of itemDef.sockets.socketEntries) {
-        if (socketEntry.socketCategoryHash === archetypeHash) {
-          // Found the archetype socket! Now get the plug
-          const defaultPlugHash = socketEntry.singleInitialItemHash;
-          
-          // Try to get from stepDefs (if we fetched it)
-          if (defaultPlugHash && stepDefs[defaultPlugHash]) {
-            const archetypeDef = stepDefs[defaultPlugHash];
-            return {
-              name: archetypeDef.displayProperties?.name || "Armor Archetype",
-              description: archetypeDef.displayProperties?.description || "",
-              icon: archetypeDef.displayProperties?.icon
-            };
-          }
-          
-          // If not in stepDefs, try to get from socketsData
-          if (socketsData?.sockets && plugDefs) {
-            const socketIndex = itemDef.sockets.socketEntries.indexOf(socketEntry);
-            const liveSocket = socketsData.sockets[socketIndex];
-            if (liveSocket?.plugHash && plugDefs[liveSocket.plugHash]) {
-              const plug = plugDefs[liveSocket.plugHash];
-              return {
-                name: plug.displayProperties?.name || "Unknown Archetype",
-                description: plug.displayProperties?.description || "",
-                icon: plug.displayProperties?.icon
-              };
-            }
-          }
-        }
-      }
-    }
-    
-    // Method 2: Check all sockets in socketsData for archetype plugs
-    if (socketsData?.sockets && socketsData.sockets.length > 0 && plugDefs) {
-      for (let i = 0; i < socketsData.sockets.length; i++) {
-        const socket = socketsData.sockets[i];
-        if (socket?.plugHash) {
-          const plug = plugDefs[socket.plugHash];
-          if (plug) {
-            const categoryId = plug.plug?.plugCategoryIdentifier || "";
-            const categoryHash = plug.plug?.plugCategoryHash || plug.plugCategoryHash;
-            
-            // Check if it's an archetype plug
-            if (categoryHash === archetypeHash || 
-                categoryId?.includes("armor_archetypes") ||
-                categoryId?.includes("ArmorArchetypes") ||
-                plug.itemTypeDisplayName?.toLowerCase().includes("archetype")) {
-              return {
-                name: plug.displayProperties?.name || "Unknown Archetype",
-                description: plug.displayProperties?.description || "",
-                icon: plug.displayProperties?.icon
-              };
-            }
-          }
-        }
-      }
-    }
-    
-    // Method 3: Check if we have the archetype plug in detailedPerks
-    if (detailedPerks && detailedPerks.length > 0) {
-      for (const socket of detailedPerks) {
-        if (socket?.activePlug) {
-          const plug = socket.activePlug;
-          const categoryId = plug.plug?.plugCategoryIdentifier || "";
-          const categoryHash = plug.plug?.plugCategoryHash || plug.plugCategoryHash;
-          
-          // Check if it's an archetype plug
-          if (categoryHash === archetypeHash || 
-              categoryId?.includes("armor_archetypes") ||
-              categoryId?.includes("ArmorArchetypes") ||
-              plug.itemTypeDisplayName?.toLowerCase().includes("archetype")) {
-            return {
-              name: plug.displayProperties?.name || "Unknown Archetype",
-              description: plug.displayProperties?.description || "",
-              icon: plug.displayProperties?.icon
-            };
-          }
-        }
-      }
-    }
-    
-    
-    return null;
-  }, [itemDef, detailedPerks, itemType, socketsData, plugDefs, stepDefs]);
+  const armorSetBonus = useMemo(() => {
+    return getArmorSetBonusInfo({
+      itemDefinition: itemDef,
+      itemType,
+      equipableItemSetDefinitions,
+      sandboxPerkDefinitions,
+      socketsData,
+      plugDefinitions: plugDefs,
+      detailedPerks,
+    });
+  }, [
+    equipableItemSetDefinitions,
+    itemDef,
+    detailedPerks,
+    itemType,
+    sandboxPerkDefinitions,
+    socketsData,
+    plugDefs,
+  ]);
 
   const rarityColors = {
       'Exotic': { text: 'text-yellow-400', bg: 'bg-yellow-500', border: 'border-yellow-500' },
@@ -452,6 +337,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
   const isArmor = displayStats.some(s => s.isArmorStat) || itemDef?.itemType === 2;
   const armorTotal = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + s.value : acc, 0) : 0;
   const armorTierSum = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + Math.floor(s.value / 10) : acc, 0) : 0;
+  const shouldClampSetBonusDescriptions = !docked && !showFullSetBonusDescriptions;
 
   return (
     <>
@@ -687,7 +573,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
 
                 {/* Details Grid - Show Power when no hero image (or screenshot URL 404'd with no icon fallback). */}
                 {(!screenshot || (screenshotFailed && !icon)) && power !== undefined && power !== 0 && (
-                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <div className="flex items-center justify-between pb-2">
                         <span className="text-slate-400 uppercase text-xs font-bold tracking-widest">Power Level</span>
                         <div className="flex items-center">
                             <span className="text-3xl font-bold text-destiny-gold">{power}</span>
@@ -696,14 +582,14 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                     </div>
                 )}
 
-                {/* Armor Archetype Section */}
-                {armorArchetype && (
+                {/* Armor Set Bonus Section */}
+                {armorSetBonus && (
                     <div className="space-y-2 pt-2 border-t border-white/10 mt-2">
                         <div className="flex items-start gap-2">
-                            {armorArchetype.icon && (
+                            {armorSetBonus.icon && (
                                 <div className="w-8 h-8 shrink-0 rounded-sm overflow-hidden border border-white/20 bg-slate-800/50">
                                     <Image 
-                                        src={tooltipBungieImageSrc(armorArchetype.icon, 32)} 
+                                        src={tooltipBungieImageSrc(armorSetBonus.icon, 32)} 
                                         width={32}
                                         height={32}
                                         className="object-cover"
@@ -712,10 +598,39 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                 </div>
                             )}
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-destiny-gold leading-tight">{armorArchetype.name}</p>
-                                {armorArchetype.description && (
-                                    <p className="text-xs text-slate-300 leading-relaxed mt-1">{armorArchetype.description}</p>
-                                )}
+                                <p className="text-sm font-bold text-destiny-gold leading-tight">{armorSetBonus.name}</p>
+                                <div className="mt-2 space-y-2">
+                                    {armorSetBonus.bonuses.map((setBonusTier) => (
+                                        <div
+                                            key={`${setBonusTier.requiredSetCount ?? "bonus"}-${setBonusTier.sandboxPerkHash ?? setBonusTier.name}`}
+                                            className="border border-white/10 bg-black/20 p-2"
+                                        >
+                                            <p className="text-[11px] font-bold uppercase tracking-wide text-destiny-gold">
+                                                {formatArmorSetBonusRequirement(setBonusTier.requiredSetCount)}
+                                                {setBonusTier.name && (
+                                                    <span className="ml-1 normal-case tracking-normal text-slate-100">
+                                                        - {setBonusTier.name}
+                                                    </span>
+                                                )}
+                                            </p>
+                                            {setBonusTier.description && (
+                                                <p
+                                                    className={cn(
+                                                        "mt-1 text-xs leading-relaxed text-slate-300",
+                                                        shouldClampSetBonusDescriptions && "line-clamp-2"
+                                                    )}
+                                                    title={
+                                                        shouldClampSetBonusDescriptions
+                                                            ? setBonusTier.description
+                                                            : undefined
+                                                    }
+                                                >
+                                                    {setBonusTier.description}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>

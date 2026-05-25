@@ -30,9 +30,9 @@ export interface VaultGridProps {
 
 // --- Size configurations ---
 const SIZE_CONFIG = {
-    small: { width: 64, height: 64, gap: 4 },
-    medium: { width: 80, height: 80, gap: 4 },
-    large: { width: 96, height: 96, gap: 4 }
+    small: { width: 48, height: 48, gap: 4 },
+    medium: { width: 56, height: 56, gap: 4 },
+    large: { width: 64, height: 64, gap: 4 }
 } as const;
 
 /**
@@ -62,9 +62,9 @@ export function VaultGrid({
     const gridGap = gap ?? config.gap;
 
     const iconSizeClass = {
-        small: 'w-16 h-16',
-        medium: 'w-20 h-20',
-        large: 'w-24 h-24'
+        small: 'w-12 h-12',
+        medium: 'w-14 h-14',
+        large: 'w-16 h-16'
     }[iconSize];
 
     if (items.length === 0) {

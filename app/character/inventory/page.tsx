@@ -2,16 +2,16 @@
 
 import dynamic from 'next/dynamic';
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
-import { useItemDefinitions } from "@/hooks/useItemDefinitions";
+import { useInventoryItemDefinitionsFromTable } from "@/hooks/useInventoryItemDefinitionsFromTable";
 import { Loader2, Search, Settings } from "lucide-react";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { loginWithBungie } from "@/lib/bungie";
 import { useSettingsStore } from "@/store/settingsStore";
 
-// Lazy load heavy grid component
-const VaultGrid = dynamic(
-  () => import("@/components/VaultGrid").then((mod) => mod.VaultGrid),
+// Lazy load the lightweight virtualized tile grid
+const VirtualizedItemGrid = dynamic(
+  () => import("@/components/VirtualizedItemGrid").then((mod) => mod.VirtualizedItemGrid),
   { ssr: false, loading: () => <div className="h-48 animate-pulse bg-white/5 rounded" /> }
 );
 
@@ -44,7 +44,7 @@ export default function InventoryPage() {
   const itemHashes = useMemo(() => allProfileItems.map((i: any) => i.itemHash), [allProfileItems]);
 
   // 2. Fetch Definitions
-  const { definitions, isLoading: defsLoading } = useItemDefinitions(itemHashes);
+  const { definitions } = useInventoryItemDefinitionsFromTable(itemHashes, "card");
 
   // 3. Filter Logic
   const filterItem = (item: any) => {
@@ -84,31 +84,8 @@ export default function InventoryPage() {
       });
   };
 
-  // CSS Classes
-  const iconSizeClass = {
-      'small': 'w-16 h-16',
-      'medium': 'w-20 h-20',
-      'large': 'w-24 h-24'
-  }[iconSize];
-
-  // Data accessors for VaultGrid
-  const getInstanceData = useCallback((itemInstanceId: string) => {
-      const instance = profile?.itemComponents?.instances?.data?.[itemInstanceId];
-      const itemStats = profile?.itemComponents?.stats?.data?.[itemInstanceId]?.stats;
-      if (!instance) return undefined;
-      return { ...instance, stats: itemStats };
-  }, [profile]);
-
-  const getSocketsData = useCallback((itemInstanceId: string) => {
-      return profile?.itemComponents?.sockets?.data?.[itemInstanceId];
-  }, [profile]);
-
-  const getReusablePlugs = useCallback((itemInstanceId: string) => {
-      return profile?.itemComponents?.reusablePlugs?.data?.[itemInstanceId]?.plugs;
-  }, [profile]);
-
   // Check match callback for search (always true since we pre-filter)
-  const checkMatchCallback = useCallback(() => true, []);
+  const checkMatchCallback = () => true;
 
   if (!mounted) return null;
 
@@ -218,21 +195,19 @@ export default function InventoryPage() {
                         <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2 sticky top-0 z-10 py-2 backdrop-blur-sm">
                             Consumables ({visibleConsumables.length})
                         </h3>
-                        <VaultGrid
+                        <VirtualizedItemGrid
                             items={visibleConsumables.map((item: any) => ({
                                 itemHash: item.itemHash,
                                 itemInstanceId: item.itemInstanceId,
-                                quantity: item.quantity
+                                quantity: item.quantity,
+                                definition: definitions[item.itemHash],
                             }))}
                             iconSize={iconSize}
                             ownerId="PROFILE"
-                            definitions={definitions}
                             checkMatch={checkMatchCallback}
-                            getInstanceData={getInstanceData}
-                            getSocketsData={getSocketsData}
-                            getReusablePlugs={getReusablePlugs}
                             gap={8}
-                            maxHeight={400}
+                            containerHeight={Math.min(520, Math.max(180, visibleConsumables.length * 16))}
+                            overscan={160}
                         />
                     </div>
                 )}
@@ -243,21 +218,19 @@ export default function InventoryPage() {
                         <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2 sticky top-0 z-10 py-2 backdrop-blur-sm">
                             Modifications ({visibleMods.length})
                         </h3>
-                        <VaultGrid
+                        <VirtualizedItemGrid
                             items={visibleMods.map((item: any) => ({
                                 itemHash: item.itemHash,
                                 itemInstanceId: item.itemInstanceId,
-                                quantity: item.quantity
+                                quantity: item.quantity,
+                                definition: definitions[item.itemHash],
                             }))}
                             iconSize={iconSize}
                             ownerId="PROFILE"
-                            definitions={definitions}
                             checkMatch={checkMatchCallback}
-                            getInstanceData={getInstanceData}
-                            getSocketsData={getSocketsData}
-                            getReusablePlugs={getReusablePlugs}
                             gap={8}
-                            maxHeight={400}
+                            containerHeight={Math.min(520, Math.max(180, visibleMods.length * 16))}
+                            overscan={160}
                         />
                     </div>
                 )}

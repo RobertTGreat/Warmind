@@ -22,9 +22,7 @@ export function CacheStatusBadge() {
       title="Refresh profile data"
     >
       <Database className="h-3 w-3" />
-      <span>
-        {isUsingCachedData ? "Cached" : "Fresh"} {cacheInfo.ageString ?? ""}
-      </span>
+      {isUsingCachedData && <span>Cached</span>}
       <RefreshCw className="h-3 w-3" />
     </button>
   );

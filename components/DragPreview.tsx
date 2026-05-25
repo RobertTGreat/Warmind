@@ -13,9 +13,9 @@ interface DragPreviewProps {
 }
 
 const SIZE_MAP = {
-    small: 64,
-    medium: 80,
-    large: 96
+    small: 48,
+    medium: 56,
+    large: 64
 };
 
 /**

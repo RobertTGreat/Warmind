@@ -1,9 +1,15 @@
 'use client';
 
-import { VirtuosoGrid, GridComponents, GridItemContent, GridScrollSeekPlaceholderProps } from 'react-virtuoso';
-import { DestinyItemCard } from './DestinyItemCard';
+import { VirtuosoGrid, GridComponents, GridScrollSeekPlaceholderProps } from 'react-virtuoso';
+import { ItemTile, type ItemTileModel } from '@/components/ItemTile';
 import { cn } from '@/lib/utils';
-import { ComponentType, forwardRef, useMemo, useCallback, memo, CSSProperties, HTMLAttributes } from 'react';
+import { forwardRef, useMemo, useCallback, memo, HTMLAttributes } from 'react';
+import { ITEM_ICON_CSS_PX, itemIconDecodeBudgetPx } from '@/lib/itemIconImage';
+import {
+    buildBungieIconUrl,
+    getClientManifestVersionCacheKey,
+    normalizeBungieAssetPath,
+} from '@/lib/bungieImageProxy';
 
 // --- Types ---
 export interface VirtualizedItem {
@@ -16,6 +22,7 @@ export interface VirtualizedItem {
     socketsData?: any;
     reusablePlugs?: any[];
     definition?: any;
+    tileModel?: ItemTileModel;
 }
 
 export interface VirtualizedItemGridProps {
@@ -33,10 +40,51 @@ export interface VirtualizedItemGridProps {
 
 // --- Size configurations ---
 const SIZE_CONFIG = {
-    small: { width: 64, height: 64, gap: 4 },
-    medium: { width: 80, height: 80, gap: 4 },
-    large: { width: 96, height: 96, gap: 4 }
+    small: { width: 48, height: 48, gap: 4 },
+    medium: { width: 56, height: 56, gap: 4 },
+    large: { width: 64, height: 64, gap: 4 }
 } as const;
+
+function getRarityClassName(definition: any) {
+    switch (definition?.inventory?.tierTypeName) {
+        case 'Exotic':
+            return 'border-yellow-500';
+        case 'Legendary':
+            return 'border-purple-500';
+        case 'Rare':
+            return 'border-blue-500';
+        case 'Common':
+            return 'border-green-500';
+        default:
+            return 'border-white/20';
+    }
+}
+
+function buildFallbackTileModel(
+    item: VirtualizedItem,
+    iconSize: 'small' | 'medium' | 'large'
+): ItemTileModel {
+    const definition = item.definition;
+    const decodeWidth = itemIconDecodeBudgetPx(iconSize, 2);
+    const manifestVersion = getClientManifestVersionCacheKey();
+    const iconPath = normalizeBungieAssetPath(definition?.displayProperties?.icon);
+    const watermarkPath = normalizeBungieAssetPath(
+        definition?.iconWatermark || definition?.iconWatermarkShelved
+    );
+
+    return {
+        itemHash: item.itemHash,
+        itemInstanceId: item.itemInstanceId,
+        name: definition?.displayProperties?.name ?? `Item ${item.itemHash}`,
+        iconSrc: iconPath ? buildBungieIconUrl(iconPath, decodeWidth, manifestVersion) : null,
+        watermarkSrc: watermarkPath
+            ? buildBungieIconUrl(watermarkPath, decodeWidth, manifestVersion)
+            : null,
+        primaryStat: item.instanceData?.primaryStat?.value,
+        quantity: !item.itemInstanceId ? item.quantity : undefined,
+        rarityClassName: getRarityClassName(definition),
+    };
+}
 
 // --- Placeholder component for fast scrolling ---
 const ItemPlaceholder = memo(({ 
@@ -58,6 +106,7 @@ ItemPlaceholder.displayName = 'ItemPlaceholder';
 // --- Grid Item Component ---
 interface ItemRendererProps {
     item: VirtualizedItem;
+    index: number;
     iconSize: 'small' | 'medium' | 'large';
     ownerId: string;
     isHighlighted: boolean;
@@ -65,30 +114,44 @@ interface ItemRendererProps {
 
 const ItemRenderer = memo(({ 
     item, 
+    index,
     iconSize, 
     ownerId,
     isHighlighted
 }: ItemRendererProps) => {
-    const iconSizeClass = {
-        small: 'w-16 h-16',
-        medium: 'w-20 h-20',
-        large: 'w-24 h-24'
+    const baseTileModel = item.tileModel ?? buildFallbackTileModel(item, iconSize);
+    const tileModel = isHighlighted
+        ? baseTileModel
+        : { ...baseTileModel, isDimmed: true };
+    const tileWidthClass = {
+        small: 'w-12',
+        medium: 'w-14',
+        large: 'w-16',
     }[iconSize];
 
+    const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+        if (!item.itemInstanceId) return;
+
+        event.dataTransfer.setData('application/json', JSON.stringify({
+            itemHash: item.itemHash,
+            itemInstanceId: item.itemInstanceId,
+            ownerId,
+            def: item.definition,
+        }));
+        event.dataTransfer.setData('text/plain', item.itemInstanceId);
+
+        const rect = event.currentTarget.getBoundingClientRect();
+        event.dataTransfer.setDragImage(event.currentTarget, rect.width / 2, rect.height / 2);
+    };
+
     return (
-        <DestinyItemCard
-            itemHash={item.itemHash}
-            definition={item.definition}
-            instanceData={item.instanceData}
-            socketsData={item.socketsData}
-            reusablePlugs={item.reusablePlugs}
-            className={iconSizeClass}
-            isHighlighted={isHighlighted}
-            itemInstanceId={item.itemInstanceId}
-            ownerId={ownerId}
-            quantity={item.quantity}
-            size={iconSize}
-            imageFetchPriority="low"
+        <ItemTile
+            item={tileModel}
+            sizePx={ITEM_ICON_CSS_PX[iconSize]}
+            className={tileWidthClass}
+            fetchPriority={index < 18 ? 'auto' : 'low'}
+            draggable={!!item.itemInstanceId}
+            onDragStart={handleDragStart}
         />
     );
 });
@@ -118,6 +181,7 @@ export function VirtualizedItemGrid({
         return (
             <ItemRenderer
                 item={item}
+                index={index}
                 iconSize={iconSize}
                 ownerId={ownerId}
                 isHighlighted={isHighlighted}
@@ -171,12 +235,6 @@ export function VirtualizedItemGrid({
         Item,
         ScrollSeekPlaceholder,
     }), [List, Item, ScrollSeekPlaceholder]);
-
-    // Transform items to include data property for virtuoso
-    const itemsWithData = useMemo(() => 
-        items.map(item => ({ ...item, data: item })), 
-        [items]
-    );
 
     if (items.length === 0) {
         return (
@@ -233,12 +291,6 @@ export function GroupedVirtualizedGrid({
     const totalItems = groups.reduce((sum, g) => sum + g.items.length, 0);
     
     if (totalItems < 50) {
-        const iconSizeClass = {
-            small: 'w-16 h-16',
-            medium: 'w-20 h-20',
-            large: 'w-24 h-24'
-        }[iconSize];
-
         return (
             <div className="flex flex-col gap-6">
                 {groups.map(group => {
@@ -253,20 +305,13 @@ export function GroupedVirtualizedGrid({
                                 style={{ gap: `${gridGap}px` }}
                             >
                                 {group.items.map((item, idx) => (
-                                    <DestinyItemCard
+                                    <ItemRenderer
                                         key={`${item.itemHash}-${item.itemInstanceId || idx}`}
-                                        itemHash={item.itemHash}
-                                        definition={item.definition}
-                                        instanceData={item.instanceData}
-                                        socketsData={item.socketsData}
-                                        reusablePlugs={item.reusablePlugs}
-                                        className={iconSizeClass}
-                                        isHighlighted={checkMatch ? checkMatch(item) : true}
-                                        itemInstanceId={item.itemInstanceId}
+                                        item={item}
+                                        index={idx}
+                                        iconSize={iconSize}
                                         ownerId={ownerId}
-                                        quantity={item.quantity}
-                                        size={iconSize}
-                                        imageFetchPriority="low"
+                                        isHighlighted={checkMatch ? checkMatch(item) : true}
                                     />
                                 ))}
                             </div>
@@ -282,6 +327,11 @@ export function GroupedVirtualizedGrid({
         <div className="flex flex-col gap-6" style={{ height: containerHeight, overflow: 'auto' }}>
             {groups.map(group => {
                 if (group.items.length === 0) return null;
+                const groupHeight = Math.min(
+                    360,
+                    Math.max(140, Math.ceil(group.items.length / 6) * (config.height + 32))
+                );
+
                 return (
                     <div key={group.key}>
                         <h4 className={cn("text-[10px] uppercase font-bold mb-2 sticky top-0 bg-[#0a0a0a]/90 backdrop-blur-sm py-1 z-10", group.labelClassName || "text-slate-500")}>
@@ -292,7 +342,8 @@ export function GroupedVirtualizedGrid({
                             iconSize={iconSize}
                             ownerId={ownerId}
                             checkMatch={checkMatch}
-                            containerHeight="auto"
+                            containerHeight={groupHeight}
+                            overscan={160}
                             gap={gridGap}
                         />
                     </div>

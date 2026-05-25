@@ -1,12 +1,12 @@
 /**
- * Fixed CSS pixel sizes for Destiny item icon cells (matches Tailwind w-16 / w-20 / w-24).
+ * Fixed CSS pixel sizes for Destiny item icon cells (matches Tailwind w-12 / w-14 / w-16).
  * Accurate `sizes` feeds Next/Image; `itemIconDecodeBudgetPx` matches `/api/bungie-image` width
  * (DPR-capped) so the proxy does not upscale beyond what the cell needs.
  */
 export const ITEM_ICON_CSS_PX = {
-  small: 64,
-  medium: 80,
-  large: 96,
+  small: 48,
+  medium: 56,
+  large: 64,
 } as const;
 
 export type ItemIconSize = keyof typeof ITEM_ICON_CSS_PX;

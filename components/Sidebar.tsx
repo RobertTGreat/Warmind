@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { 
-    Box, 
     Backpack, 
     ScrollText, 
     Book, 
@@ -32,7 +31,6 @@ type SubNavItem = {
 const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
     '/character': [
         { name: 'Home', href: '/character', icon: Home },
-        { name: 'Vault', href: '/character/vault', icon: Box },
         { name: 'Inventory', href: '/character/inventory', icon: Backpack },
         { name: 'Loadouts', href: '/character/loadouts', icon: Layers },
         { name: 'Optimizer', href: '/character/optimizer', icon: Target },
@@ -80,20 +78,17 @@ export function Sidebar() {
             
             if (!itemInstanceId) return;
 
-            // Determine transfer logic
-            // Vault -> Transfer to Vault
-            // Inventory -> Transfer from Vault (to active char)
-            const isVaultTarget = targetName === 'Vault';
-            
+            const transferToVault = false;
+
             await transferItem(
                 itemInstanceId, 
                 itemHash, 
                 stats.characterId, // Active Character
                 membershipInfo.membershipType,
-                isVaultTarget
+                transferToVault
             );
             
-            console.log(`Transferred item ${itemHash} to ${isVaultTarget ? 'Vault' : 'Inventory'}`);
+            console.log(`Transferred item ${itemHash} to Inventory`);
         } catch (err) {
             console.error("Drop failed", err);
         }
@@ -107,7 +102,7 @@ export function Sidebar() {
                 {items.map((item) => {
                     const isActive = pathname === item.href;
                     const Icon = item.icon;
-                    const isDropTarget = item.name === 'Vault' || item.name === 'Inventory';
+                    const isDropTarget = item.name === 'Inventory';
                     
                     return (
                         <Tooltip 

@@ -11,7 +11,7 @@
 import useSWR from 'swr';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import Cookies from 'js-cookie';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     getCachedProfile,
     cacheProfile,
@@ -23,35 +23,74 @@ import type { CachedProfile } from '@/lib/db';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
-const CORE_PROFILE_COMPONENTS = [
-  100, // profiles
-  102, // profile inventory
-  103, // profile currencies
-  104, // profile progression
-  200, // characters
-  201, // character inventories
-  202, // character progression
-  203, // character render data
-  204, // character activities
-  205, // character equipment
-  206, // character loadouts
-  300, // item instances
-  301, // item objectives
-  302, // item perks
-  304, // item stats
-  305, // item sockets
-  306, // item talent grids
-  307, // item common data
-  308, // item plug states
-  309, // item plug objectives
-  310, // item reusable plugs
-  700, // character collectibles
-  701, // item collectibles
-  800, // profile records
-  900, // profile records
-  901, // character records
-  1100, // profile string variables
-] as const;
+export const PROFILE_COMPONENTS = {
+  vault: [
+    100, // profiles
+    102, // profile inventory
+    200, // characters
+    201, // character inventories
+    205, // character equipment
+    300, // item instances
+    304, // item stats
+    305, // item sockets
+    310, // reusable plugs
+  ],
+
+  inventory: [
+    100, // profiles
+    102, // profile inventory
+    103, // profile currencies
+    104, // character currencies
+    200, // characters
+    201, // character inventories
+    205, // character equipment
+    206, // character loadouts
+    300, // item instances
+    304, // item stats
+    305, // item sockets for detail overlays
+    309, // item plug objectives for normalized socket data
+    310, // reusable plugs for detail overlays
+  ],
+
+  collections: [
+    100, // profiles
+    200, // characters
+    700, // character collectibles
+    800, // profile collectibles
+  ],
+
+  records: [
+    100,
+    200,
+    900,
+    901,
+  ],
+
+  full: [
+    100, 102, 103, 104,
+    200, 201, 202, 203, 204, 205, 206,
+    300, 301, 302, 304, 305, 306, 307, 308, 309, 310,
+    700, 701,
+    800, 900, 901,
+    1100,
+  ],
+} as const;
+
+export function getProfileComponentsForPathname(pathname: string | null) {
+  if (pathname === '/character' || pathname?.startsWith('/character/inventory')) {
+    return PROFILE_COMPONENTS.inventory;
+  }
+
+  if (pathname?.startsWith('/collections')) {
+    return PROFILE_COMPONENTS.collections;
+  }
+
+  if (pathname?.startsWith('/triumphs')) {
+    return PROFILE_COMPONENTS.records;
+  }
+
+  return PROFILE_COMPONENTS.full;
+}
 
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -104,7 +143,9 @@ export interface ProfileCacheInfo {
   ageString: string | null;
 }
 
-export function useDestinyProfile() {
+export function useDestinyProfile(
+  components: readonly number[] = PROFILE_COMPONENTS.full
+) {
   // Initialize to false to match server-side rendering and prevent hydration mismatch
   const [hasToken, setHasToken] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -119,7 +160,11 @@ export function useDestinyProfile() {
     lastUpdated: null,
     ageString: null,
   });
-  const cacheLoadedRef = useRef(false);
+  const cacheLoadedKeyRef = useRef<string | null>(null);
+  const componentsKey = useMemo(
+    () => [...components].sort((a, b) => a - b).join(','),
+    [components]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -163,13 +208,24 @@ export function useDestinyProfile() {
   const destinyMembershipId = primaryMembership?.membershipId;
   const displayName = userMemberships?.Response?.bungieNetUser?.uniqueName || 
                       primaryMembership?.bungieGlobalDisplayName;
+  const profileCacheKey = destinyMembershipId
+    ? `${destinyMembershipId}:${componentsKey}`
+    : null;
 
   // Load cached profile when we have membership info
   useEffect(() => {
-    if (destinyMembershipId && !cacheLoadedRef.current) {
-      cacheLoadedRef.current = true;
+    if (profileCacheKey && cacheLoadedKeyRef.current !== profileCacheKey) {
+      cacheLoadedKeyRef.current = profileCacheKey;
+      setCachedProfileData(null);
+      setCacheInfo({
+        isCached: false,
+        isFresh: false,
+        isStale: false,
+        lastUpdated: null,
+        ageString: null,
+      });
       
-      getCachedProfile(destinyMembershipId).then((cached) => {
+      getCachedProfile(profileCacheKey).then((cached) => {
         if (cached) {
           console.log('[useDestinyProfile] Loaded cached profile from IndexedDB');
           setCachedProfileData(cached.data);
@@ -183,14 +239,14 @@ export function useDestinyProfile() {
         }
       });
     }
-  }, [destinyMembershipId]);
+  }, [profileCacheKey]);
 
   const profileKey =
     membershipType && destinyMembershipId
       ? endpoints.getProfile(
           membershipType,
           destinyMembershipId,
-          [...CORE_PROFILE_COMPONENTS]
+          [...components]
         )
       : null;
 
@@ -211,10 +267,10 @@ export function useDestinyProfile() {
 
   // Cache the fresh profile data when it arrives
   useEffect(() => {
-    if (profileResponse?.Response && destinyMembershipId && membershipType) {
+    if (profileResponse?.Response && profileCacheKey && membershipType) {
       console.log('[useDestinyProfile] Caching fresh profile to IndexedDB');
       cacheProfile(
-        destinyMembershipId,
+        profileCacheKey,
         membershipType,
         profileResponse.Response,
         displayName
@@ -229,7 +285,7 @@ export function useDestinyProfile() {
         ageString: 'just now',
       });
     }
-  }, [profileResponse, destinyMembershipId, membershipType, displayName]);
+  }, [profileResponse, profileCacheKey, membershipType, displayName]);
 
   // Use fresh data if available, otherwise fall back to cached
   const profile = profileResponse?.Response || cachedProfileData;
@@ -354,24 +410,24 @@ export function useDestinyProfile() {
 
   // Force refresh function
   const forceRefresh = useCallback(async () => {
-    if (membershipType && destinyMembershipId) {
+    if (membershipType && destinyMembershipId && profileCacheKey) {
       const response = await bungieApi.get(
         endpoints.getProfile(
           membershipType,
           destinyMembershipId,
-          [...CORE_PROFILE_COMPONENTS]
+          [...components]
         )
       );
       if (response.data?.Response) {
         await cacheProfile(
-          destinyMembershipId,
+          profileCacheKey,
           membershipType,
           response.data.Response,
           displayName
         );
       }
     }
-  }, [membershipType, destinyMembershipId, displayName]);
+  }, [membershipType, destinyMembershipId, profileCacheKey, displayName, components]);
 
   return {
     profile,

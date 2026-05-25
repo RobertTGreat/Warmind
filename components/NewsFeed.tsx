@@ -136,8 +136,8 @@ export function NewsFeed() {
                                             fill
                                             sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
                                             className="object-cover transition-transform duration-700 group-hover:scale-105"
-                                            // First image on first page is LCP - prioritize it
-                                            priority={page === 0 && i === 0}
+                                            // First image on first page is LCP.
+                                            preload={page === 0 && i === 0}
                                             fetchPriority={page === 0 && i === 0 ? "high" : "auto"}
                                             loading={page === 0 && i === 0 ? "eager" : "lazy"}
                                         />

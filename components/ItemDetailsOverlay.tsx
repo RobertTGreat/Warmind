@@ -5,7 +5,7 @@ import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-
 import { useUIStore } from '@/store/uiStore';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { getBungieImage, bungieApi, endpoints, insertSocketPlug, insertSocketPlugFree } from '@/lib/bungie';
-import { BUCKETS, getItemTier } from '@/lib/destinyUtils';
+import { BUCKETS } from '@/lib/destinyUtils';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
@@ -52,17 +52,7 @@ export function ItemDetailsOverlay() {
   const stats = detailsItem?.itemInstanceId ? profile?.itemComponents?.stats?.data?.[detailsItem.itemInstanceId]?.stats : undefined;
   const objectives = detailsItem?.itemInstanceId ? profile?.itemComponents?.objectives?.data?.[detailsItem.itemInstanceId]?.objectives : undefined;
 
-  // Fetch plug definitions for Tier calculation
-  const activePlugHashes = useMemo(() => {
-      if (!sockets) return [];
-      return sockets.map((s: any) => s.plugHash).filter((h: any) => h);
-  }, [sockets]);
-  
-  const { definitions: plugDefs } = useItemDefinitions(activePlugHashes);
-  
-  const tierNumber = useMemo(() => {
-      return getItemTier(itemDef, { sockets }, plugDefs, instance);
-  }, [itemDef, sockets, plugDefs, instance]);
+  const tierNumber = instance?.gearTier ?? 0;
 
   if (!detailsItem) return null;
 

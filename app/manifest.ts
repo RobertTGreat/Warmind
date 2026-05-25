@@ -57,13 +57,6 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: 'Vault',
-        short_name: 'Vault',
-        description: 'Access your vault',
-        url: '/character/vault',
-        icons: [{ src: '/icons/vault.png', sizes: '192x192' }],
-      },
-      {
         name: 'Inventory',
         short_name: 'Inventory',
         description: 'Manage current character inventory',

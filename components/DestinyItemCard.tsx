@@ -1,17 +1,24 @@
 import useSWR from 'swr';
 import Image from 'next/image';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
-import { displayPixelsForCssEdge, itemIconDecodeBudgetPx, itemIconSizes } from '@/lib/itemIconImage';
-import { buildBungieImageProxyUrl, normalizeBungieAssetPath } from '@/lib/bungieImageProxy';
+import { displayPixelsForCssEdge, itemIconDecodeBudgetPx, ITEM_ICON_CSS_PX } from '@/lib/itemIconImage';
+import {
+  buildBungieIconUrl,
+  buildBungieImageProxyUrl,
+  getClientManifestVersionCacheKey,
+  normalizeBungieAssetPath,
+  USE_BUNGIE_ICON_PROXY,
+} from '@/lib/bungieImageProxy';
 import { cn } from '@/lib/utils';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { ItemTooltip } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useTransferStore, TransferStatus } from '@/store/transferStore';
-import { getItemTier, getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils';
+import { getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils';
 import { useWishListStore } from '@/store/wishlistStore';
 import { RefreshCw } from 'lucide-react';
+import { FastBungieIcon } from '@/components/FastBungieIcon';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -38,6 +45,14 @@ interface DestinyItemCardProps {
     imagePriority?: boolean;
     /** Use `low` in vault / virtualized grids so icons don’t compete with visible content. */
     imageFetchPriority?: 'auto' | 'high' | 'low';
+    definitionIsPartial?: boolean;
+    /** Skip expensive socket/perk detail work until hover or context menu. */
+    deferDetails?: boolean;
+    /** Render only tooltip/context menu logic; the caller owns the visible tile. */
+    renderTile?: boolean;
+    forcedTooltipPosition?: { x: number; y: number };
+    forcedContextMenuPosition?: { x: number; y: number };
+    onCloseForcedContextMenu?: () => void;
 }
 
 // Element Icons (Updated with transparent PNGs where possible)
@@ -96,11 +111,30 @@ export function DestinyItemCard({
     tierAsNumber,
     imagePriority,
     imageFetchPriority,
+    definitionIsPartial,
+    deferDetails,
+    renderTile = true,
+    forcedTooltipPosition,
+    forcedContextMenuPosition,
+    onCloseForcedContextMenu,
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
   "use no memo"; // Opt out — avoids compiler/runtime `icon is not defined` in this component.
 
+  const [isHovered, setIsHovered] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState<{x: number, y: number} | null>(null);
+  const [initialTooltipPos, setInitialTooltipPos] = useState<{x: number, y: number} | undefined>(undefined);
+  const activeContextMenuPosition = forcedContextMenuPosition ?? contextMenuPos;
+  const activeTooltipPosition = forcedTooltipPosition ?? initialTooltipPos;
+  const shouldResolveFullDetails =
+    !deferDetails || isHovered || activeContextMenuPosition !== null || Boolean(forcedTooltipPosition);
+
+  const shouldFetchFullDefinition = Boolean(
+    itemHash &&
+    (!definition || (definitionIsPartial && (isHovered || contextMenuPos)))
+  );
+
   const { data: defResponse, error } = useSWR(
-    !definition && itemHash ? endpoints.getItemDefinition(itemHash) : null,
+    shouldFetchFullDefinition ? endpoints.getItemDefinition(itemHash) : null,
     fetcher,
     {
         revalidateOnFocus: false,
@@ -131,16 +165,11 @@ export function DestinyItemCard({
   const [isDragging, setIsDragging] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const def = definition || defResponse?.Response;
+  const def = defResponse?.Response || definition;
 
   // Check if item is a subclass
   const isSubclass = def?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
 
-  // State hooks moved up to prevent "Rendered fewer hooks" error
-  const [isHovered, setIsHovered] = useState(false);
-  const [contextMenuPos, setContextMenuPos] = useState<{x: number, y: number} | null>(null);
-  const [initialTooltipPos, setInitialTooltipPos] = useState<{x: number, y: number} | undefined>(undefined);
-    
   // Calculate plug hashes to fetch
   // Fetch ALL active plugs AND reusable plugs (options)
   const hashesToFetch = useMemo(() => {
@@ -150,6 +179,11 @@ export function DestinyItemCard({
           socketsData.sockets.forEach((s: any, index: number) => {
               // Active plug
               if (s.plugHash) allHashes.push(s.plugHash);
+
+              if (!shouldResolveFullDetails) {
+                  return;
+              }
+
               // Reusable plugs (options) - Check prop or socket
               const options = getReusablePlugsForSocket(reusablePlugs, s, index);
               if (options) {
@@ -162,12 +196,13 @@ export function DestinyItemCard({
       if (intrinsic) allHashes.push(intrinsic);
       
       return Array.from(new Set(allHashes));
-  }, [socketsData, reusablePlugs]);
+  }, [socketsData, reusablePlugs, shouldResolveFullDetails]);
 
   const { definitions: plugDefs } = useItemDefinitions(hashesToFetch);
 
   // Create a resolved list of relevant sockets for the Context Menu Tooltip
   const resolvedSockets = useMemo(() => {
+      if (!shouldResolveFullDetails) return [];
       if (!socketsData?.sockets || !plugDefs) return [];
       
       return socketsData.sockets
@@ -188,7 +223,7 @@ export function DestinyItemCard({
               return { socket: s, def };
           })
           .filter((item: { socket: any, def: any } | null): item is { socket: any, def: any } => !!item);
-  }, [socketsData, plugDefs]);
+  }, [socketsData, plugDefs, shouldResolveFullDetails]);
 
   // Determine Shiny Status (Heuristic: Legendary Weapon + Double Perks in both Trait Columns)
   // Or check for specific ornament if we had a list.
@@ -196,6 +231,7 @@ export function DestinyItemCard({
   const isShiny = useMemo(() => {
       // 1. Check API property first if available (Bungie added isHolofoil in later updates for BRAVE weapons)
       if (def?.isHolofoil) return true;
+      if (!shouldResolveFullDetails) return false;
 
       // 2. Fallback Heuristic Logic
       if (!def || def.itemType !== 3 || def.inventory?.tierTypeName !== 'Legendary') return false;
@@ -227,10 +263,11 @@ export function DestinyItemCard({
 
       // BRAVE Shiny weapons have double perks in at least 2 columns (usually 3 and 4)
       return multiPerkColumns >= 2;
-  }, [def, socketsData, plugDefs, reusablePlugs]);
+  }, [def, socketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
 
   // Calculate detailed perks for tooltip
   const detailedPerks = useMemo(() => {
+    if (!shouldResolveFullDetails) return undefined;
     if (!socketsData?.sockets || !plugDefs) return undefined;
     
     const perksList: any[] = [];
@@ -241,8 +278,18 @@ export function DestinyItemCard({
         if (!activePlug) return;
 
         const typeName = activePlug.itemTypeDisplayName?.toLowerCase() || "";
-        const category = activePlug.plug?.plugCategoryIdentifier || "";
+        const category = activePlug.plug?.plugCategoryIdentifier?.toLowerCase() || "";
         const name = activePlug.displayProperties?.name?.toLowerCase() || "";
+        const description = activePlug.displayProperties?.description?.toLowerCase() || "";
+        const isExoticArmor = def?.itemType === 2 && def?.inventory?.tierTypeName === "Exotic";
+        const isArmorIntrinsic =
+            isExoticArmor &&
+            (
+                typeName.includes("intrinsic") ||
+                category.includes("intrinsic") ||
+                category.includes("exotic") ||
+                description.includes("intrinsic trait")
+            );
 
         // Filter for perks/traits/barrels/mags/sights/scopes
         const isPerk = typeName.includes("trait") || 
@@ -252,7 +299,8 @@ export function DestinyItemCard({
                        typeName.includes("barrel") ||
                        typeName.includes("magazine") ||
                        typeName.includes("sight") || 
-                       typeName.includes("scope");
+                       typeName.includes("scope") ||
+                       isArmorIntrinsic;
 
         // Exclude mods, shaders, ornaments, masterworks, trackers
         if (typeName.includes("mod") || 
@@ -285,7 +333,7 @@ export function DestinyItemCard({
     });
     
     return perksList.length > 0 ? perksList : undefined;
-  }, [socketsData, plugDefs, reusablePlugs]);
+  }, [socketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
 
   useEffect(() => {
       if (def && onDefinitionLoaded) {
@@ -314,19 +362,17 @@ export function DestinyItemCard({
       };
     }
     const w = itemIconDecodeBudgetPx(size, 2);
+    const manifestVersion = getClientManifestVersionCacheKey();
     const iconPath = normalizeBungieAssetPath(def.displayProperties?.icon);
     const itemIconSrc = iconPath
-      ? buildBungieImageProxyUrl(iconPath, w)
-      : def.displayProperties?.icon
-        ? getBungieImage(def.displayProperties.icon)
-        : null;
-    const wm = def.iconWatermark || def.iconWatermarkShelved;
-    const wmPath = wm ? normalizeBungieAssetPath(wm) : null;
-    const watermarkSrc = wmPath
-      ? buildBungieImageProxyUrl(wmPath, w)
-      : wm
-        ? getBungieImage(wm)
-        : null;
+      ? USE_BUNGIE_ICON_PROXY
+        ? buildBungieImageProxyUrl(iconPath, w, manifestVersion)
+        : getBungieImage(iconPath)
+      : null;
+    const watermarkPath = normalizeBungieAssetPath(def.iconWatermark || def.iconWatermarkShelved);
+    const watermarkSrc = watermarkPath
+      ? buildBungieIconUrl(watermarkPath, w, manifestVersion)
+      : null;
     return { itemIconSrc, watermarkSrc };
   }, [def, size]);
   const itemIconSrc = itemIconPack.itemIconSrc;
@@ -346,7 +392,11 @@ export function DestinyItemCard({
     if (!p) {
       return elementIcon;
     }
-    return buildBungieImageProxyUrl(p, displayPixelsForCssEdge(12, 2));
+    return buildBungieImageProxyUrl(
+      p,
+      displayPixelsForCssEdge(12, 2),
+      getClientManifestVersionCacheKey()
+    );
   }, [elementIcon]);
 
   // Plugs Logic (Mods/Perks) - Moved logic into useMemo to be hook-safe
@@ -361,7 +411,7 @@ export function DestinyItemCard({
       const kt: any[] = [];
       let et: number | null = null;
 
-      if (socketsData?.sockets && plugDefs) {
+      if (shouldResolveFullDetails && socketsData?.sockets && plugDefs) {
           socketsData.sockets.forEach((socket: any) => {
               if (!socket.plugHash) return;
               const plug = plugDefs[socket.plugHash];
@@ -411,7 +461,7 @@ export function DestinyItemCard({
           });
       }
       return { perks: p, mods: m, shaders: s, ornaments: o, killEffects: ke, killTrackers: kt, enhancementTierDerived: et };
-  }, [socketsData, plugDefs]);
+  }, [socketsData, plugDefs, shouldResolveFullDetails]);
 
   // Derived properties
   const isMasterwork = (instanceData ? (instanceData.state & 4) === 4 : false) || (enhancementTierDerived === 10);
@@ -451,12 +501,13 @@ export function DestinyItemCard({
       return s;
   }, [def, instanceData]);
 
-  // Calculate Tier
-  const tierNumber = getItemTier(def, socketsData, plugDefs, instanceData, reusablePlugs);
+  // DIM-style item drop tier comes from the live instance, not socket text.
+  const tierNumber = instanceData?.gearTier ?? 0;
   const tier = tierNumber > 1 ? `Tier ${tierNumber}` : null;
 
   // Calculate Armor Quality
   const armorQuality = useMemo(() => {
+      if (!shouldResolveFullDetails) return null;
       if (def?.itemType !== 2 || !instanceData?.stats) return null;
        // We need activePlugs for base stat calculation
       const activePlugs: any[] = [];
@@ -470,11 +521,13 @@ export function DestinyItemCard({
       const isMw = (instanceData.state & 4) === 4;
       const baseStats = getArmorBaseStats(instanceData.stats, activePlugs, isMw);
       return getArmorQuality(baseStats, def);
-  }, [def, instanceData, socketsData, plugDefs]);
+  }, [def, instanceData, socketsData, plugDefs, shouldResolveFullDetails]);
 
   // Extract perk hashes for wish list matching
   // Include ALL available perks (reusable plugs), not just currently selected ones
   const perkHashes = useMemo(() => {
+      if (!shouldResolveFullDetails) return [];
+
       const hashes: number[] = [];
       
       if (socketsData?.sockets) {
@@ -542,7 +595,7 @@ export function DestinyItemCard({
       }
       
       return hashes;
-  }, [socketsData, reusablePlugs]);
+  }, [socketsData, reusablePlugs, shouldResolveFullDetails]);
 
   // Wish List Integration
   const getWishListInfo = useWishListStore(state => state.getWishListInfo);
@@ -560,6 +613,7 @@ export function DestinyItemCard({
   // Handlers
   const handleContextMenu = (e: React.MouseEvent) => {
       e.preventDefault();
+      if (forcedContextMenuPosition) return;
       setContextMenuPos({ x: e.clientX, y: e.clientY });
       setIsHovered(false);
   };
@@ -609,9 +663,9 @@ export function DestinyItemCard({
   };
 
   const starConfig = {
-      small: { text: 'text-[9px]', top: 'top-3.5', left: 'left-[0.3rem]', gap: 'gap-0' },
-      medium: { text: 'text-[11px]', top: 'top-4.5', left: 'left-[0.38rem]', gap: 'gap-0' },
-      large: { text: 'text-[13px]', top: 'top-5.5', left: 'left-[0.45rem]', gap: 'gap-0' }
+      small: { text: 'text-[7px]', top: 'top-2.5', left: 'left-[0.25rem]', gap: '-space-y-1' },
+      medium: { text: 'text-[8px]', top: 'top-3', left: 'left-[0.28rem]', gap: '-space-y-1' },
+      large: { text: 'text-[9px]', top: 'top-3.5', left: 'left-[0.3rem]', gap: '-space-y-0.5' }
   }[size];
 
   const wantsStatsRow = !!(
@@ -697,7 +751,7 @@ export function DestinyItemCard({
           alt=""
           decoding="async"
           loading="lazy"
-          fetchPriority={imageFetchPriority}
+          fetchPriority={imageFetchPriority ?? "low"}
           className="object-contain shrink-0"
         />
       )}
@@ -739,6 +793,79 @@ export function DestinyItemCard({
       );
   }
 
+  const isLcpImage = imagePriority === true;
+  const iconFetchPriority = isLcpImage ? "high" : imageFetchPriority ?? "low";
+  const shouldShowTooltip =
+    Boolean(activeTooltipPosition) && !isDimmed && !activeContextMenuPosition;
+  const closeContextMenu = () => {
+      setContextMenuPos(null);
+      onCloseForcedContextMenu?.();
+  };
+  const tooltipNode = shouldShowTooltip ? (
+      <ItemTooltip
+          name={name}
+          itemType={itemType}
+          rarity={rarity}
+          icon={itemIconSrc || undefined}
+          power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
+          screenshot={screenshot || undefined}
+          flavorText={def.flavorText}
+          seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
+          elementIcon={elementIcon}
+          stats={stats}
+          itemHash={itemHash}
+          perks={perks}
+          mods={mods}
+          shaders={shaders}
+          ornaments={ornaments}
+          killEffects={killEffects}
+          killTrackers={killTrackers}
+          enhancementTier={enhancementTier}
+          tier={tier || undefined}
+          initialPosition={activeTooltipPosition}
+          objectives={objectives}
+          itemDef={def}
+          isShiny={isShiny}
+          detailedPerks={detailedPerks}
+          armorQuality={armorQuality}
+          socketsData={socketsData}
+          plugDefs={plugDefs}
+          wishListInfo={wishListInfo}
+      />
+  ) : null;
+  const contextMenuNode = activeContextMenuPosition ? (
+      <ItemContextMenu
+          x={activeContextMenuPosition.x}
+          y={activeContextMenuPosition.y}
+          onClose={closeContextMenu}
+          itemHash={itemHash}
+          itemInstanceId={itemInstanceId}
+          ownerId={ownerId}
+          isLocked={isLocked}
+          itemDef={def}
+          sockets={resolvedSockets}
+          instanceData={instanceData}
+          detailedPerks={detailedPerks}
+          wishListInfo={wishListInfo}
+          socketsData={socketsData}
+          plugDefs={plugDefs}
+          tooltipSeasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
+          tooltipElementIcon={elementIcon}
+          tooltipTier={tier}
+          tooltipEnhancementTier={enhancementTier}
+          tooltipIsShiny={isShiny}
+          tooltipArmorQuality={armorQuality}
+      />
+  ) : null;
+
+  if (!renderTile) {
+      return (
+          <>
+              {tooltipNode}
+              {contextMenuNode}
+          </>
+      );
+  }
 
     return (
     <>
@@ -770,30 +897,24 @@ export function DestinyItemCard({
                 isDimmed ? "opacity-20 grayscale" : ""
             )}>
                 {itemIconSrc && (
-                  <Image 
-                    src={itemIconSrc} 
-                    alt={name || "Item Icon"} 
-                    title=""
-                    fill
-                    sizes={itemIconSizes(size)}
-                    priority={imagePriority}
-                    fetchPriority={imageFetchPriority}
-                    decoding="async"
-                    className="object-cover"
+                  <FastBungieIcon
+                    src={itemIconSrc}
+                    alt={name || ""}
+                    size={ITEM_ICON_CSS_PX[size]}
+                    fetchPriority={iconFetchPriority}
+                    className="absolute inset-0"
                   />
                 )}
                 
                 {/* Seasonal Badge */}
                 {watermarkSrc && (
                     <div className="absolute inset-0 z-10 pointer-events-none">
-                        <Image 
-                            src={watermarkSrc} 
-                            alt="Season"
-                            fill
-                            sizes={itemIconSizes(size)}
-                            fetchPriority={imageFetchPriority}
-                            decoding="async"
-                            className="object-cover opacity-100" 
+                        <FastBungieIcon
+                            src={watermarkSrc}
+                            alt=""
+                            size={ITEM_ICON_CSS_PX[size]}
+                            fetchPriority="low"
+                            className="absolute inset-0 opacity-100 pointer-events-none"
                         />
                     </div>
                 )}
@@ -811,7 +932,7 @@ export function DestinyItemCard({
                         <div className="relative">
                             <RefreshCw className={cn(
                                 "text-destiny-gold animate-sync-spin drop-shadow-lg",
-                                size === 'small' ? "w-4 h-4" : size === 'large' ? "w-6 h-6" : "w-5 h-5"
+                                size === 'small' ? "w-3.5 h-3.5" : "w-4 h-4"
                             )} />
                         </div>
                     </div>
@@ -826,7 +947,7 @@ export function DestinyItemCard({
                 {wishListInfo.isTrash && (
                     <div className={cn(
                         "absolute bottom-0.5 right-0.5 z-20 flex items-center justify-center rounded-sm shadow-lg bg-red-500/90 text-white font-bold",
-                        size === 'small' ? "w-3.5 h-3.5 text-[7px]" : "w-4 h-4 text-[8px]"
+                        size === 'small' ? "w-3 h-3 text-[6px]" : "w-3.5 h-3.5 text-[7px]"
                     )}>
                         ✕
                     </div>
@@ -838,7 +959,7 @@ export function DestinyItemCard({
                         // Number display in top right corner
                         <div className={cn(
                             "absolute top-0.5 right-0.5 z-20 flex items-center justify-center rounded-sm font-bold drop-shadow-md",
-                            size === 'small' ? "w-3.5 h-3.5 text-[8px]" : size === 'large' ? "w-5 h-5 text-[11px]" : "w-4 h-4 text-[9px]",
+                            size === 'small' ? "w-3 h-3 text-[7px]" : "w-3.5 h-3.5 text-[8px]",
                             tierNumber === 5 ? "bg-destiny-gold/90 text-slate-900" : "bg-black/70 text-white border border-white/20"
                         )}>
                             {tierNumber}
@@ -846,7 +967,7 @@ export function DestinyItemCard({
                     ) : (
                         // Stars display
                         <div className={cn(
-                            "absolute z-20 flex flex-col leading-none",
+                            "absolute z-20 flex flex-col leading-[0.65]",
                             starConfig.top,
                             starConfig.left,
                             starConfig.gap
@@ -869,7 +990,7 @@ export function DestinyItemCard({
             </div>
 
             {showExpandedBottom && (
-                <div className="mt-1 w-full flex flex-col gap-1 bg-slate-950/95 border border-white/10 px-1.5 py-0.5 rounded-sm [contain:layout]">
+                <div className="mt-1 w-full flex flex-col gap-1 px-1.5 py-0.5 [contain:layout]">
                     {wantsStatsRow && statsRowEl}
 
                     {objectives?.map((obj: any, i: number) => {
@@ -892,64 +1013,10 @@ export function DestinyItemCard({
         </div>
 
         {/* Portal Tooltip */}
-        {isHovered && !isDimmed && !contextMenuPos && (
-            <ItemTooltip 
-                name={name} 
-                itemType={itemType} 
-                rarity={rarity} 
-                icon={itemIconSrc || undefined}
-                power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
-                screenshot={screenshot || undefined}
-                flavorText={def.flavorText}
-                seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
-                elementIcon={elementIcon}
-                stats={stats}
-                itemHash={itemHash}
-                perks={perks}
-                mods={mods}
-                shaders={shaders}
-                ornaments={ornaments}
-                killEffects={killEffects}
-                killTrackers={killTrackers}
-                enhancementTier={enhancementTier}
-                tier={tier || undefined}
-                initialPosition={initialTooltipPos}
-                objectives={objectives}
-                itemDef={def}
-                isShiny={isShiny}
-                detailedPerks={detailedPerks}
-                armorQuality={armorQuality}
-                socketsData={socketsData}
-                plugDefs={plugDefs}
-                wishListInfo={wishListInfo}
-            />
-        )}
+        {tooltipNode}
 
         {/* Context Menu */}
-        {contextMenuPos && (
-            <ItemContextMenu 
-                x={contextMenuPos.x}
-                y={contextMenuPos.y}
-                onClose={() => setContextMenuPos(null)}
-                itemHash={itemHash}
-                itemInstanceId={itemInstanceId}
-                ownerId={ownerId}
-                isLocked={isLocked}
-                itemDef={def}
-                sockets={resolvedSockets}
-                instanceData={instanceData}
-                detailedPerks={detailedPerks}
-                wishListInfo={wishListInfo}
-                socketsData={socketsData}
-                plugDefs={plugDefs}
-                tooltipSeasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
-                tooltipElementIcon={elementIcon}
-                tooltipTier={tier}
-                tooltipEnhancementTier={enhancementTier}
-                tooltipIsShiny={isShiny}
-                tooltipArmorQuality={armorQuality}
-            />
-        )}
+        {contextMenuNode}
     </>
   );
 }
