@@ -1,9 +1,12 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { useSettingsStore } from '@/store/settingsStore';
 
 const DB_NAME = 'warmind_cache';
 const STORE_NAME = 'activity_history';
 const INVALID_STORE_NAME = 'invalid_instances';
 const DB_VERSION = 2; // Increment version
+const DEFAULT_CACHE_DURATION_MINUTES = 60;
+const MILLISECONDS_PER_MINUTE = 60 * 1000;
 
 // Key for storing invalid instance IDs in localStorage (legacy)
 const INVALID_INSTANCES_KEY = 'warmind_invalid_activity_instances';
@@ -14,8 +17,15 @@ interface CacheEntry {
     timestamp: number;
 }
 
-// Cache validity duration (e.g., 24 hours for old activities, 15 minutes for recent?)
-const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+function getCacheDurationMs(): number {
+    const cacheDurationMinutes = useSettingsStore.getState().cacheDurationMinutes;
+
+    if (!Number.isFinite(cacheDurationMinutes) || cacheDurationMinutes <= 0) {
+        return DEFAULT_CACHE_DURATION_MINUTES * MILLISECONDS_PER_MINUTE;
+    }
+
+    return cacheDurationMinutes * MILLISECONDS_PER_MINUTE;
+}
 
 let dbPromise: Promise<IDBPDatabase<any>>;
 
@@ -130,7 +140,7 @@ export const getCachedHistory = async (key: string) => {
         if (!entry) return null;
 
         // Check if expired
-        if (Date.now() - entry.timestamp > CACHE_DURATION) {
+        if (Date.now() - entry.timestamp > getCacheDurationMs()) {
             await db.delete(STORE_NAME, key);
             return null;
         }

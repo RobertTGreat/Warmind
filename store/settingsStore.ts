@@ -3,6 +3,7 @@ import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useWishListStore } from './wishlistStore';
+import { DEFAULT_PAGE_FALLBACK, type DefaultPage } from '@/lib/defaultPages';
 
 // ===== Type Definitions =====
 
@@ -29,6 +30,7 @@ export interface SyncableSettings {
     // Appearance
     theme: Theme;
     accentColor: AccentColor;
+    defaultPage: DefaultPage;
     compactMode: boolean;
     reducedMotion: boolean;
     
@@ -71,6 +73,8 @@ export interface SyncableSettings {
 // ===== Full Settings State =====
 
 export interface SettingsState extends SyncableSettings {
+    hasChosenDefaultPage: boolean;
+
     // Subscription & Sync
     subscriptionTier: SubscriptionTier;
     syncEnabled: boolean;
@@ -84,6 +88,7 @@ export interface SettingsActions {
     // Appearance
     setTheme: (theme: Theme) => void;
     setAccentColor: (color: AccentColor) => void;
+    setDefaultPage: (page: DefaultPage) => void;
     setCompactMode: (enabled: boolean) => void;
     setReducedMotion: (enabled: boolean) => void;
     
@@ -134,10 +139,24 @@ type SettingsStore = SettingsState & SettingsActions;
 
 // ===== Default Values =====
 
+const DEFAULT_CACHE_DURATION_MINUTES = 60;
+const MIN_CACHE_DURATION_MINUTES = 15;
+const MAX_CACHE_DURATION_MINUTES = 1440;
+
+function normalizeCacheDurationMinutes(minutes: number): number {
+    if (!Number.isFinite(minutes)) {
+        return DEFAULT_CACHE_DURATION_MINUTES;
+    }
+
+    const roundedMinutes = Math.round(minutes);
+    return Math.min(MAX_CACHE_DURATION_MINUTES, Math.max(MIN_CACHE_DURATION_MINUTES, roundedMinutes));
+}
+
 const defaultSyncableSettings: SyncableSettings = {
     // Appearance
     theme: 'dark',
     accentColor: 'gold',
+    defaultPage: DEFAULT_PAGE_FALLBACK,
     compactMode: false,
     reducedMotion: false,
     
@@ -158,7 +177,7 @@ const defaultSyncableSettings: SyncableSettings = {
     dateFormat: 'MM/DD/YYYY',
     
     // Data & Performance
-    cacheDurationMinutes: 60,
+    cacheDurationMinutes: DEFAULT_CACHE_DURATION_MINUTES,
     autoRefreshMinutes: 0,
     
     // Notifications
@@ -179,6 +198,7 @@ const defaultSyncableSettings: SyncableSettings = {
 
 const defaultSettings: SettingsState = {
     ...defaultSyncableSettings,
+    hasChosenDefaultPage: false,
     
     // Subscription & Sync
     subscriptionTier: 'free',
@@ -292,6 +312,10 @@ export const useSettingsStore = create<SettingsStore>()(
                 set({ accentColor });
                 get().syncToCloud();
             },
+            setDefaultPage: (defaultPage) => {
+                set({ defaultPage, hasChosenDefaultPage: true });
+                get().syncToCloud();
+            },
             setCompactMode: (compactMode) => {
                 set({ compactMode });
                 get().syncToCloud();
@@ -351,7 +375,7 @@ export const useSettingsStore = create<SettingsStore>()(
             
             // Data & Performance
             setCacheDuration: (cacheDurationMinutes) => {
-                set({ cacheDurationMinutes });
+                set({ cacheDurationMinutes: normalizeCacheDurationMinutes(cacheDurationMinutes) });
                 get().syncToCloud();
             },
             setAutoRefresh: (autoRefreshMinutes) => {
@@ -453,7 +477,10 @@ export const useSettingsStore = create<SettingsStore>()(
             },
             
             // Utility
-            resetToDefaults: () => set({ ...defaultSyncableSettings }),
+            resetToDefaults: () => set({ 
+                ...defaultSyncableSettings,
+                hasChosenDefaultPage: false,
+            }),
             
             getSyncableSettings: () => {
                 const state = get();
@@ -463,6 +490,7 @@ export const useSettingsStore = create<SettingsStore>()(
                 return {
                     theme: state.theme,
                     accentColor: state.accentColor,
+                    defaultPage: state.defaultPage,
                     compactMode: state.compactMode,
                     reducedMotion: state.reducedMotion,
                     iconSize: state.iconSize,
@@ -493,6 +521,9 @@ export const useSettingsStore = create<SettingsStore>()(
                 set((state) => ({
                     ...state,
                     ...settings,
+                    hasChosenDefaultPage: settings.defaultPage
+                        ? true
+                        : state.hasChosenDefaultPage,
                     // Remove wishlist fields from main state (they're in wishlist store)
                     wishListUrls: undefined,
                     showWishListIndicators: undefined,
@@ -541,10 +572,12 @@ export const useAppearanceSettings = () => useSettingsStore(
     useShallow((state) => ({
         theme: state.theme,
         accentColor: state.accentColor,
+        defaultPage: state.defaultPage,
         compactMode: state.compactMode,
         reducedMotion: state.reducedMotion,
         setTheme: state.setTheme,
         setAccentColor: state.setAccentColor,
+        setDefaultPage: state.setDefaultPage,
         setCompactMode: state.setCompactMode,
         setReducedMotion: state.setReducedMotion,
     }))

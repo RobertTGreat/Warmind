@@ -29,9 +29,11 @@ import {
   Settings,
 } from "lucide-react";
 import {
+  memo,
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -57,8 +59,31 @@ const VAULT_BUCKET_HASH = BUCKETS.VAULT;
 const INVENTORY_GRID_GAP_PX = 8;
 const INVENTORY_GRID_PADDING_PX = 16;
 const CURRENCY_CARD_WIDTH_PX = 360;
+const MIN_CURRENCY_CARD_WIDTH_PX = 180;
 const CHARACTER_TOGGLE_COLUMN_WIDTH_PX = 44;
 const MATERIAL_ITEM_CATEGORY_HASH = 40;
+const INVENTORY_OVERSCAN_PX = 360;
+const SCROLL_METRIC_UPDATE_THRESHOLD_PX = 24;
+
+function ignoreDragLeave() {}
+
+function getInitialScrollMetrics() {
+  if (typeof window === "undefined") {
+    return {
+      scrollTop: 0,
+      viewportHeight: 720,
+      viewportWidth: 0,
+      virtualListTop: 0,
+    };
+  }
+
+  return {
+    scrollTop: 0,
+    viewportHeight: window.innerHeight,
+    viewportWidth: 0,
+    virtualListTop: 0,
+  };
+}
 
 const CLASS_NAMES: Record<number, string> = {
   0: "Titan",
@@ -717,7 +742,7 @@ function createTileRenderData({
   };
 }
 
-function InteractiveInventoryTile({
+const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
   tile,
   iconSize,
   fetchPriority,
@@ -820,7 +845,7 @@ function InteractiveInventoryTile({
       )}
     </div>
   );
-}
+});
 
 function EmptyInventorySlot({ iconSize }: { iconSize: ItemIconSize }) {
   const { sizePx } = getLayoutMeasurements(iconSize);
@@ -1165,7 +1190,7 @@ function CurrencyHeaderCard({
   const [materialsExpanded, setMaterialsExpanded] = useState(false);
 
   return (
-    <div className="relative h-16 overflow-visible border border-white/10 bg-black/30 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <div className="relative h-16 overflow-visible border border-white/10 bg-[#0f1115] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
       <CurrencyStrip
         currencies={currencies}
         currencyDefinitions={currencyDefinitions}
@@ -1224,7 +1249,7 @@ function CharacterExpansionCard({
 
 function VaultHeaderCard({ vaultCount }: { vaultCount: number }) {
   return (
-    <div className="relative h-16 overflow-hidden border border-white/10 bg-black/20">
+    <div className="relative h-16 overflow-hidden border border-white/10 bg-[#0f1115]">
       <div className="relative flex h-full items-center p-2">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center bg-white/10">
@@ -1242,7 +1267,7 @@ function VaultHeaderCard({ vaultCount }: { vaultCount: number }) {
   );
 }
 
-function CharacterBucketRowSlice({
+const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
   bucketRow,
   characterColumn,
   iconSize,
@@ -1314,9 +1339,9 @@ function CharacterBucketRowSlice({
       </div>
     </div>
   );
-}
+});
 
-function VaultBucketRowSlice({
+const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
   bucketRow,
   vaultTiles,
   vaultColumnCount,
@@ -1368,9 +1393,9 @@ function VaultBucketRowSlice({
       </div>
     </div>
   );
-}
+});
 
-function CharacterVirtualRow({
+const CharacterVirtualRow = memo(function CharacterVirtualRow({
   row,
   iconSize,
   boardGridTemplateColumns,
@@ -1452,7 +1477,7 @@ function CharacterVirtualRow({
       />
     </div>
   );
-}
+});
 
 export default function CharacterPage() {
   const { profile, stats, isLoading, isLoggedIn, membershipInfo } =
@@ -1494,12 +1519,7 @@ export default function CharacterPage() {
   const settingsRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const virtualListRef = useRef<HTMLDivElement>(null);
-  const [scrollMetrics, setScrollMetrics] = useState({
-    scrollTop: 0,
-    viewportHeight: 720,
-    viewportWidth: 0,
-    virtualListTop: 0,
-  });
+  const [scrollMetrics, setScrollMetrics] = useState(getInitialScrollMetrics);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const parsedSearch = useMemo(
     () => parseSearchQuery(deferredSearchQuery),
@@ -1532,7 +1552,7 @@ export default function CharacterPage() {
     };
   }, [setCharacterSearchVisible, setSearchQuery]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
 
@@ -1540,11 +1560,27 @@ export default function CharacterPage() {
 
     const updateScrollMetrics = () => {
       frameId = 0;
-      setScrollMetrics({
+      const nextMetrics = {
         scrollTop: scrollContainer.scrollTop,
         viewportHeight: scrollContainer.clientHeight,
         viewportWidth: scrollContainer.clientWidth,
         virtualListTop: virtualListRef.current?.offsetTop ?? 0,
+      };
+
+      setScrollMetrics((currentMetrics) => {
+        const layoutChanged =
+          currentMetrics.viewportHeight !== nextMetrics.viewportHeight ||
+          currentMetrics.viewportWidth !== nextMetrics.viewportWidth ||
+          currentMetrics.virtualListTop !== nextMetrics.virtualListTop;
+        const scrollChangedEnough =
+          Math.abs(currentMetrics.scrollTop - nextMetrics.scrollTop) >=
+          SCROLL_METRIC_UPDATE_THRESHOLD_PX;
+
+        if (!layoutChanged && !scrollChangedEnough) {
+          return currentMetrics;
+        }
+
+        return nextMetrics;
       });
     };
 
@@ -1570,7 +1606,7 @@ export default function CharacterPage() {
         cancelAnimationFrame(frameId);
       }
     };
-  }, [mounted]);
+  }, [mounted, isLoggedIn, isLoading]);
 
   const characters = useMemo(() => {
     const characterList = profile?.characters?.data
@@ -1630,16 +1666,36 @@ export default function CharacterPage() {
       0,
       scrollMetrics.viewportWidth - INVENTORY_GRID_PADDING_PX,
     );
-    const headerVaultColumnWidth = Math.max(
-      layout.vaultColumnWidth,
+    const minimumVaultColumnWidth = layout.sizePx;
+    const availableCurrencyColumnWidth =
       availableContentWidth -
         characterWidth -
         characterToggleColumnWidth -
-        CURRENCY_CARD_WIDTH_PX -
+        minimumVaultColumnWidth -
+        headerGapWidth;
+    const currencyColumnWidth = Math.min(
+      CURRENCY_CARD_WIDTH_PX,
+      Math.max(MIN_CURRENCY_CARD_WIDTH_PX, availableCurrencyColumnWidth),
+    );
+    const headerVaultColumnWidth = Math.max(
+      minimumVaultColumnWidth,
+      availableContentWidth -
+        characterWidth -
+        characterToggleColumnWidth -
+        currencyColumnWidth -
         headerGapWidth,
     );
     const bodyVaultColumnWidth = Math.max(
-      layout.vaultColumnWidth + CURRENCY_CARD_WIDTH_PX + INVENTORY_GRID_GAP_PX,
+      minimumVaultColumnWidth +
+        currencyColumnWidth +
+        INVENTORY_GRID_GAP_PX,
+      availableContentWidth -
+        characterWidth -
+        characterToggleColumnWidth -
+        bodyGapWidth,
+    );
+    const visibleVaultGridWidth = Math.max(
+      layout.sizePx,
       availableContentWidth -
         characterWidth -
         characterToggleColumnWidth -
@@ -1647,12 +1703,12 @@ export default function CharacterPage() {
     );
     const headerVaultColumn = `${headerVaultColumnWidth}px`;
     const bodyVaultColumn = `${bodyVaultColumnWidth}px`;
-    const currencyColumn = `${CURRENCY_CARD_WIDTH_PX}px`;
+    const currencyColumn = `${currencyColumnWidth}px`;
     const minimumContentWidth =
       characterWidth +
       characterToggleColumnWidth +
-      layout.vaultColumnWidth +
-      CURRENCY_CARD_WIDTH_PX +
+      minimumVaultColumnWidth +
+      currencyColumnWidth +
       headerGapWidth;
     const headerGridColumns = [
       ...characterColumns,
@@ -1671,11 +1727,13 @@ export default function CharacterPage() {
       bodyGridTemplateColumns: bodyGridColumns.join(" "),
       minWidth: minimumContentWidth + INVENTORY_GRID_PADDING_PX,
       vaultColumnWidth: bodyVaultColumnWidth,
+      visibleVaultGridWidth,
       hasCharacterToggleColumn: hasExtraCharacters,
     };
   }, [
     hasExtraCharacters,
     layout.characterColumnWidth,
+    layout.sizePx,
     layout.vaultColumnWidth,
     scrollMetrics.viewportWidth,
     visibleCharacters,
@@ -1941,7 +1999,7 @@ export default function CharacterPage() {
     [definitions, fullInventoryList],
   );
 
-  const handleDrop = async (
+  const handleDrop = useCallback(async (
     event: React.DragEvent,
     targetOwnerId: string,
     bucketHash: number,
@@ -2008,12 +2066,19 @@ export default function CharacterPage() {
     } catch (error) {
       console.error("Drop parsing error", error);
     }
-  };
+  }, [
+    addOperation,
+    characters,
+    fullInventoryList,
+    membershipInfo,
+    removeOperation,
+    updateOperationStatus,
+  ]);
 
-  const handleDragOver = (event: React.DragEvent, _targetId: string) => {
+  const handleDragOver = useCallback((event: React.DragEvent, _targetId: string) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-  };
+  }, []);
 
   const visibleInventorySections = useMemo(() => {
     return INVENTORY_SECTIONS.filter((section) => {
@@ -2036,8 +2101,8 @@ export default function CharacterPage() {
   }, []);
 
   const vaultColumnCount = useMemo(() => {
-    return getVaultColumnCount(boardLayout.vaultColumnWidth, iconSize);
-  }, [boardLayout.vaultColumnWidth, iconSize]);
+    return getVaultColumnCount(boardLayout.visibleVaultGridWidth, iconSize);
+  }, [boardLayout.visibleVaultGridWidth, iconSize]);
 
   const inventoryRows = useMemo<CharacterInventoryRow[]>(() => {
     const { rowHeightPx } = getVaultGridMeasurements(iconSize);
@@ -2255,15 +2320,16 @@ export default function CharacterPage() {
     [virtualRows],
   );
   const visibleVirtualRows = useMemo(() => {
-    const overscanPx = 700;
     const visibleTop = Math.max(
       0,
-      scrollMetrics.scrollTop - scrollMetrics.virtualListTop - overscanPx,
+      scrollMetrics.scrollTop -
+        scrollMetrics.virtualListTop -
+        INVENTORY_OVERSCAN_PX,
     );
     const visibleBottom =
       Math.max(0, scrollMetrics.scrollTop - scrollMetrics.virtualListTop) +
       scrollMetrics.viewportHeight +
-      overscanPx;
+      INVENTORY_OVERSCAN_PX;
 
     let startIndex = virtualRows.findIndex(
       (row) => row.top + row.height >= visibleTop,
@@ -2291,7 +2357,7 @@ export default function CharacterPage() {
     virtualRows,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
 
     if (!scrollContainer) return;
@@ -2406,7 +2472,7 @@ export default function CharacterPage() {
 
       <div
         ref={scrollContainerRef}
-        className="min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-transparent custom-scrollbar"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-transparent custom-scrollbar"
       >
         <div className="w-full" style={{ minWidth: boardLayout.minWidth }}>
           <div
@@ -2472,7 +2538,7 @@ export default function CharacterPage() {
                     vaultColumnCount={vaultColumnCount}
                     onToggleSection={toggleSection}
                     onDragOver={handleDragOver}
-                    onDragLeave={() => undefined}
+                    onDragLeave={ignoreDragLeave}
                     onDrop={handleDrop}
                   />
                 ))}

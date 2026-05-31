@@ -1,5 +1,6 @@
 import { memo, type DragEvent, type ReactNode } from "react";
 import { FastBungieIcon } from "@/components/FastBungieIcon";
+import { getWishListMatchTextClass } from "@/lib/wishlistVisuals";
 import { cn } from "@/lib/utils";
 
 export type ItemTileModel = {
@@ -47,8 +48,6 @@ export const ItemTile = memo(function ItemTile({
 }: ItemTileProps) {
   const statText = item.primaryStat ?? item.quantity;
   const tierNumber = item.tierNumber ?? 1;
-  const wishListStarCount =
-    item.wishListMatchType === "exact" ? 3 : item.wishListMatchType === "partial" ? 2 : 1;
   const tierStarClassName =
     sizePx <= 48
       ? "left-[0.25rem] top-2.5 text-[7px]"
@@ -153,19 +152,14 @@ export const ItemTile = memo(function ItemTile({
           </span>
 
           {item.isWishListed && !item.isTrash && (
-            <div className="flex items-center gap-px">
-              {Array.from({ length: wishListStarCount }).map((_, index) => (
-                <span
-                  key={index}
-                  className={cn(
-                    "text-[8px] leading-none",
-                    item.wishListMatchType === "exact" ? "text-destiny-gold" : "text-green-400"
-                  )}
-                >
-                  ★
-                </span>
-              ))}
-            </div>
+            <span
+              className={cn(
+                "text-[8px] leading-none",
+                getWishListMatchTextClass(item.wishListMatchType ?? "none")
+              )}
+            >
+              {"\u2605"}
+            </span>
           )}
 
           {item.elementIconSrc && (

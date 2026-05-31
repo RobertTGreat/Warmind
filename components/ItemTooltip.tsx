@@ -3,6 +3,10 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { tooltipBungieImageSrc } from '@/lib/bungieImageProxy';
+import {
+    getWishListMatchBorderClass,
+    getWishListMatchTextClass,
+} from '@/lib/wishlistVisuals';
 import { useObjectiveDefinitions } from '@/hooks/useObjectiveDefinitions';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useManifestTable } from '@/hooks/useManifestTable';
@@ -11,7 +15,16 @@ import { STAT_NAMES_BY_HASH, StatHashes } from '@/lib/dim-stats';
 import {
     formatArmorSetBonusRequirement,
     getArmorSetBonusInfo,
+    isExoticArmorItem,
 } from '@/lib/armorSetBonus';
+import {
+    getExoticArmorTraitPlugs,
+    getPlugDisplayText,
+    getPlugHash,
+    getPlugTypeText,
+} from '@/lib/armorTraits';
+import { useClarityDescriptions } from '@/hooks/useClarityDescriptions';
+import type { ClarityDescription } from '@/lib/clarityDescriptions';
 
 // Map common stat hashes to readable names (Edge of Fate / Armor 3.0 names)
 const STAT_NAMES: Record<number, string> = {
@@ -110,6 +123,93 @@ function computeTooltipPosition(clientX: number, clientY: number): TooltipPositi
   return { x, y };
 }
 
+function addPlugHash(hashes: Set<number>, plug: any) {
+  const plugHash = getPlugHash(plug);
+
+  if (plugHash) {
+    hashes.add(plugHash);
+  }
+}
+
+function collectClarityPlugHashes({
+  detailedPerks,
+  perks,
+  mods,
+  wishListInfo,
+  socketsData,
+  plugDefs,
+}: {
+  detailedPerks?: ItemTooltipProps["detailedPerks"];
+  perks: any[];
+  mods: any[];
+  wishListInfo?: WishListInfo;
+  socketsData?: any;
+  plugDefs?: Record<number, any>;
+}): number[] {
+  const hashes = new Set<number>();
+
+  for (const socket of detailedPerks ?? []) {
+    addPlugHash(hashes, socket.activePlug);
+    for (const option of socket.options ?? []) {
+      addPlugHash(hashes, option);
+    }
+  }
+
+  for (const perk of perks) {
+    addPlugHash(hashes, perk);
+  }
+
+  for (const mod of mods) {
+    addPlugHash(hashes, mod);
+  }
+
+  if (socketsData?.sockets && plugDefs) {
+    for (const socket of socketsData.sockets) {
+      const activePlug = socket?.plugHash ? plugDefs[socket.plugHash] : null;
+      addPlugHash(hashes, activePlug);
+    }
+  }
+
+  for (const matchedPerkHash of wishListInfo?.matchedPerkHashes ?? []) {
+    if (Number.isSafeInteger(matchedPerkHash) && matchedPerkHash > 0) {
+      hashes.add(matchedPerkHash);
+    }
+  }
+
+  return Array.from(hashes);
+}
+
+function ClarityTooltipSection({
+  clarityDescription,
+}: {
+  clarityDescription?: ClarityDescription;
+}) {
+  if (!clarityDescription) return null;
+
+  return (
+    <div className="mt-2 border-t border-white/10 pt-2">
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-cyan-200">
+        Clarity
+      </p>
+      <div className="mt-1 space-y-1.5 text-[10px] leading-relaxed text-slate-200">
+        {clarityDescription.lines.map((line, index) =>
+          line ? (
+            <p key={`${clarityDescription.hash}-${index}`} className="break-words">
+              {line}
+            </p>
+          ) : (
+            <div
+              key={`${clarityDescription.hash}-${index}`}
+              className="h-1"
+              aria-hidden="true"
+            />
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 const ItemTooltipBody = memo(function ItemTooltipBody({ 
     name, 
     itemType, 
@@ -179,8 +279,36 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
     useManifestTable<any>("DestinyEquipableItemSetDefinition");
   const { table: sandboxPerkDefinitions } =
     useManifestTable<any>("DestinySandboxPerkDefinition");
+  const clarityPlugHashes = useMemo(
+    () =>
+      collectClarityPlugHashes({
+        detailedPerks,
+        perks,
+        mods,
+        wishListInfo,
+        socketsData,
+        plugDefs,
+      }),
+    [detailedPerks, perks, mods, wishListInfo, socketsData, plugDefs]
+  );
+  const { descriptions: clarityDescriptions } =
+    useClarityDescriptions(clarityPlugHashes);
+  const exoticArmorTraits = useMemo(
+    () =>
+      getExoticArmorTraitPlugs({
+        itemDefinition: itemDef,
+        itemType,
+        detailedPerks,
+        socketsData,
+        plugDefinitions: plugDefs,
+      }),
+    [itemDef, itemType, detailedPerks, socketsData, plugDefs]
+  );
+  const hasExoticArmorTraits = exoticArmorTraits.length > 0;
   
   const armorSetBonus = useMemo(() => {
+    if (isExoticArmorItem(itemDef, itemType)) return null;
+
     return getArmorSetBonusInfo({
       itemDefinition: itemDef,
       itemType,
@@ -193,8 +321,8 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
   }, [
     equipableItemSetDefinitions,
     itemDef,
-    detailedPerks,
     itemType,
+    detailedPerks,
     sandboxPerkDefinitions,
     socketsData,
     plugDefs,
@@ -338,6 +466,9 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
   const armorTotal = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + s.value : acc, 0) : 0;
   const armorTierSum = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + Math.floor(s.value / 10) : acc, 0) : 0;
   const shouldClampSetBonusDescriptions = !docked && !showFullSetBonusDescriptions;
+  const shouldShowDetailedPerks =
+    Boolean(detailedPerks && detailedPerks.length > 0) && !hasExoticArmorTraits;
+  const shouldShowPlugSection = shouldShowDetailedPerks || mods.length > 0;
 
   return (
     <>
@@ -582,6 +713,81 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                     </div>
                 )}
 
+                {/* Exotic Armor Trait Section */}
+                {hasExoticArmorTraits && (
+                    <div className="space-y-2 pt-2 border-t border-white/10 mt-2">
+                        <h4 className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">
+                            {exoticArmorTraits.length === 1 ? "Exotic Trait" : "Exotic Traits"}
+                        </h4>
+                        <div className="space-y-2">
+                            {exoticArmorTraits.map((traitPlug, traitIndex) => {
+                                const traitHash = getPlugHash(traitPlug);
+                                const clarityDescription = traitHash
+                                    ? clarityDescriptions[traitHash]
+                                    : undefined;
+                                const traitName = getPlugDisplayText(traitPlug, "name");
+                                const traitDescription = getPlugDisplayText(
+                                    traitPlug,
+                                    "description"
+                                );
+                                const traitType = getPlugTypeText(traitPlug);
+
+                                return (
+                                    <div
+                                        key={traitHash ?? `${traitName}-${traitIndex}`}
+                                        className="group/exotictrait relative flex items-start gap-2 border border-white/10 bg-black/20 p-2"
+                                    >
+                                        {traitPlug.displayProperties?.icon && (
+                                            <div className="w-8 h-8 shrink-0 rounded-sm overflow-hidden border border-white/20 bg-slate-800/50">
+                                                <Image
+                                                    src={tooltipBungieImageSrc(
+                                                        traitPlug.displayProperties.icon,
+                                                        32
+                                                    )}
+                                                    width={32}
+                                                    height={32}
+                                                    className="object-cover"
+                                                    alt=""
+                                                />
+                                            </div>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-bold text-destiny-gold leading-tight">
+                                                {traitName}
+                                            </p>
+                                            {traitType && (
+                                                <p className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                                                    {traitType}
+                                                </p>
+                                            )}
+                                            {traitDescription && (
+                                                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                                                    {traitDescription}
+                                                </p>
+                                            )}
+                                        </div>
+                                        {clarityDescription && (
+                                            <div className="absolute left-1/2 bottom-full z-[1000] mb-2 w-80 max-w-[min(20rem,calc(100vw-1rem))] -translate-x-1/2 rounded border border-white/20 bg-[#0f0f0f] p-3 shadow-2xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/exotictrait:opacity-100">
+                                                <p className="break-words text-sm font-bold leading-tight text-destiny-gold">
+                                                    {traitName}
+                                                </p>
+                                                {traitType && (
+                                                    <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-500">
+                                                        {traitType}
+                                                    </p>
+                                                )}
+                                                <ClarityTooltipSection
+                                                    clarityDescription={clarityDescription}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Armor Set Bonus Section */}
                 {armorSetBonus && (
                     <div className="space-y-2 pt-2 border-t border-white/10 mt-2">
@@ -640,29 +846,21 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                 {wishListInfo && wishListInfo.isWishListed && !wishListInfo.isTrash && (
                     <div className={cn(
                         "pt-2 border-t mt-2",
-                        wishListInfo.matchType === 'exact' ? "border-destiny-gold/30" : "border-green-500/30"
+                        getWishListMatchBorderClass(wishListInfo.matchType)
                     )}>
                         {/* Wishlist Status Header */}
                         <div className="flex items-center gap-2 mb-1.5">
-                            <div className="flex items-center gap-px">
-                                {Array.from({ 
-                                    length: wishListInfo.matchType === 'exact' ? 3 : 
-                                            wishListInfo.matchType === 'partial' ? 2 : 1 
-                                }).map((_, i) => (
-                                    <span 
-                                        key={i}
-                                        className={cn(
-                                            "text-sm drop-shadow-sm",
-                                            wishListInfo.matchType === 'exact' ? "text-destiny-gold" : "text-green-400"
-                                        )}
-                                    >
-                                        ★
-                                    </span>
-                                ))}
-                            </div>
+                            <span
+                                className={cn(
+                                    "text-sm drop-shadow-sm",
+                                    getWishListMatchTextClass(wishListInfo.matchType)
+                                )}
+                            >
+                                {"\u2605"}
+                            </span>
                             <span className={cn(
                                 "text-xs font-bold uppercase tracking-wider",
-                                wishListInfo.matchType === 'exact' ? "text-destiny-gold" : "text-green-400"
+                                getWishListMatchTextClass(wishListInfo.matchType)
                             )}>
                                 {wishListInfo.matchType === 'exact' ? 'God Roll' : 
                                  wishListInfo.matchType === 'partial' ? 'Wish List' : 'Keep'}
@@ -703,6 +901,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                     {wishListInfo.matchedPerkHashes.map((perkHash) => {
                                         const perkDef = plugDefs[perkHash];
                                         if (!perkDef) return null;
+                                        const clarityDescription = clarityDescriptions[perkHash];
                                         
                                         // Check if this perk is currently equipped
                                         const isEquipped = socketsData?.sockets?.some((s: any) => s.plugHash === perkHash);
@@ -739,13 +938,21 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                                 </div>
                                                 
                                                 {/* Hover Tooltip */}
-                                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-44 bg-[#0f0f0f] border border-white/20 p-2.5 rounded shadow-2xl pointer-events-none opacity-0 group-hover/wishperk:opacity-100 transition-opacity z-1000 backdrop-blur-md">
+                                                <div
+                                                    className={cn(
+                                                        "absolute left-1/2 bottom-full z-[1000] mb-2 -translate-x-1/2 rounded border border-white/20 bg-[#0f0f0f] p-2.5 shadow-2xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/wishperk:opacity-100",
+                                                        clarityDescription
+                                                            ? "w-72 max-w-[min(18rem,calc(100vw-1rem))]"
+                                                            : "w-44 max-w-[min(11rem,calc(100vw-1rem))]"
+                                                    )}
+                                                >
                                                     <div className="flex items-center gap-1.5 mb-1">
                                                         <p className="text-xs font-bold text-destiny-gold leading-tight">{perkDef.displayProperties?.name}</p>
                                                         <span className="text-destiny-gold text-[10px]">★</span>
                                                     </div>
                                                     <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-1.5">{perkDef.itemTypeDisplayName}</p>
                                                     <p className="text-[10px] text-slate-300 leading-relaxed line-clamp-3">{perkDef.displayProperties?.description}</p>
+                                                    <ClarityTooltipSection clarityDescription={clarityDescription} />
                                                     {isEquipped && (
                                                         <p className="text-[9px] text-green-400 mt-1.5 uppercase font-medium">✓ Currently Equipped</p>
                                                     )}
@@ -927,14 +1134,14 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                 )}
 
                 {/* Perks / Traits - Detailed Grid View & Mods */}
-                {(detailedPerks && detailedPerks.length > 0) || mods.length > 0 ? (
+                {shouldShowPlugSection ? (
                     <div className="mt-2 border-t border-white/10 pt-2 space-y-2 overflow-visible">
-                        {detailedPerks && detailedPerks.length > 0 && (
+                        {shouldShowDetailedPerks && (
                             <h4 className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Perks & Traits</h4>
                         )}
                         <div className="flex items-start gap-4 overflow-visible">
                             {/* Perks Scroll Area */}
-                            {detailedPerks && detailedPerks.length > 0 && (
+                            {shouldShowDetailedPerks && detailedPerks && (
                                 <div className="flex min-w-0 flex-1 flex-row flex-wrap gap-2 overflow-visible pb-2">
                                     {detailedPerks.map((socket, idx) => (
                                          <div key={idx} className="flex flex-col gap-2 shrink-0">
@@ -944,6 +1151,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                                    const isSelected = plug.hash === socket.activePlug?.hash;
                                                    const isEnhanced = plug.displayProperties?.name?.includes("Enhanced");
                                                    const isWishListedPerk = wishListInfo?.matchedPerkHashes?.includes(plug.hash);
+                                                   const clarityDescription = clarityDescriptions[plug.hash];
                                                    const uniqueKey = `${plug.hash}-${i}`; // Ensure unique key
                                                    return (
                                                        <div 
@@ -993,7 +1201,14 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                                              </div>
                                                              
                                                              {/* Hover Tooltip for Icon */}
-                                                             <div className="absolute left-1/2 bottom-full z-[1000] mb-2 w-52 max-w-[min(13rem,calc(100vw-1rem))] -translate-x-1/2 overflow-visible rounded border border-white/20 bg-[#0f0f0f] p-3 shadow-2xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/perkicon:opacity-100">
+                                                             <div
+                                                                 className={cn(
+                                                                     "absolute left-1/2 bottom-full z-[1000] mb-2 -translate-x-1/2 overflow-visible rounded border border-white/20 bg-[#0f0f0f] p-3 shadow-2xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/perkicon:opacity-100",
+                                                                     clarityDescription
+                                                                         ? "w-80 max-w-[min(20rem,calc(100vw-1rem))]"
+                                                                         : "w-52 max-w-[min(13rem,calc(100vw-1rem))]"
+                                                                 )}
+                                                             >
                                                                  <div className="flex items-center gap-1.5 mb-0.5">
                                                                      <p className="min-w-0 break-words text-sm font-bold leading-tight text-destiny-gold">{plug.displayProperties?.name}</p>
                                                                      {isWishListedPerk && (
@@ -1002,6 +1217,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                                                  </div>
                                                                  <p className="mb-2 text-[10px] uppercase tracking-wide text-slate-500">{plug.itemTypeDisplayName}</p>
                                                                  <p className="break-words text-xs leading-relaxed text-slate-300">{plug.displayProperties?.description}</p>
+                                                                 <ClarityTooltipSection clarityDescription={clarityDescription} />
                                                                  {isWishListedPerk && (
                                                                      <p className="text-[10px] text-destiny-gold mt-2 uppercase font-medium">Wish List Perk</p>
                                                                  )}
@@ -1033,6 +1249,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                 <div className="flex flex-row gap-1.5 shrink-0 pt-0.5 border-l border-white/10 pl-3">
                                     {mods.map((plug, i) => {
                                         const iconUrl = tooltipBungieImageSrc(plug.displayProperties?.icon, 32);
+                                        const clarityDescription = clarityDescriptions[plug.hash];
                                         return (
                                             <div key={i} className="group/cosmetic relative">
                                                 <div className="w-8 h-8 border border-gray-500 bg-black/40 overflow-hidden shadow-sm hover:border-white/60 transition-colors flex items-center justify-center">
@@ -1047,9 +1264,17 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                                     )}
                                                 </div>
                                                 {/* Mod Tooltip */}
-                                                <div className="absolute left-1/2 bottom-full z-[1000] mb-2 w-48 max-w-[min(12rem,calc(100vw-1rem))] -translate-x-1/2 overflow-visible rounded border border-white/20 bg-[#0f0f0f] p-2 shadow-xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/cosmetic:opacity-100">
+                                                <div
+                                                    className={cn(
+                                                        "absolute left-1/2 bottom-full z-[1000] mb-2 -translate-x-1/2 overflow-visible rounded border border-white/20 bg-[#0f0f0f] p-2 shadow-xl backdrop-blur-md pointer-events-none opacity-0 transition-opacity group-hover/cosmetic:opacity-100",
+                                                        clarityDescription
+                                                            ? "w-72 max-w-[min(18rem,calc(100vw-1rem))]"
+                                                            : "w-48 max-w-[min(12rem,calc(100vw-1rem))]"
+                                                    )}
+                                                >
                                                     <p className="min-w-0 break-words text-xs font-bold text-destiny-gold">{plug.displayProperties?.name}</p>
                                                     <p className="text-[9px] text-slate-400 uppercase">{plug.itemTypeDisplayName}</p>
+                                                    <ClarityTooltipSection clarityDescription={clarityDescription} />
                                                 </div>
                                             </div>
                                         );

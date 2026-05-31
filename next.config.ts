@@ -50,6 +50,10 @@ const nextConfig: NextConfig = {
   
   // Cache headers for static assets
   async headers() {
+    if (process.env.NODE_ENV !== 'production') {
+      return [];
+    }
+
     return [
       {
         // Immutable assets (JS/CSS with content hash) - cache for 1 year

@@ -5,6 +5,7 @@ export type ArmorSetBonusTier = {
   name: string;
   description: string;
   icon?: string;
+  plugHash?: number;
   sandboxPerkHash?: number;
 };
 
@@ -35,6 +36,13 @@ export function isArmorSetBonusItem(itemDefinition: any, itemType: string): bool
     typeName.includes("leg") ||
     typeName.includes("class")
   );
+}
+
+export function isExoticArmorItem(itemDefinition: any, itemType: string): boolean {
+  const tierName = compactDisplayText(itemDefinition?.inventory?.tierTypeName).toLowerCase();
+  const tierType = Number(itemDefinition?.inventory?.tierType);
+
+  return isArmorSetBonusItem(itemDefinition, itemType) && (tierName === "exotic" || tierType === 6);
 }
 
 function getPlugCategoryHash(plugDefinition: any): number | null {
@@ -131,6 +139,7 @@ function getArmorSetBonusFromPlug(plugDefinition: any): ArmorSetBonusInfo | null
         name: rawName,
         description,
         icon: plugDefinition.displayProperties?.icon,
+        plugHash: plugDefinition.hash,
       },
     ],
   };
@@ -245,6 +254,10 @@ export function getArmorSetBonusInfo({
   detailedPerks?: { activePlug?: any }[];
 }): ArmorSetBonusInfo | null {
   if (!itemDefinition || !isArmorSetBonusItem(itemDefinition, itemType)) {
+    return null;
+  }
+
+  if (isExoticArmorItem(itemDefinition, itemType)) {
     return null;
   }
 

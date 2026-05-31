@@ -19,6 +19,11 @@ const WishListInitializer = dynamic(
   { ssr: false }
 );
 
+const DefaultPagePrompt = dynamic(
+  () => import("@/components/DefaultPagePrompt").then((mod) => mod.DefaultPagePrompt),
+  { ssr: false }
+);
+
 function scheduleIdle(callback: () => void) {
   if (typeof window === "undefined") return undefined;
 
@@ -55,6 +60,7 @@ export function PostLoginBoot() {
   return (
     <>
       <FirstLoadWarning />
+      <DefaultPagePrompt />
       <ClientManifestManager />
       <WishListInitializer />
     </>

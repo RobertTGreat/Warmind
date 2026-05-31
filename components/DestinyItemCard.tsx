@@ -10,6 +10,7 @@ import {
   USE_BUNGIE_ICON_PROXY,
 } from '@/lib/bungieImageProxy';
 import { cn } from '@/lib/utils';
+import { getWishListMatchTextClass } from '@/lib/wishlistVisuals';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { ItemTooltip } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
@@ -720,26 +721,14 @@ export function DestinyItemCard({
       )}
 
       {wishListInfo.isWishListed && !wishListInfo.isTrash && (
-        <div className="flex items-center gap-px">
-          {Array.from({
-            length:
-              wishListInfo.matchType === 'exact'
-                ? 3
-                : wishListInfo.matchType === 'partial'
-                  ? 2
-                  : 1,
-          }).map((_, i) => (
-            <span
-              key={i}
-              className={cn(
-                'text-[8px] drop-shadow-sm leading-none',
-                wishListInfo.matchType === 'exact' ? 'text-destiny-gold' : 'text-green-400'
-              )}
-            >
-              ★
-            </span>
-          ))}
-        </div>
+        <span
+          className={cn(
+            'text-[8px] drop-shadow-sm leading-none',
+            getWishListMatchTextClass(wishListInfo.matchType)
+          )}
+        >
+          {"\u2605"}
+        </span>
       )}
 
       {elementIcon && (

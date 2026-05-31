@@ -43,7 +43,7 @@ const navItems: {
   subNav?: SubNavItem[];
   disabled?: boolean;
 }[] = [
-  { name: 'Home', href: '/', icon: Shield, description: 'Dashboard & Overview' },
+  { name: 'Home', href: '/?home=1', icon: Shield, description: 'Dashboard & Overview' },
   { name: 'Collections', href: '/collections', icon: Book, description: 'Weapons, Armor & More' },
   { name: 'Triumphs', href: '/triumphs', icon: Trophy, description: 'Achievements & Seals' },
   { 
@@ -137,8 +137,8 @@ export function Header() {
         </div>
       )}
 
-      {/* Fixed header bar - always 64px */}
-      <header className="sticky top-0 z-50 w-full h-16">
+      {/* Header bar - always 64px */}
+      <header className="sticky top-0 z-50 h-16 w-full border-b border-white/10 bg-[#0f1115] shadow-lg shadow-black/30">
         <div className="h-16">
           <div className="px-4 sm:px-8 w-full mx-auto h-full">
           {/* Top Bar - Always visible */}

@@ -46,7 +46,7 @@ export interface WishListActions {
     // Wish list management
     addWishList: (url: string) => Promise<void>;
     removeWishList: (id: string) => Promise<void>;
-    toggleWishList: (id: string) => void;
+    toggleWishList: (id: string) => Promise<void>;
     refreshWishList: (id: string) => Promise<void>;
     refreshAllWishLists: () => Promise<void>;
     updateWishListRolls: (id: string, rolls: Map<number, WishListRoll[]>) => void;
@@ -319,6 +319,26 @@ interface ParsedWishList {
     rolls: WishListRoll[];
 }
 
+function parseTagList(tagsText: string): string[] {
+    return tagsText
+        .split(/[,\s]+/)
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0);
+}
+
+function splitTagsFromText(text: string): { textWithoutTags: string; tags: string[] } {
+    const tagMatch = text.match(/(?:\s|\|)tags:([^|#]+)$/i);
+
+    if (!tagMatch || tagMatch.index === undefined) {
+        return { textWithoutTags: text, tags: [] };
+    }
+
+    return {
+        textWithoutTags: text.substring(0, tagMatch.index).trim(),
+        tags: parseTagList(tagMatch[1]),
+    };
+}
+
 function parseWishListText(text: string): ParsedWishList {
     const lines = text.split('\n');
     const rolls: WishListRoll[] = [];
@@ -353,12 +373,11 @@ function parseWishListText(text: string): ParsedWishList {
         // Notes can also contain tags at the end: //notes: some notes tags:pve
         if (trimmed.startsWith('//notes:')) {
             let noteContent = trimmed.substring(8).trim();
-            
-            // Check for tags embedded in notes (e.g., "notes text tags:pve,pvp")
-            const tagsMatch = noteContent.match(/\s+tags:([^\s]+)$/i);
-            if (tagsMatch) {
-                noteContent = noteContent.substring(0, noteContent.length - tagsMatch[0].length).trim();
-                currentTags = tagsMatch[1].split(/[,\s]+/).filter(t => t.length > 0);
+
+            const parsedNote = splitTagsFromText(noteContent);
+            noteContent = parsedNote.textWithoutTags;
+            if (parsedNote.tags.length > 0) {
+                currentTags = parsedNote.tags;
             }
             
             currentNotes = noteContent;
@@ -368,7 +387,7 @@ function parseWishListText(text: string): ParsedWishList {
         // Parse standalone tags line (tags:pve or tags:pvp,pve format)
         if (trimmed.startsWith('tags:')) {
             const tagsPart = trimmed.substring(5).trim();
-            currentTags = tagsPart.split(/[,\s]+/).filter(t => t.length > 0);
+            currentTags = parseTagList(tagsPart);
             continue;
         }
         
@@ -395,11 +414,10 @@ function parseWishListText(text: string): ParsedWishList {
             
             // Extract inline tags if present (|tags: format)
             let tags: string[] = [...currentTags];
-            const tagsIndex = entryPart.indexOf('|tags:');
-            if (tagsIndex !== -1) {
-                const tagsPart = entryPart.substring(tagsIndex + 6).trim();
-                tags = tagsPart.split(/[,\s]+/).filter(t => t.length > 0);
-                entryPart = entryPart.substring(0, tagsIndex);
+            const parsedEntry = splitTagsFromText(entryPart);
+            entryPart = parsedEntry.textWithoutTags;
+            if (parsedEntry.tags.length > 0) {
+                tags = parsedEntry.tags;
             }
             
             // Parse item hash and perks
@@ -517,13 +535,22 @@ export const useWishListStore = create<WishListStore>()(
                 get().rebuildLookups();
             },
             
-            toggleWishList: (id: string) => {
+            toggleWishList: async (id: string) => {
+                const wishList = get().wishLists.find(wl => wl.id === id);
+                if (!wishList) return;
+
+                const shouldEnable = !wishList.enabled;
+
                 set(state => ({
                     wishLists: state.wishLists.map(wl => 
                         wl.id === id ? { ...wl, enabled: !wl.enabled } : wl
                     )
                 }));
                 get().rebuildLookups();
+
+                if (shouldEnable && (!wishList.rolls || wishList.rolls.size === 0)) {
+                    await get().refreshWishList(id);
+                }
             },
             
             refreshWishList: async (id: string) => {
@@ -583,8 +610,8 @@ export const useWishListStore = create<WishListStore>()(
             },
             
             refreshAllWishLists: async () => {
-                const state = get();
-                for (const wishList of state.wishLists) {
+                const enabledWishLists = get().wishLists.filter(wishList => wishList.enabled);
+                for (const wishList of enabledWishLists) {
                     await get().refreshWishList(wishList.id);
                 }
             },

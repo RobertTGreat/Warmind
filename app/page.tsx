@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithBungie } from "@/lib/bungie";
 import { 
   ArrowRight, 
@@ -16,6 +17,7 @@ import {
   Heart
 } from "lucide-react";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
+import { useSettingsStore } from "@/store/settingsStore";
 
 // Lazy load heavy components to reduce initial JS bundle
 const NewsFeed = dynamic(
@@ -76,8 +78,13 @@ const features = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLoggedIn } = useDestinyProfileContext();
+  const defaultPage = useSettingsStore((state) => state.defaultPage);
+  const hasChosenDefaultPage = useSettingsStore((state) => state.hasChosenDefaultPage);
   const [mounted, setMounted] = useState(false);
+  const shouldShowHomePage = searchParams.get("home") === "1";
 
   // Always call useEffect unconditionally to prevent hook order issues
   useEffect(() => {
@@ -97,12 +104,41 @@ export default function Home() {
     };
   }, [mounted, isLoggedIn]);
 
+  useEffect(() => {
+    if (
+      !mounted ||
+      !isLoggedIn ||
+      !hasChosenDefaultPage ||
+      defaultPage === "/" ||
+      shouldShowHomePage
+    ) {
+      return;
+    }
+
+    router.replace(defaultPage);
+  }, [
+    defaultPage,
+    hasChosenDefaultPage,
+    isLoggedIn,
+    mounted,
+    router,
+    shouldShowHomePage,
+  ]);
+
   if (!mounted) {
     return <LandingPage />;
   }
 
   if (!isLoggedIn) {
     return <LandingPage />;
+  }
+
+  if (hasChosenDefaultPage && defaultPage !== "/" && !shouldShowHomePage) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-500">
+        Opening default page...
+      </div>
+    );
   }
 
   // Dashboard State (Logged In)
