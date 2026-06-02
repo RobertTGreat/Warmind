@@ -30,7 +30,10 @@ export function UserSearch({ onSelectUser, onClear, selectedUser }: UserSearchPr
 
     const handleSelect = (user: SearchUserResult) => {
         const displayName = user.bungieGlobalDisplayName || user.displayName;
-        onSelectUser(user.membershipType, user.membershipId, displayName);
+        const displayNameWithCode = user.bungieGlobalDisplayNameCode
+            ? `${displayName}#${user.bungieGlobalDisplayNameCode}`
+            : displayName;
+        onSelectUser(user.membershipType, user.membershipId, displayNameWithCode);
         setQuery('');
         setIsOpen(false);
     };
