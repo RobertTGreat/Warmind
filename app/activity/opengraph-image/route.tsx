@@ -107,7 +107,7 @@ function buildStatTiles(stats: ActivityEmbedStats | null) {
         return [
             { label: 'Clears', value: '--' },
             { label: 'Activities', value: '--' },
-            { label: 'Total Time', value: '--' },
+            { label: 'Time', value: '--' },
             { label: 'Kills', value: '--' },
             { label: 'Assists', value: '--' },
             { label: 'Deaths', value: '--' },
@@ -117,7 +117,7 @@ function buildStatTiles(stats: ActivityEmbedStats | null) {
     return [
         { label: 'Clears', value: stats.clears.toLocaleString() },
         { label: 'Activities', value: stats.activityCount.toLocaleString() },
-        { label: 'Total Time', value: formatEmbedDuration(stats.totalSeconds) },
+        { label: 'Time', value: formatEmbedDuration(stats.totalSeconds) },
         { label: 'Kills', value: stats.kills.toLocaleString() },
         { label: 'Assists', value: stats.assists.toLocaleString() },
         { label: 'Deaths', value: stats.deaths.toLocaleString() },
