@@ -21,6 +21,9 @@ const QuestItemCard = dynamic(
 
 type FilterType = 'All' | 'Exotic' | 'New Light' | 'Seasonal';
 
+const SPECIAL_ORDERS_CATEGORY_HASH = 1367666825;
+const ORDER_TYPE_TEXT_PATTERN = /\border(s)?\b/;
+
 export default function QuestsPage() {
   const { profile, stats, isLoading, isLoggedIn } = useDestinyProfileContext();
   const characterId = stats?.characterId;
@@ -37,12 +40,16 @@ export default function QuestsPage() {
   const { definitions, isLoading: defsLoading } = useItemDefinitions(itemHashes);
 
   // 3. Filter and Group
-  const { quests, bounties, trackedQuests, trackedBounties } = useMemo(() => {
-    if (!profile || !characterId || defsLoading) return { quests: [], bounties: [], trackedQuests: [], trackedBounties: [] };
+  const { quests, orders, bounties, trackedQuests, trackedOrders, trackedBounties } = useMemo(() => {
+    if (!profile || !characterId || defsLoading) {
+        return { quests: [], orders: [], bounties: [], trackedQuests: [], trackedOrders: [], trackedBounties: [] };
+    }
 
     const questsList: any[] = [];
+    const ordersList: any[] = [];
     const bountiesList: any[] = [];
     const trackedQuestsList: any[] = [];
+    const trackedOrdersList: any[] = [];
     const trackedBountiesList: any[] = [];
 
     for (const item of allInventoryItems) {
@@ -58,10 +65,14 @@ export default function QuestsPage() {
         // Categorize
         const isQuest = def.itemType === 12 || def.itemType === 29;
         const isBounty = def.itemType === 26;
+        const isOrder = def.itemCategoryHashes?.includes(SPECIAL_ORDERS_CATEGORY_HASH) || ORDER_TYPE_TEXT_PATTERN.test(typeName);
 
         const data = { item, def };
 
-        if (isBounty) {
+        if (isOrder) {
+            if (isTracked) trackedOrdersList.push(data);
+            else ordersList.push(data);
+        } else if (isBounty) {
             if (isTracked) trackedBountiesList.push(data);
             else bountiesList.push(data);
         } else if (isQuest) {
@@ -86,8 +97,10 @@ export default function QuestsPage() {
 
     return { 
         quests: questsList, 
+        orders: ordersList,
         bounties: bountiesList, 
         trackedQuests: trackedQuestsList,
+        trackedOrders: trackedOrdersList,
         trackedBounties: trackedBountiesList
     };
   }, [allInventoryItems, definitions, defsLoading, profile, characterId, activeFilter]);
@@ -133,14 +146,26 @@ export default function QuestsPage() {
       </button>
   );
 
+  const renderCompactPursuitCard = (pursuitData: any, pursuitIndex: number) => {
+      const { item, def: definition } = pursuitData;
+
+      return (
+          <DestinyItemCard
+              key={item.itemInstanceId || `${item.itemHash}-${pursuitIndex}`}
+              itemHash={item.itemHash}
+              itemInstanceId={item.itemInstanceId}
+              instanceData={item}
+              ownerId={characterId}
+              quantity={item.quantity > 1 ? item.quantity : undefined}
+              objectives={getObjectives(item.itemInstanceId)}
+              definition={definition}
+              className="h-auto aspect-square"
+          />
+      );
+  };
+
   return (
     <div className="pb-20 animate-in fade-in duration-500">
-      <div className="mb-8 border-b border-white/10 pb-4 flex flex-col md:flex-row md:items-end justify-between gap-4 p-6">
-         <div>
-             <h1 className="text-xl font-bold uppercase tracking-wide text-white">Quests</h1>
-         </div>
-      </div>
-
       <div className="p-6 max-w-[1800px] mx-auto">
         <div className="flex flex-col xl:flex-row gap-8 items-start">
             
@@ -199,29 +224,49 @@ export default function QuestsPage() {
             </div>
 
 
-            {/* RIGHT COLUMN: BOUNTIES & FILTERS (Fixed Width - Smaller) */}
+            {/* RIGHT COLUMN: ORDERS, BOUNTIES & FILTERS (Fixed Width - Smaller) */}
             <div className="w-full xl:w-[300px] shrink-0 space-y-8 sticky top-6">
+
+                {/* Tracked Orders */}
+                {trackedOrders.length > 0 && (
+                    <section>
+                         <h2 className="text-xl font-bold mb-4 text-destiny-gold uppercase tracking-widest border-b border-white/10 pb-2 flex items-center gap-2">
+                            <span className="w-2 h-2 bg-destiny-gold rounded-full animate-pulse"/> Tracked Orders
+                        </h2>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {trackedOrders.map(renderCompactPursuitCard)}
+                        </div>
+                    </section>
+                )}
+
+                {/* All Orders */}
+                <section>
+                    <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+                        <h2 className="text-xl font-bold text-white uppercase tracking-widest">
+                            Orders
+                        </h2>
+                        <span className="text-sm text-gray-400">{orders.length + trackedOrders.length}</span>
+                    </div>
+
+                    {orders.length === 0 ? (
+                        <div className="text-gray-500 italic p-4 border border-dashed border-gray-800 rounded text-center">
+                            {trackedOrders.length > 0 ? "No additional orders." : "No orders."}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {orders.map(renderCompactPursuitCard)}
+                        </div>
+                    )}
+                </section>
                 
                 {/* Tracked Bounties */}
                 {trackedBounties.length > 0 && (
                     <section>
                          <h2 className="text-xl font-bold mb-4 text-destiny-gold uppercase tracking-widest border-b border-white/10 pb-2 flex items-center gap-2">
-                            <span className="w-2 h-2 bg-destiny-gold rounded-full animate-pulse"/> Tracked
+                            <span className="w-2 h-2 bg-destiny-gold rounded-full animate-pulse"/> Tracked Bounties
                         </h2>
                         <div className="grid grid-cols-3 gap-1.5">
-                            {trackedBounties.map(({ item, def }: any, idx: number) => (
-                                <DestinyItemCard 
-                                    key={item.itemInstanceId || `${item.itemHash}-${idx}`}
-                                    itemHash={item.itemHash}
-                                    itemInstanceId={item.itemInstanceId}
-                                    instanceData={item}
-                                    ownerId={characterId}
-                                    quantity={item.quantity > 1 ? item.quantity : undefined}
-                                    objectives={getObjectives(item.itemInstanceId)}
-                                    definition={def}
-                                    className="h-auto aspect-square text-[10px]" 
-                                />
-                            ))}
+                            {trackedBounties.map(renderCompactPursuitCard)}
                         </div>
                     </section>
                 )}
@@ -235,25 +280,13 @@ export default function QuestsPage() {
                         <span className="text-sm text-gray-400">{bounties.length + trackedBounties.length}</span>
                     </div>
                     
-                    {bounties.length === 0 && trackedBounties.length === 0 ? (
+                    {bounties.length === 0 ? (
                         <div className="text-gray-500 italic p-4 border border-dashed border-gray-800 rounded text-center">
-                            No bounties.
+                            {trackedBounties.length > 0 ? "No additional bounties." : "No bounties."}
                         </div>
                     ) : (
                         <div className="grid grid-cols-3 gap-1.5">
-                            {bounties.map(({ item, def }: any, idx: number) => (
-                                <DestinyItemCard 
-                                    key={item.itemInstanceId || `${item.itemHash}-${idx}`}
-                                    itemHash={item.itemHash}
-                                    itemInstanceId={item.itemInstanceId}
-                                    instanceData={item}
-                                    ownerId={characterId}
-                                    quantity={item.quantity > 1 ? item.quantity : undefined}
-                                    objectives={getObjectives(item.itemInstanceId)}
-                                    definition={def}
-                                    className="h-auto aspect-square"
-                                />
-                            ))}
+                            {bounties.map(renderCompactPursuitCard)}
                         </div>
                     )}
                 </section>

@@ -304,7 +304,49 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
       }),
     [itemDef, itemType, detailedPerks, socketsData, plugDefs]
   );
-  const hasExoticArmorTraits = exoticArmorTraits.length > 0;
+  const exoticWeaponTraits = useMemo(() => {
+    if (itemDef?.itemType !== 3 || itemDef?.inventory?.tierTypeName !== "Exotic") {
+      return [];
+    }
+
+    const traitPlugs: any[] = [];
+    const seenHashes = new Set<number>();
+
+    for (const socket of detailedPerks ?? []) {
+      const traitPlug = socket.activePlug;
+      const traitHash = getPlugHash(traitPlug);
+      const traitType = getPlugTypeText(traitPlug).toLowerCase();
+      const traitCategory = traitPlug?.plug?.plugCategoryIdentifier?.toLowerCase() ?? "";
+      const isIntrinsicTrait =
+        socket.socketIndex === 0 ||
+        traitType.includes("intrinsic") ||
+        traitCategory.includes("intrinsic");
+
+      if (!traitPlug || !traitHash || !isIntrinsicTrait || seenHashes.has(traitHash)) {
+        continue;
+      }
+
+      seenHashes.add(traitHash);
+      traitPlugs.push(traitPlug);
+    }
+
+    return traitPlugs;
+  }, [itemDef, detailedPerks]);
+  const exoticTraitPlugs =
+    exoticArmorTraits.length > 0 ? exoticArmorTraits : exoticWeaponTraits;
+  const hasExoticTraitPlugs = exoticTraitPlugs.length > 0;
+  const exoticTraitPlugHashes = useMemo(() => {
+    const traitHashes = new Set<number>();
+
+    for (const traitPlug of exoticTraitPlugs) {
+      const traitHash = getPlugHash(traitPlug);
+      if (traitHash) {
+        traitHashes.add(traitHash);
+      }
+    }
+
+    return traitHashes;
+  }, [exoticTraitPlugs]);
   
   const armorSetBonus = useMemo(() => {
     if (isExoticArmorItem(itemDef, itemType)) return null;
@@ -466,8 +508,43 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
   const armorTotal = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + s.value : acc, 0) : 0;
   const armorTierSum = isArmor ? displayStats.reduce((acc, s) => s.isArmorStat ? acc + Math.floor(s.value / 10) : acc, 0) : 0;
   const shouldClampSetBonusDescriptions = !docked && !showFullSetBonusDescriptions;
+  const detailedPerksForGrid = useMemo(() => {
+    if (!detailedPerks || detailedPerks.length === 0 || exoticArmorTraits.length > 0) {
+      return undefined;
+    }
+
+    if (exoticTraitPlugHashes.size === 0) {
+      return detailedPerks;
+    }
+
+    const filteredPerks = detailedPerks
+      .map((socket) => {
+        const activePlugHash = getPlugHash(socket.activePlug);
+        const activePlug =
+          activePlugHash && exoticTraitPlugHashes.has(activePlugHash)
+            ? null
+            : socket.activePlug;
+        const options = (socket.options ?? []).filter((option: any) => {
+          const optionHash = getPlugHash(option);
+          return !optionHash || !exoticTraitPlugHashes.has(optionHash);
+        });
+
+        if (!activePlug && options.length === 0) {
+          return null;
+        }
+
+        return {
+          ...socket,
+          activePlug,
+          options,
+        };
+      })
+      .filter((socket): socket is NonNullable<typeof socket> => socket !== null);
+
+    return filteredPerks.length > 0 ? filteredPerks : undefined;
+  }, [detailedPerks, exoticArmorTraits.length, exoticTraitPlugHashes]);
   const shouldShowDetailedPerks =
-    Boolean(detailedPerks && detailedPerks.length > 0) && !hasExoticArmorTraits;
+    Boolean(detailedPerksForGrid && detailedPerksForGrid.length > 0);
   const shouldShowPlugSection = shouldShowDetailedPerks || mods.length > 0;
 
   return (
@@ -713,14 +790,14 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                     </div>
                 )}
 
-                {/* Exotic Armor Trait Section */}
-                {hasExoticArmorTraits && (
+                {/* Exotic Trait Section */}
+                {hasExoticTraitPlugs && (
                     <div className="space-y-2 pt-2 border-t border-white/10 mt-2">
                         <h4 className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">
-                            {exoticArmorTraits.length === 1 ? "Exotic Trait" : "Exotic Traits"}
+                            {exoticTraitPlugs.length === 1 ? "Exotic Trait" : "Exotic Traits"}
                         </h4>
                         <div className="space-y-2">
-                            {exoticArmorTraits.map((traitPlug, traitIndex) => {
+                            {exoticTraitPlugs.map((traitPlug, traitIndex) => {
                                 const traitHash = getPlugHash(traitPlug);
                                 const clarityDescription = traitHash
                                     ? clarityDescriptions[traitHash]
@@ -1141,9 +1218,9 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                         )}
                         <div className="flex items-start gap-4 overflow-visible">
                             {/* Perks Scroll Area */}
-                            {shouldShowDetailedPerks && detailedPerks && (
+                            {shouldShowDetailedPerks && detailedPerksForGrid && (
                                 <div className="flex min-w-0 flex-1 flex-row flex-wrap gap-2 overflow-visible pb-2">
-                                    {detailedPerks.map((socket, idx) => (
+                                    {detailedPerksForGrid.map((socket, idx) => (
                                          <div key={idx} className="flex flex-col gap-2 shrink-0">
                                             {/* Intrinsic / Active Plug usually first */}
                                             {socket.options.length > 0 ? (

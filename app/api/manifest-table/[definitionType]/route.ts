@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerBungieApiKey } from "@/lib/serverBungie";
 
 const ALLOWED_TYPES = new Set([
+  "DestinyActivityDefinition",
+  "DestinyActivityModeDefinition",
+  "DestinyActivityTypeDefinition",
   "DestinyInventoryItemDefinition",
   "DestinyCollectibleDefinition",
   "DestinyEquipableItemSetDefinition",
@@ -69,12 +72,150 @@ function pickInventoryCardFields(table: Record<string, any>) {
   return out;
 }
 
+function pickActivityCardFields(table: Record<string, any>) {
+  const out: Record<string, any> = {};
+
+  for (const [hash, def] of Object.entries(table)) {
+    out[hash] = {
+      hash: def.hash,
+      displayProperties: {
+        name: def.displayProperties?.name ?? "",
+        description: def.displayProperties?.description ?? "",
+        icon: def.displayProperties?.icon ?? "",
+        hasIcon: Boolean(def.displayProperties?.hasIcon),
+      },
+      originalDisplayProperties: {
+        name: def.originalDisplayProperties?.name ?? "",
+      },
+      selectionScreenDisplayProperties: {
+        name: def.selectionScreenDisplayProperties?.name ?? "",
+      },
+      pgcrImage: def.pgcrImage,
+      activityTypeHash: def.activityTypeHash,
+      directActivityModeHash: def.directActivityModeHash,
+      directActivityModeType: def.directActivityModeType,
+      activityModeTypes: def.activityModeTypes,
+      matchmaking: def.matchmaking
+        ? {
+            isMatchmade: def.matchmaking.isMatchmade,
+            maxPlayers: def.matchmaking.maxPlayers,
+          }
+        : undefined,
+      isPlaylist: def.isPlaylist,
+      isPvP: def.isPvP,
+      redacted: def.redacted,
+      blacklisted: def.blacklisted,
+    };
+  }
+
+  return out;
+}
+
+function pickDisplayDefinitionFields(table: Record<string, any>) {
+  const out: Record<string, any> = {};
+
+  for (const [hash, def] of Object.entries(table)) {
+    out[hash] = {
+      hash: def.hash,
+      displayProperties: {
+        name: def.displayProperties?.name ?? "",
+        description: def.displayProperties?.description ?? "",
+        icon: def.displayProperties?.icon ?? "",
+        hasIcon: Boolean(def.displayProperties?.hasIcon),
+      },
+      modeType: def.modeType,
+      pgcrImage: def.pgcrImage,
+    };
+  }
+
+  return out;
+}
+
+function pickActivityReportCatalogFields(table: Record<string, any>) {
+  const activityCardFields = pickActivityCardFields(table);
+  const out: Record<string, any> = {};
+
+  for (const [hash, def] of Object.entries(activityCardFields)) {
+    if (isActivityReportCandidate(def)) {
+      out[hash] = def;
+    }
+  }
+
+  return out;
+}
+
+function pickTableFields(definitionType: string, table: Record<string, any>, view: string | null) {
+  if (definitionType === "DestinyInventoryItemDefinition" && view === "card") {
+    return pickInventoryCardFields(table);
+  }
+
+  if (definitionType === "DestinyActivityDefinition" && view === "activity-report-catalog") {
+    return pickActivityReportCatalogFields(table);
+  }
+
+  if (definitionType === "DestinyActivityDefinition" && view === "activity-card") {
+    return pickActivityCardFields(table);
+  }
+
+  if (
+    definitionType === "DestinyActivityModeDefinition" ||
+    definitionType === "DestinyActivityTypeDefinition"
+  ) {
+    return pickDisplayDefinitionFields(table);
+  }
+
+  return table;
+}
+
 function validateDefinitionType(definitionType: string) {
   if (!ALLOWED_TYPES.has(definitionType)) {
     return NextResponse.json({ error: "Unsupported definition type" }, { status: 400 });
   }
 
   return null;
+}
+
+function isActivityReportCandidate(definition: any) {
+  if (
+    !definition.displayProperties?.name ||
+    definition.redacted ||
+    definition.blacklisted ||
+    definition.isPlaylist ||
+    definition.isPvP
+  ) {
+    return false;
+  }
+
+  const nameText = [
+    definition.displayProperties?.name,
+    definition.originalDisplayProperties?.name,
+    definition.selectionScreenDisplayProperties?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (nameText.includes("pantheon")) {
+    return false;
+  }
+
+  const modeTypes = new Set([
+    definition.directActivityModeType,
+    ...(definition.activityModeTypes ?? []),
+  ]);
+  const isRaid = modeTypes.has(4);
+  const isDungeon = modeTypes.has(82);
+  const maxPlayers = definition.matchmaking?.maxPlayers;
+
+  if (isRaid) {
+    return !maxPlayers || maxPlayers >= 6;
+  }
+
+  if (isDungeon) {
+    return !maxPlayers || maxPlayers <= 3;
+  }
+
+  return false;
 }
 
 async function getManifestTable(definitionType: string) {
@@ -159,11 +300,11 @@ export async function GET(
 
   try {
     const { table: rawTable, version } = await getManifestTable(definitionType);
-    const table =
-      definitionType === "DestinyInventoryItemDefinition" &&
-      request.nextUrl.searchParams.get("view") === "card"
-        ? pickInventoryCardFields(rawTable)
-        : rawTable;
+    const table = pickTableFields(
+      definitionType,
+      rawTable,
+      request.nextUrl.searchParams.get("view")
+    );
 
     return NextResponse.json(table, {
       headers: {
@@ -187,13 +328,6 @@ export async function POST(
     return validationError;
   }
 
-  if (definitionType !== "DestinyInventoryItemDefinition") {
-    return NextResponse.json(
-      { error: "Hash filtering is only supported for inventory items" },
-      { status: 400 }
-    );
-  }
-
   try {
     const body = await request.json();
     const requestedHashes = Array.isArray(body?.hashes) ? body.hashes : [];
@@ -209,10 +343,11 @@ export async function POST(
       }
     }
 
-    const table =
-      request.nextUrl.searchParams.get("view") === "card"
-        ? pickInventoryCardFields(selectedTable)
-        : selectedTable;
+    const table = pickTableFields(
+      definitionType,
+      selectedTable,
+      request.nextUrl.searchParams.get("view")
+    );
 
     return NextResponse.json(table, {
       headers: {

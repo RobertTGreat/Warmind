@@ -1,8 +1,8 @@
 import useSWR from 'swr';
 import { getActivityHistory } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
-import { useState, useEffect, useCallback } from 'react';
-import { getCachedHistory, setCachedHistory, clearCache, getInvalidInstanceIds } from '@/lib/activityCache';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { getCachedHistory, setCachedHistory, clearCache, getInvalidInstanceIds, getOrFetchPGCR } from '@/lib/activityCache';
 
 export interface ActivityHistoryItem {
     activityDetails: {
@@ -17,6 +17,7 @@ export interface ActivityHistoryItem {
         assists: { basic: { value: number; displayValue: string } };
         activityDurationSeconds: { basic: { value: number; displayValue: string } };
         completionReason: { basic: { value: number; displayValue: string } };
+        playerCount?: { basic: { value: number; displayValue: string } };
     };
     period: string;
     characterId?: string; // Added
@@ -47,106 +48,100 @@ export interface PGCRPlayer {
     };
 }
 
-export function useActivityHistory() {
+interface UseActivityHistoryOptions {
+    includeAllActivities?: boolean;
+}
+
+const ALL_ACTIVITY_MODE = 0;
+const RAID_ACTIVITY_MODE = 4;
+const DUNGEON_ACTIVITY_MODE = 82;
+
+export async function fetchHistoryForMode(
+    membershipType: number,
+    membershipId: string,
+    characterIds: string[],
+    mode: number
+) {
+    const activityHistory: ActivityHistoryItem[] = [];
+
+    for (const characterId of characterIds) {
+        try {
+            let page = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+                const response = await getActivityHistory(membershipType, membershipId, characterId, mode, 250, page);
+                const activities = response.data.Response?.activities;
+
+                if (activities && activities.length > 0) {
+                    activityHistory.push(...activities.map((activity: any) => ({ ...activity, characterId })));
+                    page++;
+                } else {
+                    hasMore = false;
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to fetch mode ${mode} history for character ${characterId}`, error);
+        }
+    }
+
+    return filterAndSortHistory(activityHistory);
+}
+
+async function filterAndSortHistory(history: ActivityHistoryItem[]) {
+    const uniqueHistory = Array.from(
+        new Map(history.map((activity) => [activity.activityDetails.instanceId, activity])).values()
+    );
+
+    const invalidIds = await getInvalidInstanceIds();
+    const filteredHistory = uniqueHistory.filter((activity) => !invalidIds.has(activity.activityDetails.instanceId));
+
+    filteredHistory.sort((firstActivity, secondActivity) => (
+        new Date(secondActivity.period).getTime() - new Date(firstActivity.period).getTime()
+    ));
+
+    return filteredHistory;
+}
+
+export function useActivityHistory(options: UseActivityHistoryOptions = {}) {
+    const includeAllActivities = options.includeAllActivities ?? false;
     const { profile } = useDestinyProfileContext();
     const characterIds = profile?.characters?.data ? Object.keys(profile.characters.data) : [];
     const membershipType = profile?.profile?.data?.userInfo?.membershipType;
     const membershipId = profile?.profile?.data?.userInfo?.membershipId;
+    const sortedCharacterIds = useMemo(() => [...characterIds].sort(), [characterIds.join(',')]);
 
     const [raidHistory, setRaidHistory] = useState<ActivityHistoryItem[]>([]);
     const [dungeonHistory, setDungeonHistory] = useState<ActivityHistoryItem[]>([]);
+    const [allHistory, setAllHistory] = useState<ActivityHistoryItem[]>([]);
     const [loading, setLoading] = useState(false);
-    
-    // Fetch history when profile is loaded
-    // Currently fetching page 0 (up to 250 items per char). 
-    // This covers a lot of history. 
-    // To get *more* historical data we would need to loop pages until no more results.
+    const [loadingAllHistory, setLoadingAllHistory] = useState(false);
+
     useEffect(() => {
         if (!membershipType || !membershipId || characterIds.length === 0) return;
 
         const fetchHistory = async () => {
             setLoading(true);
-            const cacheKey = `history_${membershipType}_${membershipId}_${characterIds.sort().join('_')}`;
+            const cacheKey = `history_v2_${membershipType}_${membershipId}_${sortedCharacterIds.join('_')}`;
             
-            // Try loading from cache first
             const cachedData = await getCachedHistory(cacheKey);
             if (cachedData) {
                 setRaidHistory(cachedData.raids);
                 setDungeonHistory(cachedData.dungeons);
                 setLoading(false);
-                // We can choose to re-fetch in background or just return
-                // For now, let's just return to be fast. 
-                // Or maybe only fetch if cache is old? The lib handles expiry (1 hour).
                 return;
             }
 
             try {
-                const raids: ActivityHistoryItem[] = [];
-                const dungeons: ActivityHistoryItem[] = [];
+                const [raids, dungeons] = await Promise.all([
+                    fetchHistoryForMode(membershipType, membershipId, sortedCharacterIds, RAID_ACTIVITY_MODE),
+                    fetchHistoryForMode(membershipType, membershipId, sortedCharacterIds, DUNGEON_ACTIVITY_MODE),
+                ]);
 
-                // For each character, let's try to fetch at least 250 items which is page 0.
-                // If we wanted deeper history, we could iterate pages.
-                // Bungie API page size max is 250.
-                for (const charId of characterIds) {
-                    // Fetch Raids (Mode 4)
-                    try {
-                        let page = 0;
-                        let hasMore = true;
-                        while (hasMore) {
-                            const raidRes = await getActivityHistory(membershipType, membershipId, charId, 4, 250, page);
-                            const activities = raidRes.data.Response?.activities;
-                            
-                            if (activities && activities.length > 0) {
-                                raids.push(...activities.map((a: any) => ({ ...a, characterId: charId })));
-                                page++;
-                            } else {
-                                hasMore = false;
-                            }
-                        }
-                    } catch (e) {
-                        console.error(`Failed to fetch raid history for char ${charId}`, e);
-                    }
+                setRaidHistory(raids);
+                setDungeonHistory(dungeons);
 
-                    // Fetch Dungeons (Mode 82)
-                    try {
-                        let page = 0;
-                        let hasMore = true;
-                        while (hasMore) {
-                            const dungeonRes = await getActivityHistory(membershipType, membershipId, charId, 82, 250, page);
-                            const activities = dungeonRes.data.Response?.activities;
-
-                            if (activities && activities.length > 0) {
-                                dungeons.push(...activities.map((a: any) => ({ ...a, characterId: charId })));
-                                page++;
-                            } else {
-                                hasMore = false;
-                            }
-                        }
-                    } catch (e) {
-                        console.error(`Failed to fetch dungeon history for char ${charId}`, e);
-                    }
-                }
-
-                // Deduplicate by instanceId
-                const uniqueRaids = Array.from(new Map(raids.map(item => [item.activityDetails.instanceId, item])).values());
-                const uniqueDungeons = Array.from(new Map(dungeons.map(item => [item.activityDetails.instanceId, item])).values());
-
-                // Filter out any known invalid instances before storing
-                const invalidIds = await getInvalidInstanceIds();
-                const hasMethod = typeof (invalidIds as any)?.has === 'function';
-
-                const filteredRaids = uniqueRaids.filter(r => !(hasMethod ? invalidIds.has(r.activityDetails.instanceId) : false));
-                const filteredDungeons = uniqueDungeons.filter(d => !(hasMethod ? invalidIds.has(d.activityDetails.instanceId) : false));
-
-                // Sort by date (newest first)
-                filteredRaids.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
-                filteredDungeons.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
-
-                setRaidHistory(filteredRaids);
-                setDungeonHistory(filteredDungeons);
-
-                // Save to cache (setCachedHistory will also filter)
-                await setCachedHistory(cacheKey, { raids: filteredRaids, dungeons: filteredDungeons });
+                await setCachedHistory(cacheKey, { raids, dungeons });
 
             } catch (err) {
                 console.error("Error fetching activity history", err);
@@ -156,7 +151,46 @@ export function useActivityHistory() {
         };
 
         fetchHistory();
-    }, [membershipType, membershipId, characterIds.join(',')]);
+    }, [membershipType, membershipId, sortedCharacterIds.join(',')]);
+
+    useEffect(() => {
+        if (!includeAllActivities || !membershipType || !membershipId || sortedCharacterIds.length === 0) {
+            if (!includeAllActivities) {
+                setAllHistory([]);
+            }
+            return;
+        }
+
+        const fetchAllHistory = async () => {
+            setLoadingAllHistory(true);
+            const cacheKey = `all_history_v1_${membershipType}_${membershipId}_${sortedCharacterIds.join('_')}`;
+
+            const cachedData = await getCachedHistory(cacheKey);
+            if (cachedData?.allActivities) {
+                setAllHistory(cachedData.allActivities);
+                setLoadingAllHistory(false);
+                return;
+            }
+
+            try {
+                const allActivities = await fetchHistoryForMode(
+                    membershipType,
+                    membershipId,
+                    sortedCharacterIds,
+                    ALL_ACTIVITY_MODE
+                );
+
+                setAllHistory(allActivities);
+                await setCachedHistory(cacheKey, { raids: [], dungeons: [], allActivities });
+            } catch (error) {
+                console.error("Error fetching all activity history", error);
+            } finally {
+                setLoadingAllHistory(false);
+            }
+        };
+
+        fetchAllHistory();
+    }, [includeAllActivities, membershipType, membershipId, sortedCharacterIds.join(',')]);
 
     // Function to force refresh the cache
     const refreshHistory = useCallback(async () => {
@@ -168,7 +202,9 @@ export function useActivityHistory() {
         // Reset state and trigger re-fetch
         setRaidHistory([]);
         setDungeonHistory([]);
+        setAllHistory([]);
         setLoading(true);
+        setLoadingAllHistory(false);
         
         // The useEffect will handle the re-fetch since loading state changed
     }, [membershipType, membershipId, characterIds]);
@@ -176,22 +212,17 @@ export function useActivityHistory() {
     return {
         raidHistory,
         dungeonHistory,
+        allHistory,
         isLoadingHistory: loading,
+        isLoadingAllHistory: loadingAllHistory,
         refreshHistory
     };
 }
 
-// Fetch PGCR via server proxy (required due to CORS restrictions on Bungie's PGCR endpoint)
-const fetchPGCR = async (instanceId: string) => {
-    const res = await fetch(`/api/pgcr/${instanceId}`);
-    const data = await res.json();
-    return data.Response;
-};
-
 export function usePGCR(instanceId: string | null) {
     const { data, error, isLoading } = useSWR(
         instanceId ? `pgcr/${instanceId}` : null,
-        () => fetchPGCR(instanceId!)
+        () => getOrFetchPGCR(instanceId!)
     );
 
     return {

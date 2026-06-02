@@ -12,12 +12,18 @@ const CollectionsBrowser = dynamic(
   }
 );
 
+const ItemDetailsOverlay = dynamic(
+  () => import("@/components/ItemDetailsOverlay").then((mod) => mod.ItemDetailsOverlay),
+  { ssr: false }
+);
+
 export default function CollectionsPage() {
   return (
     <div className="space-y-6 pt-10">
       <div className="border border-white/10 p-6 min-h-[80vh] rounded-none">
          <CollectionsBrowser rootHash={PRESENTATION_NODES.COLLECTIONS_ROOT} />
       </div>
+      <ItemDetailsOverlay />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { create } from 'zustand';
 interface UIStore {
   detailsItem: any | null;
   setDetailsItem: (item: any | null) => void;
+  fullDetailsItem: any | null;
+  setFullDetailsItem: (item: any | null) => void;
   characterSearchQuery: string;
   setCharacterSearchQuery: (query: string) => void;
   characterSearchVisible: boolean;
@@ -12,6 +14,8 @@ interface UIStore {
 export const useUIStore = create<UIStore>((set) => ({
   detailsItem: null,
   setDetailsItem: (item) => set({ detailsItem: item }),
+  fullDetailsItem: null,
+  setFullDetailsItem: (item) => set({ fullDetailsItem: item }),
   characterSearchQuery: '',
   setCharacterSearchQuery: (characterSearchQuery) => set({ characterSearchQuery }),
   characterSearchVisible: false,

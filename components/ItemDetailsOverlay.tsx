@@ -1,16 +1,30 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { getBungieImage, bungieApi, endpoints, insertSocketPlug, insertSocketPlugFree } from '@/lib/bungie';
 import { BUCKETS } from '@/lib/destinyUtils';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
+import { useClarityDescriptions } from '@/hooks/useClarityDescriptions';
+import { useManifestTable } from '@/hooks/useManifestTable';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 import { PretextLineClamp } from '@/components/PretextLineClamp';
+import {
+    buildWeaponSocketGroups,
+    collectWeaponPlugHashes,
+    getWeaponPlugSetHashes,
+} from '@/lib/weaponPlugAnalysis';
+import {
+    getExoticArmorTraitPlugs,
+    getPlugDisplayText,
+    getPlugHash,
+    getPlugTypeText,
+} from '@/lib/armorTraits';
+import { getItemSourceInfo, type ItemSourceInfo } from '@/lib/itemSourceInfo';
+import type { ClarityDescription } from '@/lib/clarityDescriptions';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -39,9 +53,25 @@ const WEAPON_STAT_ORDER = [
     2762071195, // Guard Endurance
 ];
 
+function getActiveOverlaySocketOption(socketGroup: any) {
+    return (
+        socketGroup.options?.find((option: any) => option.isActive) ??
+        socketGroup.options?.[0] ??
+        null
+    );
+}
+
+function getOverlayIntrinsicPlug(socketGroups: any[]) {
+    const intrinsicSocketGroup = socketGroups.find((socketGroup) => socketGroup.isIntrinsic);
+
+    return intrinsicSocketGroup ? getActiveOverlaySocketOption(intrinsicSocketGroup) : null;
+}
+
 export function ItemDetailsOverlay() {
-  const { detailsItem, setDetailsItem } = useUIStore();
+  const { detailsItem, setDetailsItem, setFullDetailsItem } = useUIStore();
   const { profile, membershipInfo } = useDestinyProfileContext();
+  const { table: collectibleDefinitions } =
+    useManifestTable<any>("DestinyCollectibleDefinition");
   
   // Fetch definition for the item
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
@@ -51,6 +81,82 @@ export function ItemDetailsOverlay() {
   const sockets = detailsItem?.itemInstanceId ? profile?.itemComponents?.sockets?.data?.[detailsItem.itemInstanceId]?.sockets : undefined;
   const stats = detailsItem?.itemInstanceId ? profile?.itemComponents?.stats?.data?.[detailsItem.itemInstanceId]?.stats : undefined;
   const objectives = detailsItem?.itemInstanceId ? profile?.itemComponents?.objectives?.data?.[detailsItem.itemInstanceId]?.objectives : undefined;
+  const selectedSocketsData = useMemo(
+    () => (sockets ? { sockets } : undefined),
+    [sockets]
+  );
+  const reusablePlugsData = detailsItem?.itemInstanceId
+    ? profile?.itemComponents?.reusablePlugs?.data?.[detailsItem.itemInstanceId]?.plugs
+    : undefined;
+  const plugSetHashes = useMemo(
+    () => getWeaponPlugSetHashes(itemDef),
+    [itemDef]
+  );
+  const { definitions: plugSetDefinitions } = usePlugSets(plugSetHashes);
+  const overlayPlugHashes = useMemo(
+    () =>
+      collectWeaponPlugHashes({
+        itemDefinition: itemDef,
+        socketsData: selectedSocketsData,
+        reusablePlugsData,
+        plugSetDefinitions,
+      }),
+    [itemDef, selectedSocketsData, reusablePlugsData, plugSetDefinitions]
+  );
+  const { definitions: overlayPlugDefinitions } = useItemDefinitions(overlayPlugHashes);
+  const overlaySocketGroups = useMemo(
+    () =>
+      buildWeaponSocketGroups({
+        itemDefinition: itemDef,
+        socketsData: selectedSocketsData,
+        reusablePlugsData,
+        plugDefinitions: overlayPlugDefinitions,
+        plugSetDefinitions,
+      }),
+    [
+      itemDef,
+      selectedSocketsData,
+      reusablePlugsData,
+      overlayPlugDefinitions,
+      plugSetDefinitions,
+    ]
+  );
+  const overlayIntrinsicPlug = useMemo(
+    () => getOverlayIntrinsicPlug(overlaySocketGroups),
+    [overlaySocketGroups]
+  );
+  const exoticArmorTraitPlugs = useMemo(
+    () =>
+      getExoticArmorTraitPlugs({
+        itemDefinition: itemDef,
+        itemType: itemDef?.itemTypeDisplayName ?? "",
+        socketsData: selectedSocketsData,
+        plugDefinitions: overlayPlugDefinitions,
+      }),
+    [itemDef, selectedSocketsData, overlayPlugDefinitions]
+  );
+  const detailTraitPlugs = useMemo(() => {
+    if (itemDef?.itemType === 2) return exoticArmorTraitPlugs;
+
+    return overlayIntrinsicPlug?.definition ? [overlayIntrinsicPlug.definition] : [];
+  }, [itemDef, exoticArmorTraitPlugs, overlayIntrinsicPlug]);
+  const detailTraitHashes = useMemo(
+    () =>
+      detailTraitPlugs
+        .map((traitPlug) => getPlugHash(traitPlug))
+        .filter((traitHash): traitHash is number => Boolean(traitHash)),
+    [detailTraitPlugs]
+  );
+  const { descriptions: detailTraitClarityDescriptions } =
+    useClarityDescriptions(detailTraitHashes);
+  const itemSourceInfo = useMemo(
+    () =>
+      getItemSourceInfo({
+        itemDefinition: itemDef,
+        collectibleTable: collectibleDefinitions,
+      }),
+    [itemDef, collectibleDefinitions]
+  );
 
   const tierNumber = instance?.gearTier ?? 0;
 
@@ -59,6 +165,14 @@ export function ItemDetailsOverlay() {
     const isSubclass = itemDef?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
     const isWeapon = itemDef?.itemType === 3;
     const isArmor = itemDef?.itemType === 2;
+    const handleOpenFullDetails = () => {
+        setFullDetailsItem({
+            itemHash: detailsItem.itemHash,
+            itemInstanceId: detailsItem.itemInstanceId,
+            ownerId: detailsItem.ownerId,
+        });
+        setDetailsItem(null);
+    };
 
     return (
     <div 
@@ -90,13 +204,12 @@ export function ItemDetailsOverlay() {
              {/* Controls */}
              <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
                 {isWeapon && (
-                    <Link
-                        href={`/item/${detailsItem.itemHash}`}
-                        onClick={() => setDetailsItem(null)}
+                    <button
+                        onClick={handleOpenFullDetails}
                         className="border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-bold uppercase text-slate-300 transition-colors hover:border-destiny-gold/50 hover:text-destiny-gold"
                     >
                         Show Perks
-                    </Link>
+                    </button>
                 )}
 
                 <button 
@@ -155,6 +268,13 @@ export function ItemDetailsOverlay() {
                       </div>
                   </div>
 
+                  <BasicItemInfo
+                    sourceInfo={itemSourceInfo}
+                    traitPlugs={detailTraitPlugs}
+                    clarityDescriptions={detailTraitClarityDescriptions}
+                    itemDef={itemDef}
+                  />
+
                  {/* Sockets Section (Perks & Mods) */}
                  <div className="flex-1 mt-4">
                      {isSubclass ? (
@@ -208,6 +328,141 @@ export function ItemDetailsOverlay() {
 }
 
 // --- Sub-components ---
+
+function BasicItemInfo({
+    sourceInfo,
+    traitPlugs,
+    clarityDescriptions,
+    itemDef,
+}: {
+    sourceInfo: ItemSourceInfo | null;
+    traitPlugs: any[];
+    clarityDescriptions: Record<number, ClarityDescription>;
+    itemDef: any;
+}) {
+    const hasSourceInfo = Boolean(sourceInfo?.sourceText || sourceInfo?.requirementText);
+    const hasTraits = traitPlugs.length > 0;
+
+    if (!hasSourceInfo && !hasTraits) return null;
+
+    const isExotic = itemDef?.inventory?.tierTypeName === "Exotic";
+
+    return (
+        <div className="space-y-3 border-y border-white/10 py-4">
+            {hasSourceInfo && (
+                <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-destiny-gold">
+                        Drop Source
+                    </p>
+                    {sourceInfo?.sourceText && (
+                        <p className="mt-1 text-sm leading-relaxed text-slate-200">
+                            {sourceInfo.sourceText}
+                        </p>
+                    )}
+                    {sourceInfo?.requirementText && (
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            {sourceInfo.requirementText}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {hasTraits && (
+                <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                        {isExotic ? "Exotic Trait" : "Intrinsic Trait"}
+                    </p>
+                    <div className="space-y-2">
+                        {traitPlugs.map((traitPlug: any, traitIndex: number) => (
+                            <BasicTraitCard
+                                key={getPlugHash(traitPlug) ?? traitIndex}
+                                traitPlug={traitPlug}
+                                clarityDescription={
+                                    getPlugHash(traitPlug)
+                                        ? clarityDescriptions[getPlugHash(traitPlug)!]
+                                        : undefined
+                                }
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function BasicTraitCard({
+    traitPlug,
+    clarityDescription,
+}: {
+    traitPlug: any;
+    clarityDescription?: ClarityDescription;
+}) {
+    const traitName = getPlugDisplayText(traitPlug, "name");
+    const traitDescription = getPlugDisplayText(traitPlug, "description");
+    const traitType = getPlugTypeText(traitPlug);
+    const traitIcon = traitPlug?.displayProperties?.icon
+        ? getBungieImage(traitPlug.displayProperties.icon)
+        : null;
+
+    return (
+        <div className="flex items-start gap-3 border border-white/10 bg-black/20 p-3">
+            {traitIcon && (
+                <div className="relative h-10 w-10 shrink-0 overflow-hidden">
+                    <Image src={traitIcon} alt="" fill sizes="40px" className="object-contain" />
+                </div>
+            )}
+            <div className="min-w-0">
+                <p className="text-sm font-bold leading-tight text-white">{traitName}</p>
+                {traitType && (
+                    <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-destiny-gold">
+                        {traitType}
+                    </p>
+                )}
+                {traitDescription && (
+                    <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                        {traitDescription}
+                    </p>
+                )}
+                <BasicClaritySection clarityDescription={clarityDescription} />
+            </div>
+        </div>
+    );
+}
+
+function BasicClaritySection({
+    clarityDescription,
+}: {
+    clarityDescription?: ClarityDescription;
+}) {
+    if (!clarityDescription) return null;
+
+    return (
+        <div className="mt-3 border-t border-white/10 pt-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+                Clarity
+            </p>
+            <div className="mt-1 space-y-1.5 text-xs leading-relaxed text-slate-200">
+                {clarityDescription.lines.map((line, lineIndex) =>
+                    line ? (
+                        <p
+                            key={`${clarityDescription.hash}-${lineIndex}`}
+                            className="break-words"
+                        >
+                            {line}
+                        </p>
+                    ) : (
+                        <div
+                            key={`${clarityDescription.hash}-${lineIndex}`}
+                            className="h-1"
+                            aria-hidden="true"
+                        />
+                    )
+                )}
+            </div>
+        </div>
+    );
+}
 
 function ItemStats({ stats, itemDef, instance, objectives, isWeapon }: any) {
     const relevantStats = useMemo(() => {

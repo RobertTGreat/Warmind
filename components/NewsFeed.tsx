@@ -1,18 +1,24 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Newspaper, ExternalLink, Calendar, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Newspaper, ExternalLink, Calendar, Loader2, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 
 interface NewsItem {
+    id?: string;
     title: string;
     link: string;
     pubDate: string;
     description: string;
     image: string;
+    htmlContent?: string;
+}
+
+function getArticleLink(link: string) {
+    return link.startsWith('/') ? `https://www.bungie.net${link}` : link;
 }
 
 export function NewsFeed() {
@@ -21,6 +27,7 @@ export function NewsFeed() {
     const [error, setError] = useState(false);
     const [page, setPage] = useState(0);
     const [direction, setDirection] = useState(0);
+    const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
     const itemsPerPage = 4;
     const maxItems = 24;
 
@@ -41,6 +48,26 @@ export function NewsFeed() {
 
         fetchNews();
     }, []);
+
+    useEffect(() => {
+        if (!selectedArticle) return;
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setSelectedArticle(null);
+            }
+        };
+
+        window.addEventListener('keydown', closeOnEscape);
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [selectedArticle]);
 
     const paginate = (newDirection: number) => {
         setDirection(newDirection);
@@ -68,6 +95,7 @@ export function NewsFeed() {
     const visibleNews = limitedNews.slice(startIndex, startIndex + itemsPerPage);
     const hasNext = startIndex + itemsPerPage < limitedNews.length;
     const hasPrev = page > 0;
+    const selectedArticleLink = selectedArticle ? getArticleLink(selectedArticle.link) : '';
 
     return (
         <div className="space-y-4">
@@ -107,15 +135,11 @@ export function NewsFeed() {
             <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 min-h-[300px] overflow-hidden">
                 <AnimatePresence initial={false} mode="popLayout" custom={direction}>
                     {visibleNews.map((item, i) => {
-                        // Handle Bungie relative links
-                        const link = item.link.startsWith('/') ? `https://www.bungie.net${item.link}` : item.link;
-                        
                         return (
-                            <motion.a 
-                                key={item.link} 
-                                href={link}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                            <motion.button
+                                key={item.id || item.link}
+                                type="button"
+                                onClick={() => setSelectedArticle(item)}
                                 custom={direction}
                                 initial={{ opacity: 0, x: direction > 0 ? 100 : -100 }}
                                 animate={{ opacity: 1, x: 0 }}
@@ -125,7 +149,7 @@ export function NewsFeed() {
                                     ease: [0.32, 0.72, 0, 1],
                                     delay: i * 0.05 
                                 }}
-                                className="group relative flex flex-col overflow-hidden border border-white/5 hover:border-white/20 transition-colors duration-300 h-full"
+                                className="group relative flex h-full flex-col overflow-hidden border border-white/5 text-left hover:border-white/20 transition-colors duration-300"
                             >
                                 {/* Image */}
                                 <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
@@ -169,14 +193,81 @@ export function NewsFeed() {
                                     )}
 
                                     <div className="mt-auto pt-4 flex items-center text-xs font-bold text-slate-500 uppercase tracking-widest group-hover:text-white transition-colors">
-                                        Read More <ExternalLink className="w-3 h-3 ml-2" />
+                                        Read More <ChevronRight className="w-3 h-3 ml-2" />
                                     </div>
                                 </div>
-                            </motion.a>
+                            </motion.button>
                         )
                     })}
                 </AnimatePresence>
             </div>
+
+            <AnimatePresence>
+                {selectedArticle && (
+                    <motion.div
+                        className="fixed inset-0 z-100 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setSelectedArticle(null)}
+                    >
+                        <motion.article
+                            className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden border border-white/10 bg-[#11151c] shadow-2xl"
+                            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                            transition={{ duration: 0.2 }}
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-xs font-medium text-amber-400 uppercase tracking-wider">
+                                        <Calendar className="w-3 h-3" />
+                                        {selectedArticle.pubDate ? format(new Date(selectedArticle.pubDate), 'MMM d, yyyy') : ''}
+                                    </div>
+                                    <h2 className="text-2xl font-bold leading-tight text-white">
+                                        {selectedArticle.title}
+                                    </h2>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedArticle(null)}
+                                    className="shrink-0 p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                                    title="Close"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+
+                            <div className="overflow-y-auto p-5">
+                                {selectedArticle.htmlContent ? (
+                                    <div
+                                        className="news-article-body"
+                                        dangerouslySetInnerHTML={{ __html: selectedArticle.htmlContent }}
+                                    />
+                                ) : (
+                                    <p className="text-sm leading-relaxed text-slate-300">
+                                        {selectedArticle.description}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end border-t border-white/10 p-4">
+                                <a
+                                    href={selectedArticleLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-white"
+                                >
+                                    Open on Bungie
+                                    <ExternalLink className="h-3 w-3" />
+                                </a>
+                            </div>
+                        </motion.article>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

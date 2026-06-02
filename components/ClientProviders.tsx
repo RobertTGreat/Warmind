@@ -22,6 +22,14 @@ const SpeedInsights = dynamic(
   { ssr: false }
 );
 
+const FullItemDetailsOverlay = dynamic(
+  () =>
+    import("@/components/FullItemDetailsOverlay").then(
+      (mod) => mod.FullItemDetailsOverlay,
+    ),
+  { ssr: false },
+);
+
 export function ClientProviders({ children }: { children?: React.ReactNode }) {
   return (
     <SWRConfig
@@ -51,6 +59,7 @@ export function ClientProviders({ children }: { children?: React.ReactNode }) {
     >
       <DatabaseProvider>
         {children}
+        <FullItemDetailsOverlay />
         <PostLoginBoot />
         <Toaster position="bottom-center" theme="system" closeButton />
         <Analytics />

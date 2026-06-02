@@ -54,6 +54,7 @@ interface DestinyItemCardProps {
     forcedTooltipPosition?: { x: number; y: number };
     forcedContextMenuPosition?: { x: number; y: number };
     onCloseForcedContextMenu?: () => void;
+    hideTooltipScreenshot?: boolean;
 }
 
 // Element Icons (Updated with transparent PNGs where possible)
@@ -118,6 +119,7 @@ export function DestinyItemCard({
     forcedTooltipPosition,
     forcedContextMenuPosition,
     onCloseForcedContextMenu,
+    hideTooltipScreenshot,
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
   "use no memo"; // Opt out — avoids compiler/runtime `icon is not defined` in this component.
 
@@ -131,7 +133,12 @@ export function DestinyItemCard({
 
   const shouldFetchFullDefinition = Boolean(
     itemHash &&
-    (!definition || (definitionIsPartial && (isHovered || contextMenuPos)))
+    (!definition ||
+      (definitionIsPartial &&
+        (isHovered ||
+          contextMenuPos ||
+          forcedTooltipPosition ||
+          forcedContextMenuPosition)))
   );
 
   const { data: defResponse, error } = useSWR(
@@ -195,36 +202,19 @@ export function DestinyItemCard({
       
       const intrinsic = socketsData?.sockets?.[0]?.plugHash;
       if (intrinsic) allHashes.push(intrinsic);
+
+      if (shouldResolveFullDetails && def?.sockets?.socketEntries) {
+          def.sockets.socketEntries.forEach((socketEntry: any) => {
+              if (socketEntry.singleInitialItemHash) {
+                  allHashes.push(socketEntry.singleInitialItemHash);
+              }
+          });
+      }
       
       return Array.from(new Set(allHashes));
-  }, [socketsData, reusablePlugs, shouldResolveFullDetails]);
+  }, [def, socketsData, reusablePlugs, shouldResolveFullDetails]);
 
   const { definitions: plugDefs } = useItemDefinitions(hashesToFetch);
-
-  // Create a resolved list of relevant sockets for the Context Menu Tooltip
-  const resolvedSockets = useMemo(() => {
-      if (!shouldResolveFullDetails) return [];
-      if (!socketsData?.sockets || !plugDefs) return [];
-      
-      return socketsData.sockets
-          .map((s: any) => {
-              if (!s.plugHash) return null;
-              const def = plugDefs[s.plugHash];
-              if (!def) return null;
-              
-              const typeName = def.itemTypeDisplayName?.toLowerCase() || "";
-              const category = def.plug?.plugCategoryIdentifier || "";
-              
-              // Filter out cosmetics and empty sockets
-              if (typeName.includes("shader") || typeName.includes("ornament")) return null;
-              if (typeName.includes("masterwork") && !category.includes("masterwork")) return null; // Keep actual masterworks, filter weird ones if any
-              
-              // We want: Perks, Barrels, Mags, Mods
-              // This is a broad filter to include most functional items
-              return { socket: s, def };
-          })
-          .filter((item: { socket: any, def: any } | null): item is { socket: any, def: any } => !!item);
-  }, [socketsData, plugDefs, shouldResolveFullDetails]);
 
   // Determine Shiny Status (Heuristic: Legendary Weapon + Double Perks in both Trait Columns)
   // Or check for specific ornament if we had a list.
@@ -268,22 +258,21 @@ export function DestinyItemCard({
 
   // Calculate detailed perks for tooltip
   const detailedPerks = useMemo(() => {
-    if (!shouldResolveFullDetails) return undefined;
-    if (!socketsData?.sockets || !plugDefs) return undefined;
+    if (!shouldResolveFullDetails || !plugDefs) return undefined;
     
     const perksList: any[] = [];
-    
-    socketsData.sockets.forEach((s: any, idx: number) => {
-        if (!s.plugHash) return;
-        const activePlug = plugDefs[s.plugHash];
-        if (!activePlug) return;
+    const itemIsExotic = def?.inventory?.tierTypeName === "Exotic";
 
+    const shouldShowPlugAsTrait = (
+        activePlug: any,
+        socketIndex: number
+    ) => {
         const typeName = activePlug.itemTypeDisplayName?.toLowerCase() || "";
         const category = activePlug.plug?.plugCategoryIdentifier?.toLowerCase() || "";
         const name = activePlug.displayProperties?.name?.toLowerCase() || "";
         const description = activePlug.displayProperties?.description?.toLowerCase() || "";
-        const isExoticArmor = def?.itemType === 2 && def?.inventory?.tierTypeName === "Exotic";
-        const isArmorIntrinsic =
+        const isExoticArmor = def?.itemType === 2 && itemIsExotic;
+        const isExoticArmorIntrinsic =
             isExoticArmor &&
             (
                 typeName.includes("intrinsic") ||
@@ -291,17 +280,14 @@ export function DestinyItemCard({
                 category.includes("exotic") ||
                 description.includes("intrinsic trait")
             );
-
-        // Filter for perks/traits/barrels/mags/sights/scopes
-        const isPerk = typeName.includes("trait") || 
-                       typeName.includes("perk") || 
-                       category.includes("trait") || 
-                       category.includes("frames") ||
-                       typeName.includes("barrel") ||
-                       typeName.includes("magazine") ||
-                       typeName.includes("sight") || 
-                       typeName.includes("scope") ||
-                       isArmorIntrinsic;
+        const isExoticWeaponIntrinsic =
+            def?.itemType === 3 &&
+            itemIsExotic &&
+            (
+                socketIndex === 0 ||
+                typeName.includes("intrinsic") ||
+                category.includes("intrinsic")
+            );
 
         // Exclude mods, shaders, ornaments, masterworks, trackers
         if (typeName.includes("mod") || 
@@ -309,32 +295,58 @@ export function DestinyItemCard({
             typeName.includes("ornament") || 
             typeName.includes("masterwork") ||
             typeName.includes("tracker") ||
-            name.includes("kill tracker")) return;
-        
-        if (isPerk) {
-             // Gather options
-             let options: any[] = [];
-             const socketOptions = getReusablePlugsForSocket(reusablePlugs, s, idx);
-             
-             if (socketOptions) {
-                 options = socketOptions.map((rp: any) => plugDefs[rp.plugItemHash]).filter(Boolean);
-             } else {
-                 options = [activePlug];
-             }
-             
-             // Only add if we have valid options
-             if (options.length > 0) {
-                perksList.push({
-                    socketIndex: idx,
-                    activePlug,
-                    options
-                });
-             }
-        }
-    });
+            name.includes("kill tracker")) return false;
+
+        return (
+            typeName.includes("trait") ||
+            typeName.includes("perk") ||
+            category.includes("trait") ||
+            category.includes("frames") ||
+            typeName.includes("barrel") ||
+            typeName.includes("magazine") ||
+            typeName.includes("sight") ||
+            typeName.includes("scope") ||
+            isExoticArmorIntrinsic ||
+            isExoticWeaponIntrinsic
+        );
+    };
+
+    const addActivePlug = (activePlug: any, socketIndex: number, options: any[]) => {
+        if (!activePlug || !shouldShowPlugAsTrait(activePlug, socketIndex)) return;
+
+        const resolvedOptions = options.length > 0 ? options : [activePlug];
+
+        perksList.push({
+            socketIndex,
+            activePlug,
+            options: resolvedOptions,
+        });
+    };
+
+    if (socketsData?.sockets) {
+      socketsData.sockets.forEach((s: any, idx: number) => {
+        if (!s.plugHash) return;
+        const activePlug = plugDefs[s.plugHash];
+        if (!activePlug) return;
+
+        const socketOptions = getReusablePlugsForSocket(reusablePlugs, s, idx);
+        const options = socketOptions
+            .map((reusablePlug: any) => plugDefs[reusablePlug.plugItemHash])
+            .filter(Boolean);
+
+        addActivePlug(activePlug, idx, options);
+      });
+    } else if (def?.sockets?.socketEntries) {
+        def.sockets.socketEntries.forEach((socketEntry: any, socketIndex: number) => {
+            const activePlugHash = socketEntry.singleInitialItemHash;
+            const activePlug = activePlugHash ? plugDefs[activePlugHash] : null;
+
+            addActivePlug(activePlug, socketIndex, activePlug ? [activePlug] : []);
+        });
+    }
     
     return perksList.length > 0 ? perksList : undefined;
-  }, [socketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
+  }, [def, socketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
 
   useEffect(() => {
       if (def && onDefinitionLoaded) {
@@ -617,12 +629,14 @@ export function DestinyItemCard({
       if (forcedContextMenuPosition) return;
       setContextMenuPos({ x: e.clientX, y: e.clientY });
       setIsHovered(false);
+      setInitialTooltipPos(undefined);
   };
 
   const handleDragStart = (e: React.DragEvent) => {
       if (!itemInstanceId) return;
       setIsDragging(true);
       setIsHovered(false);
+      setInitialTooltipPos(undefined);
       
       e.dataTransfer.setData('application/json', JSON.stringify({
           itemHash,
@@ -641,6 +655,11 @@ export function DestinyItemCard({
   
   const handleDragEnd = () => {
       setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+      setIsHovered(false);
+      setInitialTooltipPos(undefined);
   };
 
   const isLocked = instanceData ? (instanceData.state & 1) === 1 : false;
@@ -785,7 +804,10 @@ export function DestinyItemCard({
   const isLcpImage = imagePriority === true;
   const iconFetchPriority = isLcpImage ? "high" : imageFetchPriority ?? "low";
   const shouldShowTooltip =
-    Boolean(activeTooltipPosition) && !isDimmed && !activeContextMenuPosition;
+    Boolean(activeTooltipPosition) &&
+    (Boolean(forcedTooltipPosition) || isHovered) &&
+    !isDimmed &&
+    !activeContextMenuPosition;
   const closeContextMenu = () => {
       setContextMenuPos(null);
       onCloseForcedContextMenu?.();
@@ -797,7 +819,7 @@ export function DestinyItemCard({
           rarity={rarity}
           icon={itemIconSrc || undefined}
           power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
-          screenshot={screenshot || undefined}
+          screenshot={hideTooltipScreenshot ? undefined : screenshot || undefined}
           flavorText={def.flavorText}
           seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
           elementIcon={elementIcon}
@@ -832,8 +854,14 @@ export function DestinyItemCard({
           ownerId={ownerId}
           isLocked={isLocked}
           itemDef={def}
-          sockets={resolvedSockets}
           instanceData={instanceData}
+          perks={perks}
+          mods={mods}
+          shaders={shaders}
+          ornaments={ornaments}
+          killEffects={killEffects}
+          killTrackers={killTrackers}
+          objectives={objectives}
           detailedPerks={detailedPerks}
           wishListInfo={wishListInfo}
           socketsData={socketsData}
@@ -844,6 +872,7 @@ export function DestinyItemCard({
           tooltipEnhancementTier={enhancementTier}
           tooltipIsShiny={isShiny}
           tooltipArmorQuality={armorQuality}
+          hideTooltipScreenshot={hideTooltipScreenshot}
       />
   ) : null;
 
@@ -872,7 +901,7 @@ export function DestinyItemCard({
                 isError && "animate-error-shake"
             )} 
             onMouseEnter={handleMouseEnter}
-            onMouseLeave={() => setIsHovered(false)}
+            onMouseLeave={handleMouseLeave}
             onContextMenu={handleContextMenu}
             draggable={!!itemInstanceId && !isPending}
             onDragStart={handleDragStart}

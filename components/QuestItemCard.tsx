@@ -61,6 +61,11 @@ export function QuestItemCard({
       setIsHovered(true);
   };
 
+  const handleMouseLeave = () => {
+      setTooltipPos(undefined);
+      setIsHovered(false);
+  };
+
   return (
     <>
         <div 
@@ -69,7 +74,7 @@ export function QuestItemCard({
                 className
             )}
             onMouseEnter={handleMouseEnter}
-            onMouseLeave={() => setIsHovered(false)}
+            onMouseLeave={handleMouseLeave}
         >
             {/* Background Image/Watermark */}
             {def.screenshot && (

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useMemo, useState, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { equipItem, setItemLockState, getBungieImage, moveItem, insertSocketPlugFree } from '@/lib/bungie';
 import { toast } from 'sonner';
@@ -20,8 +19,14 @@ interface ItemContextMenuProps {
     ownerId?: string; // Character ID or 'VAULT'
     isLocked?: boolean;
     itemDef?: any;
-    sockets?: { socket: any, def: any }[];
     instanceData?: any;
+    perks?: any[];
+    mods?: any[];
+    shaders?: any[];
+    ornaments?: any[];
+    killEffects?: any[];
+    killTrackers?: any[];
+    objectives?: any[];
     detailedPerks?: any[];
     wishListInfo?: WishListInfo;
     socketsData?: any;
@@ -33,27 +38,75 @@ interface ItemContextMenuProps {
     tooltipEnhancementTier?: number | null;
     tooltipIsShiny?: boolean;
     tooltipArmorQuality?: ArmorQuality | null;
+    hideTooltipScreenshot?: boolean;
+}
+
+function findOwnedItemCopy(profile: any, itemHash: number) {
+    for (const [characterId, equipment] of Object.entries(
+        profile?.characterEquipment?.data ?? {}
+    )) {
+        const matchingItem = (equipment as any)?.items?.find(
+            (item: any) => item?.itemHash === itemHash && item?.itemInstanceId
+        );
+
+        if (matchingItem) {
+            return { itemInstanceId: matchingItem.itemInstanceId, ownerId: characterId };
+        }
+    }
+
+    for (const [characterId, inventory] of Object.entries(
+        profile?.characterInventories?.data ?? {}
+    )) {
+        const matchingItem = (inventory as any)?.items?.find(
+            (item: any) => item?.itemHash === itemHash && item?.itemInstanceId
+        );
+
+        if (matchingItem) {
+            return { itemInstanceId: matchingItem.itemInstanceId, ownerId: characterId };
+        }
+    }
+
+    const vaultItem = profile?.profileInventory?.data?.items?.find(
+        (item: any) => item?.itemHash === itemHash && item?.itemInstanceId
+    );
+
+    return vaultItem
+        ? { itemInstanceId: vaultItem.itemInstanceId, ownerId: "VAULT" }
+        : null;
 }
 
 export function ItemContextMenu({ 
     x, y, onClose, itemHash, itemInstanceId, ownerId, isLocked, 
-    itemDef, sockets, instanceData, detailedPerks, wishListInfo, socketsData, plugDefs,
+    itemDef,
+    instanceData,
+    perks,
+    mods,
+    shaders,
+    ornaments,
+    killEffects,
+    killTrackers,
+    objectives,
+    detailedPerks,
+    wishListInfo,
+    socketsData,
+    plugDefs,
     tooltipSeasonBadge,
     tooltipElementIcon,
     tooltipTier,
     tooltipEnhancementTier,
     tooltipIsShiny,
     tooltipArmorQuality,
+    hideTooltipScreenshot,
 }: ItemContextMenuProps) {
     const shellRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     /** Mount rich tooltip after first paint so equip/transfer UI shows immediately. */
     const [tooltipReady, setTooltipReady] = useState(false);
     const { profile, stats, membershipInfo } = useDestinyProfileContext();
-    const router = useRouter();
     const addOperation = useTransferStore(state => state.addOperation);
     const removeOperation = useTransferStore(state => state.removeOperation);
     const setDetailsItem = useUIStore(state => state.setDetailsItem);
+    const setFullDetailsItem = useUIStore(state => state.setFullDetailsItem);
 
     const handleEquipPlug = async (socketIndex: number, plugItemHash: number) => {
         if (!itemInstanceId || !membershipInfo || !ownerId) return;
@@ -104,56 +157,17 @@ export function ItemContextMenu({
     const tooltipData = useMemo(() => {
         if (!tooltipReady || !itemDef) return null;
 
-        // Separate sockets into detailed perks and mods
-        const mods: any[] = [];
-        const shaders: any[] = [];
-        const ornaments: any[] = [];
-        const killEffects: any[] = [];
-        const killTrackers: any[] = [];
-
-        sockets?.forEach((s) => {
-            if (!s.def) return;
-            const type = s.def.itemTypeDisplayName?.toLowerCase() || "";
-            const name = s.def.displayProperties?.name?.toLowerCase() || "";
-            
-            if (type.includes("shader")) {
-                shaders.push(s.def);
-                return;
-            }
-            if (type.includes("ornament")) {
-                ornaments.push(s.def);
-                return;
-            }
-            if (type.includes("tracker") || name.includes("kill tracker")) {
-                killTrackers.push(s.def);
-                return;
-            }
-            if (type.includes("combat flair")) {
-                killEffects.push(s.def);
-                return;
-            }
-            if (type.includes("intrinsic")) {
-                return;
-            }
-
-            // Mods
-            if (type.includes("mod")) {
-                mods.push(s.def);
-                return;
-            }
-        });
-
         return {
             name: itemDef.displayProperties?.name,
             itemType: itemDef.itemTypeDisplayName,
             rarity: itemDef.inventory?.tierTypeName || 'Common',
             icon: itemDef.displayProperties?.icon ? getBungieImage(itemDef.displayProperties.icon) : undefined,
             power: instanceData?.primaryStat?.value,
-            screenshot: itemDef.screenshot ? getBungieImage(itemDef.screenshot) : undefined,
+            screenshot: hideTooltipScreenshot || !itemDef.screenshot ? undefined : getBungieImage(itemDef.screenshot),
             flavorText: itemDef.flavorText,
-            stats: instanceData?.stats, 
-            perks: [], // Legacy prop, empty because we use detailedPerks
-            detailedPerks, // Use passed detailedPerks
+            stats: instanceData?.stats,
+            itemHash,
+            perks,
             mods,
             shaders,
             ornaments,
@@ -163,6 +177,9 @@ export function ItemContextMenu({
             tier: tooltipTier ?? undefined,
             seasonBadge: tooltipSeasonBadge,
             elementIcon: tooltipElementIcon,
+            objectives,
+            itemDef,
+            detailedPerks,
             isShiny: tooltipIsShiny,
             armorQuality: tooltipArmorQuality ?? undefined,
             wishListInfo,
@@ -172,8 +189,15 @@ export function ItemContextMenu({
     }, [
         tooltipReady,
         itemDef,
-        sockets,
         instanceData,
+        itemHash,
+        perks,
+        mods,
+        shaders,
+        ornaments,
+        killEffects,
+        killTrackers,
+        objectives,
         detailedPerks,
         wishListInfo,
         socketsData,
@@ -184,13 +208,16 @@ export function ItemContextMenu({
         tooltipEnhancementTier,
         tooltipIsShiny,
         tooltipArmorQuality,
+        hideTooltipScreenshot,
     ]);
 
+    const canManageInstance = Boolean(itemInstanceId && membershipInfo && ownerId);
+
     const shellLayout = useMemo(() => {
-        const menuW = 256;
+        const menuW = canManageInstance ? 256 : 0;
         const tooltipW = 350;
         const hasTip = !!tooltipData;
-        const shellW = hasTip ? menuW + tooltipW : menuW;
+        const shellW = menuW + (hasTip ? tooltipW : 0);
         if (typeof window === "undefined") {
             return { left: x, top: y };
         }
@@ -202,12 +229,12 @@ export function ItemContextMenu({
             left = Math.max(pad, vw - shellW - pad);
         }
         let top = y;
-        const estH = 560;
+        const estH = 620;
         if (top + estH > vh - pad) {
             top = Math.max(pad, vh - estH - pad);
         }
         return { left, top };
-    }, [x, y, tooltipData]);
+    }, [canManageInstance, x, y, tooltipData]);
     
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -240,7 +267,12 @@ export function ItemContextMenu({
         };
     }, []);
 
-    if (!itemInstanceId || !membershipInfo || !ownerId) return null;
+    const ownedItemCopy = useMemo(
+        () => findOwnedItemCopy(profile, itemHash),
+        [profile, itemHash]
+    );
+    const detailsItemInstanceId = itemInstanceId ?? ownedItemCopy?.itemInstanceId;
+    const detailsOwnerId = ownerId ?? ownedItemCopy?.ownerId;
 
     const characters = profile?.characters?.data ? Object.values(profile.characters.data) as any[] : [];
     const classNames = { 0: 'Titan', 1: 'Hunter', 2: 'Warlock' };
@@ -252,6 +284,8 @@ export function ItemContextMenu({
 
     // Actions
     const handleEquip = async (characterId: string) => {
+        if (!canManageInstance || !itemInstanceId || !membershipInfo || !ownerId) return;
+
         // Optimistic / Queue
         const promise = (async () => {
             // Mark as pending
@@ -286,6 +320,8 @@ export function ItemContextMenu({
     };
 
     const handleTransfer = async (targetOwnerId: string, targetName: string) => {
+         if (!canManageInstance || !itemInstanceId || !membershipInfo || !ownerId) return;
+
          // Optimistic / Queue
          const promise = (async () => {
             addOperation({
@@ -311,6 +347,8 @@ export function ItemContextMenu({
     };
 
     const handleLock = async () => {
+        if (!canManageInstance || !itemInstanceId || !membershipInfo || !ownerId) return;
+
         const promise = setItemLockState(itemInstanceId, ownerId === 'VAULT' ? stats?.characterId || characters[0]?.characterId : ownerId, membershipInfo.membershipType, !isLocked);
         
         toast.promise(promise, {
@@ -322,145 +360,164 @@ export function ItemContextMenu({
         onClose();
     };
 
+    const handleOpenDetails = () => {
+        setDetailsItem({
+            itemHash,
+            itemInstanceId: detailsItemInstanceId,
+            ownerId: detailsOwnerId,
+        });
+        onClose();
+    };
+
+    const handleOpenFullDetails = () => {
+        setFullDetailsItem({
+            itemHash,
+            itemInstanceId: detailsItemInstanceId,
+            ownerId: detailsOwnerId,
+        });
+        onClose();
+    };
+
+    const detailsActions = (
+        <div className="flex gap-1 border-t border-white/10 bg-gray-950/80 px-3 py-2">
+            <button
+                onClick={handleOpenFullDetails}
+                className="flex h-8 flex-1 items-center justify-center rounded-sm bg-transparent text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800/50 hover:text-white"
+            >
+                Full
+            </button>
+
+            <div className="w-px bg-gray-700" />
+
+            <button
+                onClick={handleOpenDetails}
+                className="flex h-8 flex-1 items-center justify-center rounded-sm bg-transparent text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800/50 hover:text-white"
+            >
+                Details
+            </button>
+        </div>
+    );
+
+    if (!canManageInstance && !tooltipData) {
+        return null;
+    }
+
     return createPortal(
         <div
             ref={shellRef}
             className={cn(
                 'fixed z-200 flex flex-row items-start gap-0 shadow-2xl',
-                !tooltipData && 'w-64'
+                !tooltipData && canManageInstance && 'w-64'
             )}
             style={{ left: shellLayout.left, top: shellLayout.top }}
         >
-            <div
-                className={cn(
-                    'flex w-64 shrink-0 flex-col self-start h-fit py-1 overflow-hidden text-sm text-gray-200 select-none bg-gray-800/90 backdrop-blur-md',
-                    tooltipData
-                        ? 'rounded-l-sm border border-white/10'
-                        : 'rounded-sm border border-white/10'
-                )}
-            >
-                {/* Equip Options */}
-                <div className="px-3 py-1 text-[10px] text-white uppercase tracking-wider">Equip</div>
-                <div className="flex gap-1 px-3 pb-2">
-                    {characters.map((char: any) => (
-                        <button 
-                            key={`equip-${char.characterId}`}
-                            onClick={() => handleEquip(char.characterId)}
-                            className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group"
-                            title={`Equip on ${classNames[char.classType as keyof typeof classNames]} (${char.light})`}
-                        >
-                            <div 
-                                className="absolute inset-0 bg-cover bg-center opacity-70 group-hover:opacity-100 transition-opacity"
-                                style={{ backgroundImage: `url(${getBungieImage(char.emblemBackgroundPath)})` }} 
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center z-10">
-                                <Image 
-                                    src={CLASS_ICONS[char.classType]} 
-                                    width={28} 
-                                    height={28} 
-                                    className="object-contain drop-shadow-md" 
-                                    alt={classNames[char.classType as keyof typeof classNames]} 
+            {canManageInstance && (
+                <div
+                    className={cn(
+                        'flex w-64 shrink-0 flex-col self-start h-fit py-1 overflow-hidden text-sm text-gray-200 select-none bg-gray-800/90 backdrop-blur-md',
+                        tooltipData
+                            ? 'rounded-l-sm border border-white/10'
+                            : 'rounded-sm border border-white/10'
+                    )}
+                >
+                    {/* Equip Options */}
+                    <div className="px-3 py-1 text-[10px] text-white uppercase tracking-wider">Equip</div>
+                    <div className="flex gap-1 px-3 pb-2">
+                        {characters.map((char: any) => (
+                            <button
+                                key={`equip-${char.characterId}`}
+                                onClick={() => handleEquip(char.characterId)}
+                                className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group"
+                                title={`Equip on ${classNames[char.classType as keyof typeof classNames]} (${char.light})`}
+                            >
+                                <div
+                                    className="absolute inset-0 bg-cover bg-center opacity-70 group-hover:opacity-100 transition-opacity"
+                                    style={{ backgroundImage: `url(${getBungieImage(char.emblemBackgroundPath)})` }}
                                 />
+                                <div className="absolute inset-0 flex items-center justify-center z-10">
+                                    <Image
+                                        src={CLASS_ICONS[char.classType]}
+                                        width={28}
+                                        height={28}
+                                        className="object-contain drop-shadow-md"
+                                        alt={classNames[char.classType as keyof typeof classNames]}
+                                    />
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="h-px bg-gray-700 my-1 mx-3" />
+
+                    {/* Store / Transfer Options */}
+                    <div className="px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">Store</div>
+                    <div className="flex gap-1 px-3 pb-2">
+                        {characters.map((char: any) => (
+                            <button
+                                key={`store-${char.characterId}`}
+                                onClick={() => handleTransfer(char.characterId, classNames[char.classType as keyof typeof classNames])}
+                                className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group"
+                                title={`Store on ${classNames[char.classType as keyof typeof classNames]}`}
+                            >
+                                <div
+                                    className="absolute inset-0 bg-cover bg-center opacity-70 group-hover:opacity-100 transition-opacity"
+                                    style={{ backgroundImage: `url(${getBungieImage(char.emblemBackgroundPath)})` }}
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center z-10">
+                                    <Image
+                                        src={CLASS_ICONS[char.classType]}
+                                        width={20}
+                                        height={20}
+                                        className="object-contain drop-shadow-md"
+                                        alt={classNames[char.classType as keyof typeof classNames]}
+                                    />
+                                </div>
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => handleTransfer('VAULT', 'Vault')}
+                            className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group bg-slate-800"
+                            title="Vault"
+                        >
+                            <div className="absolute inset-0 flex items-center justify-center z-10">
+                                <div className="w-7 h-7 flex items-center justify-center bg-slate-700 rounded-sm group-hover:bg-slate-600 transition-colors">
+                                    <div className="w-3.5 h-3.5 bg-slate-400 rotate-45" />
+                                </div>
                             </div>
                         </button>
-                    ))}
-                </div>
-            
-            <div className="h-px bg-gray-700 my-1 mx-3" />
-
-            {/* Store / Transfer Options */}
-            <div className="px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">Store</div>
-            <div className="flex gap-1 px-3 pb-2">
-                {characters.map((char: any) => (
-                    <button 
-                        key={`store-${char.characterId}`}
-                        onClick={() => handleTransfer(char.characterId, classNames[char.classType as keyof typeof classNames])}
-                        className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group"
-                        title={`Store on ${classNames[char.classType as keyof typeof classNames]}`}
-                    >
-                        <div 
-                            className="absolute inset-0 bg-cover bg-center opacity-70 group-hover:opacity-100 transition-opacity"
-                            style={{ backgroundImage: `url(${getBungieImage(char.emblemBackgroundPath)})` }} 
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center z-10">
-                            <Image 
-                                src={CLASS_ICONS[char.classType]} 
-                                width={20} 
-                                height={20} 
-                                className="object-contain drop-shadow-md" 
-                                alt={classNames[char.classType as keyof typeof classNames]} 
-                            />
-                        </div>
-                    </button>
-                ))}
-                <button 
-                    onClick={() => handleTransfer('VAULT', 'Vault')}
-                    className="relative h-10 flex-1 rounded-sm overflow-hidden border border-white/10 hover:border-white/50 transition-colors group bg-slate-800"
-                    title="Vault"
-                >
-                    <div className="absolute inset-0 flex items-center justify-center z-10">
-                        <div className="w-7 h-7 flex items-center justify-center bg-slate-700 rounded-sm group-hover:bg-slate-600 transition-colors">
-                            <div className="w-3.5 h-3.5 bg-slate-400 rotate-45" />
-                        </div>
                     </div>
-                </button>
-            </div>
-             
-            <div className="h-px bg-gray-700 my-1 mx-3" />
 
-            <div className="flex gap-1 px-3 pb-2">
-                <button 
-                    onClick={handleLock} 
-                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-gray-800/30 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
-                >
-                    {isLocked ? 'Unlock' : 'Lock'}
-                </button>
+                    <div className="h-px bg-gray-700 my-1 mx-3" />
 
-                <button 
-                    onClick={() => { 
-                        setDetailsItem({ itemHash, itemInstanceId });
-                        onClose(); 
-                    }} 
-                    className="flex-1 h-8 flex items-center justify-center bg-transparent hover:bg-gray-800/30 rounded-sm text-xs font-medium text-gray-300 hover:text-white transition-colors"
-                >
-                    Details
-                </button>
-            </div>
+                    <div className="px-3 pb-2">
+                        <button
+                            onClick={handleLock}
+                            className="h-8 w-full bg-transparent text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800/30 hover:text-white"
+                        >
+                            {isLocked ? 'Unlock' : 'Lock'}
+                        </button>
+                    </div>
 
-            <div className="px-3 pb-2">
-                <button
-                    onClick={() => {
-                        const query = new URLSearchParams();
-
-                        if (itemInstanceId) query.set('instanceId', itemInstanceId);
-                        if (ownerId) query.set('ownerId', ownerId);
-
-                        router.push(`/item/${itemHash}?${query.toString()}`);
-                        onClose();
-                    }}
-                    className="h-8 w-full bg-transparent text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800/30 hover:text-white"
-                >
-                    Full Details
-                </button>
-            </div>
-            </div>
+                </div>
+            )}
 
             {tooltipData && (
                 <div
                     ref={tooltipRef}
-                    className="flex h-fit w-[350px] shrink-0 flex-col min-w-0 overflow-visible rounded-r-sm border border-white/10 bg-gray-950/40 backdrop-blur-md"
+                    className={cn(
+                        "flex h-fit w-[350px] shrink-0 flex-col min-w-0 overflow-visible border border-white/10 bg-gray-950/40 backdrop-blur-md",
+                        canManageInstance ? "rounded-r-sm" : "rounded-sm"
+                    )}
                 >
                     <ItemTooltip
                         {...tooltipData}
                         docked
                         fixedPosition={true}
-                        itemDef={itemDef}
                         onPlugClick={(socketIndex, plugHash) =>
                             handleEquipPlug(socketIndex, plugHash)
                         }
-                        showWishListSection={true}
-                        showFullSetBonusDescriptions={true}
                     />
+                    {detailsActions}
                 </div>
             )}
         </div>,

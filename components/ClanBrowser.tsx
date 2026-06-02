@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { bungieApi, endpoints, getBungieImage as getImg } from "@/lib/bungie";
 import useSWR from "swr";
-import { Loader2, Shield, Users, Search, Star, Calendar, Info, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Shield, Search, Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
 import { cn } from "@/lib/utils";
@@ -12,15 +12,12 @@ import { ClanMemberCard, MemberStats } from "@/components/ClanMemberCard";
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
-type SortOption = 'joined_desc' | 'joined_asc' | 'name_asc' | 'rank_desc' | 'online' | 'power_desc' | 'guardian_rank_desc';
-
 const ITEMS_PER_PAGE = 12;
 
 export function ClanBrowser() {
   const { membershipInfo, isLoggedIn } = useDestinyProfileContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>('online');
   const [currentPage, setCurrentPage] = useState(1);
   const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
   const [memberStats, setMemberStats] = useState<Record<string, MemberStats>>({});
@@ -29,7 +26,7 @@ export function ClanBrowser() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showFavoritesOnly, sortBy]);
+  }, [searchQuery, showFavoritesOnly]);
 
   // 1. Get Clan Info for User
   const { data: groupsData, isLoading: groupsLoading } = useSWR(
@@ -49,7 +46,7 @@ export function ClanBrowser() {
 
   const members = membersData?.Response?.results;
 
-  const filteredAndSortedMembers = useMemo(() => {
+  const visibleMembers = useMemo(() => {
     return (members ?? [])
     .filter((member: any) => {
       const user = member.destinyUserInfo;
@@ -62,42 +59,18 @@ export function ClanBrowser() {
     })
     .slice()
     .sort((a: any, b: any) => {
-        const idA = a.destinyUserInfo.membershipId;
-        const idB = b.destinyUserInfo.membershipId;
-        const statsA = memberStats[idA];
-        const statsB = memberStats[idB];
-
-        switch (sortBy) {
-            case 'name_asc':
-                const nameA = a.destinyUserInfo.bungieGlobalDisplayName || a.destinyUserInfo.displayName;
-                const nameB = b.destinyUserInfo.bungieGlobalDisplayName || b.destinyUserInfo.displayName;
-                return nameA.localeCompare(nameB);
-            case 'rank_desc':
-                return b.memberType - a.memberType;
-            case 'joined_asc':
-                return new Date(a.joinDate).getTime() - new Date(b.joinDate).getTime();
-            case 'joined_desc':
-                return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
-            case 'power_desc':
-                return (statsB?.power || 0) - (statsA?.power || 0);
-            case 'guardian_rank_desc':
-                return (statsB?.guardianRank || 0) - (statsA?.guardianRank || 0);
-            case 'online':
-            default:
-                // Sort by online first, then by join date (newest first)
-                if (a.isOnline !== b.isOnline) return (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0);
-                return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
-        }
+        if (a.isOnline !== b.isOnline) return (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0);
+        return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
     });
-  }, [members, searchQuery, showFavoritesOnly, favoriteMembers, sortBy, memberStats]);
+  }, [members, searchQuery, showFavoritesOnly, favoriteMembers]);
 
   // Pagination Logic
-  const totalItems = filteredAndSortedMembers?.length || 0;
+  const totalItems = visibleMembers?.length || 0;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedMembers = useMemo(() => {
-      return filteredAndSortedMembers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredAndSortedMembers, startIndex]);
+      return visibleMembers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [visibleMembers, startIndex]);
 
   useEffect(() => {
       if (!paginatedMembers || paginatedMembers.length === 0) return;
@@ -231,20 +204,6 @@ export function ClanBrowser() {
                     />
                 </div>
 
-                <div className="relative">
-                     <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                     <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as SortOption)}
-                        className="appearance-none bg-gray-900/50 border border-white/10 py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:border-destiny-gold/50 cursor-pointer min-w-[120px]"
-                     >
-                         <option value="online">Online</option>
-                         <option value="power_desc">Power</option>
-                         <option value="guardian_rank_desc">Rank</option>
-                         <option value="name_asc">Name</option>
-                     </select>
-                </div>
-
                 <button 
                     onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                     className={cn(
@@ -261,7 +220,7 @@ export function ClanBrowser() {
         {/* Members Grid */}
         {membersLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="animate-spin text-destiny-gold w-8 h-8" /></div>
-        ) : filteredAndSortedMembers?.length === 0 ? (
+        ) : visibleMembers?.length === 0 ? (
              <div className="text-center py-12 text-slate-500">
                  No guardians found.
              </div>

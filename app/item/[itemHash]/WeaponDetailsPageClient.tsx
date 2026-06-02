@@ -33,10 +33,18 @@ import {
 import { cn } from "@/lib/utils";
 import { STAT_NAMES_BY_HASH } from "@/lib/dim-stats";
 import { STAT_HASHES } from "@/lib/destinyUtils";
+import {
+  getItemSourceInfo,
+  type ItemSourceInfo,
+} from "@/lib/itemSourceInfo";
 import type { ClarityDescription } from "@/lib/clarityDescriptions";
 
 interface WeaponDetailsPageClientProps {
   itemHash: number;
+  instanceId?: string;
+  ownerId?: string;
+  isOverlay?: boolean;
+  onSelectCopy?: (copy: OwnedWeaponCopy) => void;
 }
 
 interface OwnedWeaponCopy {
@@ -1203,6 +1211,30 @@ function PowerSummary({
   );
 }
 
+function DropSourcePanel({ sourceInfo }: { sourceInfo: ItemSourceInfo | null }) {
+  if (!sourceInfo?.sourceText && !sourceInfo?.requirementText) return null;
+
+  return (
+    <section className="max-w-xl border-l-2 border-destiny-gold/60 bg-black/20 px-4 py-3">
+      {sourceInfo.sourceText && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-destiny-gold">
+            Drop Source
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-slate-200">
+            {sourceInfo.sourceText}
+          </p>
+        </div>
+      )}
+      {sourceInfo.requirementText && (
+        <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+          {sourceInfo.requirementText}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function OwnedCopiesPanel({
   isLoggedIn,
   ownedCopies,
@@ -1210,6 +1242,7 @@ function OwnedCopiesPanel({
   selectedInstanceId,
   icon,
   iconWatermark,
+  onSelectCopy,
 }: {
   isLoggedIn: boolean;
   ownedCopies: OwnedWeaponCopy[];
@@ -1217,6 +1250,7 @@ function OwnedCopiesPanel({
   selectedInstanceId?: string;
   icon: string | null;
   iconWatermark: string | null;
+  onSelectCopy?: (copy: OwnedWeaponCopy) => void;
 }) {
   return (
     <section className="border-t border-white/20 pt-5">
@@ -1226,42 +1260,63 @@ function OwnedCopiesPanel({
       <div className="mt-3">
         {isLoggedIn && ownedCopies.length > 0 ? (
           <div className="flex flex-wrap gap-2">
-            {ownedCopies.map((copy) => (
-              <Link
-                key={copy.itemInstanceId}
-                href={`/item/${itemHash}?instanceId=${copy.itemInstanceId}&ownerId=${copy.ownerId}`}
-                aria-label={`${copy.locationName} on ${copy.ownerName}`}
-                title={`${copy.locationName} on ${copy.ownerName}`}
-                className={cn(
-                  "relative block h-14 w-14 overflow-hidden border border-white/20 bg-black/30 transition-colors hover:border-white/60",
-                  copy.itemInstanceId === selectedInstanceId &&
-                    "border-destiny-gold ring-1 ring-destiny-gold/70"
-                )}
-              >
-                {icon ? (
-                  <Image
-                    src={icon}
-                    alt=""
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-500">
-                    ?
-                  </span>
-                )}
-                {iconWatermark && (
-                  <Image
-                    src={iconWatermark}
-                    alt=""
-                    fill
-                    sizes="56px"
-                    className="object-cover opacity-90"
-                  />
-                )}
-              </Link>
-            ))}
+            {ownedCopies.map((copy) => {
+              const copyLabel = `${copy.locationName} on ${copy.ownerName}`;
+              const copyClassName = cn(
+                "relative block h-14 w-14 overflow-hidden border border-white/20 bg-black/30 transition-colors hover:border-white/60",
+                copy.itemInstanceId === selectedInstanceId &&
+                  "border-destiny-gold ring-1 ring-destiny-gold/70"
+              );
+              const copyContent = (
+                <>
+                  {icon ? (
+                    <Image
+                      src={icon}
+                      alt=""
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-500">
+                      ?
+                    </span>
+                  )}
+                  {iconWatermark && (
+                    <Image
+                      src={iconWatermark}
+                      alt=""
+                      fill
+                      sizes="56px"
+                      className="object-cover opacity-90"
+                    />
+                  )}
+                </>
+              );
+
+              return onSelectCopy ? (
+                <button
+                  key={copy.itemInstanceId}
+                  type="button"
+                  onClick={() => onSelectCopy(copy)}
+                  aria-label={copyLabel}
+                  title={copyLabel}
+                  className={copyClassName}
+                >
+                  {copyContent}
+                </button>
+              ) : (
+                <Link
+                  key={copy.itemInstanceId}
+                  href={`/item/${itemHash}?instanceId=${copy.itemInstanceId}&ownerId=${copy.ownerId}`}
+                  aria-label={copyLabel}
+                  title={copyLabel}
+                  className={copyClassName}
+                >
+                  {copyContent}
+                </Link>
+              );
+            })}
           </div>
         ) : (
           <p className="text-sm text-slate-300">
@@ -1275,9 +1330,14 @@ function OwnedCopiesPanel({
   );
 }
 
-export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientProps) {
+export function WeaponDetailsPageClient({
+  itemHash,
+  instanceId,
+  isOverlay = false,
+  onSelectCopy,
+}: WeaponDetailsPageClientProps) {
   const searchParams = useSearchParams();
-  const requestedInstanceId = searchParams.get("instanceId") ?? undefined;
+  const requestedInstanceId = instanceId ?? searchParams.get("instanceId") ?? undefined;
   const { profile, isLoggedIn } = useDestinyProfileContext();
   const { definitions } = useItemDefinitions(Number.isFinite(itemHash) ? [itemHash] : []);
   const { table: equipableItemSetDefinitions } =
@@ -1286,6 +1346,8 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
     useManifestTable<any>("DestinySandboxPerkDefinition");
   const { table: damageTypeDefinitions } =
     useManifestTable<any>("DestinyDamageTypeDefinition");
+  const { table: collectibleDefinitions } =
+    useManifestTable<any>("DestinyCollectibleDefinition");
   const itemDefinition = definitions[itemHash];
   const ownedCopies = useMemo(
     () => getOwnedWeaponCopies(profile, itemHash),
@@ -1392,6 +1454,14 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
     [armorSetBonusClarityHashes, exoticArmorTraitHashes, plugHashes]
   );
   const { descriptions: clarityDescriptions } = useClarityDescriptions(clarityHashes);
+  const itemSourceInfo = useMemo(
+    () =>
+      getItemSourceInfo({
+        itemDefinition,
+        collectibleTable: collectibleDefinitions,
+      }),
+    [itemDefinition, collectibleDefinitions]
+  );
   const icon = itemDefinition?.displayProperties?.icon
     ? getBungieImage(itemDefinition.displayProperties.icon)
     : null;
@@ -1433,9 +1503,21 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
   const statRows = isArmor
     ? getArmorStatRows(itemDefinition, instanceData, statsData)
     : getWeaponStatRows(itemDefinition, instanceData, statsData);
+  const shellClassName = cn(
+    "relative isolate overflow-visible bg-slate-800/20 text-white",
+    isOverlay
+      ? "min-h-full"
+      : "-mx-4 -my-8 min-h-[calc(100vh-4rem)] sm:-mx-8 md:-ml-24 md:-mr-8"
+  );
+  const contentClassName = cn(
+    "relative z-10",
+    isOverlay
+      ? "min-h-full p-6 lg:p-10 xl:p-12"
+      : "min-h-[calc(100vh-4rem)] p-6 md:pl-32 lg:p-10 lg:pl-36 xl:p-12 xl:pl-40"
+  );
 
   return (
-    <div className="relative isolate -mx-4 -my-8 min-h-[calc(100vh-4rem)] overflow-visible bg-slate-800/20 text-white sm:-mx-8 md:-ml-24 md:-mr-8">
+    <div className={shellClassName}>
       <style>
         {`
           .perk-option:hover,
@@ -1451,7 +1533,7 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
         `}
       </style>
 
-      <div className="relative z-10 min-h-[calc(100vh-4rem)] p-6 md:pl-32 lg:p-10 lg:pl-36 xl:p-12 xl:pl-40">
+      <div className={contentClassName}>
         <section className="mb-10 space-y-6">
           <div className="flex min-w-0 items-start gap-5">
             {icon && (
@@ -1497,6 +1579,7 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
               {description}
             </p>
           )}
+          <DropSourcePanel sourceInfo={itemSourceInfo} />
         </section>
 
         <div className="grid gap-8 xl:grid-cols-[minmax(520px,640px)_minmax(120px,1fr)_minmax(320px,390px)]">
@@ -1613,6 +1696,7 @@ export function WeaponDetailsPageClient({ itemHash }: WeaponDetailsPageClientPro
             selectedInstanceId={selectedInstanceId}
             icon={icon}
             iconWatermark={iconWatermark}
+            onSelectCopy={onSelectCopy}
           />
         </aside>
       </div>

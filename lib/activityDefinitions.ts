@@ -1,9 +1,65 @@
+export type ActivityType =
+    | 'RAID'
+    | 'DUNGEON'
+    | 'CRUCIBLE'
+    | 'GAMBIT'
+    | 'STRIKE'
+    | 'PINNACLE_OPS'
+    | 'ARENA_OPS'
+    | 'FIRETEAM_OPS'
+    | 'SOLO_OPS'
+    | 'SEASONAL_OPS'
+    | 'EXPLORATION'
+    | 'SOCIAL'
+    | 'OTHER';
+
+export const ACTIVITY_TYPE_ORDER: ActivityType[] = [
+    'RAID',
+    'DUNGEON',
+    'PINNACLE_OPS',
+    'STRIKE',
+    'CRUCIBLE',
+    'GAMBIT',
+    'ARENA_OPS',
+    'FIRETEAM_OPS',
+    'SOLO_OPS',
+    'SEASONAL_OPS',
+    'EXPLORATION',
+    'SOCIAL',
+    'OTHER',
+];
+
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+    RAID: 'Raids',
+    DUNGEON: 'Dungeons',
+    CRUCIBLE: 'Crucible',
+    GAMBIT: 'Gambit',
+    STRIKE: 'Strikes',
+    PINNACLE_OPS: 'Pinnacle Ops',
+    ARENA_OPS: 'Arena Ops',
+    FIRETEAM_OPS: 'Fireteam Ops',
+    SOLO_OPS: 'Solo Ops',
+    SEASONAL_OPS: 'Seasonal Ops',
+    EXPLORATION: 'Exploration',
+    SOCIAL: 'Social',
+    OTHER: 'Other Activities',
+};
+
+export function getActivityTypeSortIndex(activityType: ActivityType): number {
+    const index = ACTIVITY_TYPE_ORDER.indexOf(activityType);
+    return index === -1 ? ACTIVITY_TYPE_ORDER.length : index;
+}
+
 export interface ActivityDefinition {
     id: string;
     name: string;
-    type: 'RAID' | 'DUNGEON';
+    type: ActivityType;
     activityHash: number; // For looking up display properties
     relatedActivityHashes?: number[]; // For matching multiple versions (Master, etc.)
+    activityMode?: string;
+    activityModeType?: number;
+    maxPlayers?: number;
+    tags?: string[];
     metricHash?: number; // For completion count
     triumphHash?: number; // For completion count (fallback or primary for older stuff)
     flawlessRecordHash?: number;
@@ -87,8 +143,10 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'the_desert_perpetual',
         name: "The Desert Perpetual",
         type: 'RAID',
+        activityMode: 'Raid',
+        activityModeType: 4,
         activityHash: 1044919065,                          // Normal mode activity hash (verified via Bungie API)
-        relatedActivityHashes: [2413635930, 178748159],    // Normal + Master/Contest variants
+        relatedActivityHashes: [3896382790],               // Standard + Contest
         metricHash: METRICS.DESERT_PERPETUAL,              // Now valid: 2512468158
         triumphHash: 3954661385,                           // Unchanged: Clear triumph
         flawlessRecordHash: RECORDS.DESERT_PERPETUAL_FLAWLESS, // Now valid: 2936644752
@@ -96,6 +154,23 @@ export const ACTIVITIES: ActivityDefinition[] = [
         dayOneRecordHash: 3896382790,                     // "The Desert Perpetual: Contest" activity hash (contest mode)
         contestRecordHash: 3896382790,                     
         releaseDate: '2025-07-19',                         // Approximate release date for week one calculation
+    },
+    {
+        id: 'the_desert_perpetual_epic',
+        name: "The Desert Perpetual (Epic)",
+        type: 'RAID',
+        activityMode: 'Raid',
+        activityModeType: 4,
+        activityHash: 3817322389,                          // Epic Standard
+        relatedActivityHashes: [2586252122],               // Epic Contest
+        metricHash: METRICS.DESERT_PERPETUAL,
+        triumphHash: 3954661385,
+        flawlessRecordHash: RECORDS.DESERT_PERPETUAL_FLAWLESS,
+        exoticItemHash: 3742953758,
+        dayOneRecordHash: 2586252122,
+        contestRecordHash: 2586252122,
+        releaseDate: '2025-07-19',
+        tags: ['Epic'],
     },
     {
         id: 'salvations_edge',
@@ -214,11 +289,14 @@ export const ACTIVITIES: ActivityDefinition[] = [
         soloFlawlessMetricHash: RECORDS.EQUILIBRIUM_SOLO_FLAWLESS_METRIC,
         exoticItemHash: 515926065, // heirloom
         releaseDate: '2025-02-07', // Release date for week one calculation
+        image: 'https://images.contentstack.io/v3/assets/blte410e3b15535c144/blt827bbc7cb39295cf/6916038a9caebfd3dd3c5b62/Dungeon_KeyArt_Final_4K_Web.jpg',
     },
     {
         id: 'sundered_doctrine',
         name: "Sundered Doctrine",
         type: 'DUNGEON',
+        activityMode: 'Dungeon',
+        activityModeType: 82,
         activityHash: 247869137,                          // Seal/activity proxy (light.gg verified)
         relatedActivityHashes: [247869137, 3521648250, 3834447244],   // Normal + Master variants
         metricHash: METRICS.SUNDERED_DOCTRINE,             
@@ -233,6 +311,8 @@ export const ACTIVITIES: ActivityDefinition[] = [
         id: 'vespers_host',
         name: "Vesper's Host",
         type: 'DUNGEON',
+        activityMode: 'Dungeon',
+        activityModeType: 82,
         activityHash: 3492566689,
         relatedActivityHashes: [3492566689, 4293676253,1915770060,2695240656,300092127],
         metricHash: METRICS.VESPER,

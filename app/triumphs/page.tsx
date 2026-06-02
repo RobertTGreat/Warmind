@@ -25,7 +25,7 @@ export default function TriumphsPage() {
   const score = profile?.profile?.data?.lifetimeScore || 0;
   const activeScore = profile?.profile?.data?.activeScore || 0;
 
-  const [activeTab, setActiveTab] = useState<'triumphs' | 'seals'>('triumphs');
+  const [activeTab, setActiveTab] = useState<'triumphs' | 'seals'>('seals');
 
   // Fallback to hardcoded if API fails or profile not loaded yet, but prefer dynamic
   // Note: If recordCategoriesRootNodeHash is undefined, TriumphsBrowser will handle loading state
@@ -97,6 +97,7 @@ export default function TriumphsPage() {
          {!isLoading ? (
              <TriumphsBrowser 
                 rootHash={activeTab === 'triumphs' ? triumphsRoot! : sealsRoot} 
+                mode={activeTab}
              />
          ) : (
              <div className="flex items-center justify-center h-64">

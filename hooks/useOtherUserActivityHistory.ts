@@ -1,79 +1,46 @@
 import { useState, useEffect } from 'react';
-import { getActivityHistory } from '@/lib/bungie';
-import { ActivityHistoryItem } from './useActivityHistory';
+import { ActivityHistoryItem, fetchHistoryForMode } from './useActivityHistory';
+
+interface OtherUserActivityHistoryOptions {
+    includeAllActivities?: boolean;
+}
+
+const ALL_ACTIVITY_MODE = 0;
+const RAID_ACTIVITY_MODE = 4;
+const DUNGEON_ACTIVITY_MODE = 82;
 
 export function useOtherUserActivityHistory(
     membershipType: number | null,
     destinyMembershipId: string | null,
-    characterIds: string[]
+    characterIds: string[],
+    options: OtherUserActivityHistoryOptions = {}
 ) {
     const [raidHistory, setRaidHistory] = useState<ActivityHistoryItem[]>([]);
     const [dungeonHistory, setDungeonHistory] = useState<ActivityHistoryItem[]>([]);
+    const [allHistory, setAllHistory] = useState<ActivityHistoryItem[]>([]);
     const [loading, setLoading] = useState(false);
+    const [loadingAllHistory, setLoadingAllHistory] = useState(false);
+    const includeAllActivities = options.includeAllActivities ?? false;
 
     useEffect(() => {
         if (!membershipType || !destinyMembershipId || characterIds.length === 0) {
             setRaidHistory([]);
             setDungeonHistory([]);
+            setAllHistory([]);
             return;
         }
 
         const fetchHistory = async () => {
             setLoading(true);
             try {
-                const raids: ActivityHistoryItem[] = [];
-                const dungeons: ActivityHistoryItem[] = [];
+                const sortedCharacterIds = [...characterIds].sort();
+                const [raids, dungeons] = await Promise.all([
+                    fetchHistoryForMode(membershipType, destinyMembershipId, sortedCharacterIds, RAID_ACTIVITY_MODE),
+                    fetchHistoryForMode(membershipType, destinyMembershipId, sortedCharacterIds, DUNGEON_ACTIVITY_MODE),
+                ]);
 
-                for (const charId of characterIds) {
-                    // Fetch Raids (Mode 4)
-                    try {
-                        let page = 0;
-                        let hasMore = true;
-                        while (hasMore) {
-                            const raidRes = await getActivityHistory(membershipType, destinyMembershipId, charId, 4, 250, page);
-                            const activities = raidRes.data.Response?.activities;
-                            
-                            if (activities && activities.length > 0) {
-                                raids.push(...activities.map((a: any) => ({ ...a, characterId: charId })));
-                                page++;
-                            } else {
-                                hasMore = false;
-                            }
-                        }
-                    } catch (e) {
-                        console.error(`Failed to fetch raid history for char ${charId}`, e);
-                    }
-
-                    // Fetch Dungeons (Mode 82)
-                    try {
-                        let page = 0;
-                        let hasMore = true;
-                        while (hasMore) {
-                            const dungeonRes = await getActivityHistory(membershipType, destinyMembershipId, charId, 82, 250, page);
-                            const activities = dungeonRes.data.Response?.activities;
-
-                            if (activities && activities.length > 0) {
-                                dungeons.push(...activities.map((a: any) => ({ ...a, characterId: charId })));
-                                page++;
-                            } else {
-                                hasMore = false;
-                            }
-                        }
-                    } catch (e) {
-                        console.error(`Failed to fetch dungeon history for char ${charId}`, e);
-                    }
-                }
-
-                // Deduplicate by instanceId
-                const uniqueRaids = Array.from(new Map(raids.map(item => [item.activityDetails.instanceId, item])).values());
-                const uniqueDungeons = Array.from(new Map(dungeons.map(item => [item.activityDetails.instanceId, item])).values());
-
-                // Sort by date (newest first)
-                uniqueRaids.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
-                uniqueDungeons.sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
-
-                setRaidHistory(uniqueRaids);
-                setDungeonHistory(uniqueDungeons);
+                setRaidHistory(raids);
+                setDungeonHistory(dungeons);
             } catch (err) {
                 console.error("Error fetching activity history", err);
             } finally {
@@ -84,10 +51,42 @@ export function useOtherUserActivityHistory(
         fetchHistory();
     }, [membershipType, destinyMembershipId, characterIds.join(',')]);
 
+    useEffect(() => {
+        if (!includeAllActivities || !membershipType || !destinyMembershipId || characterIds.length === 0) {
+            if (!includeAllActivities) {
+                setAllHistory([]);
+            }
+            return;
+        }
+
+        const fetchAllHistory = async () => {
+            setLoadingAllHistory(true);
+
+            try {
+                const allActivities = await fetchHistoryForMode(
+                    membershipType,
+                    destinyMembershipId,
+                    [...characterIds].sort(),
+                    ALL_ACTIVITY_MODE
+                );
+
+                setAllHistory(allActivities);
+            } catch (error) {
+                console.error("Error fetching all activity history", error);
+            } finally {
+                setLoadingAllHistory(false);
+            }
+        };
+
+        fetchAllHistory();
+    }, [includeAllActivities, membershipType, destinyMembershipId, characterIds.join(',')]);
+
     return {
         raidHistory,
         dungeonHistory,
-        isLoadingHistory: loading
+        allHistory,
+        isLoadingHistory: loading,
+        isLoadingAllHistory: loadingAllHistory,
     };
 }
 

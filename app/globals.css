@@ -82,6 +82,53 @@ body {
   scrollbar-width: none;  /* Firefox */
 }
 
+.news-article-body {
+  color: #cbd5e1;
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.news-article-body :where(h2, h3) {
+  color: #ffffff;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.news-article-body h2 {
+  font-size: 1.35rem;
+}
+
+.news-article-body h3 {
+  font-size: 1.1rem;
+}
+
+.news-article-body :where(p, ul) {
+  margin-bottom: 1rem;
+}
+
+.news-article-body ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.news-article-body li {
+  margin-bottom: 0.45rem;
+}
+
+.news-article-body a {
+  color: var(--accent-gold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.news-article-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.25rem auto;
+}
+
 /* 3D Card Flip Utilities */
 .perspective-1000 {
   perspective: 1000px;
@@ -205,4 +252,111 @@ body {
 .drag-over-active {
   animation: drop-zone-pulse 0.8s ease-in-out infinite;
   border-style: dashed !important;
+}
+
+.activity-run-marker:hover .activity-run-tooltip,
+.activity-run-marker:focus-within .activity-run-tooltip {
+  opacity: 1;
+}
+
+@keyframes activity-achievement-shine {
+  0% {
+    transform: translateX(-160%) skewX(-20deg);
+  }
+  50%, 100% {
+    transform: translateX(290%) skewX(-20deg);
+  }
+}
+
+.activity-achievement-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  isolation: isolate;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.activity-achievement-tag--shiny::after {
+  content: "";
+  position: absolute;
+  inset: -60% auto -60% -35%;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  animation: activity-achievement-shine 5.2s linear infinite;
+  pointer-events: none;
+}
+
+.activity-achievement-tag--day-one {
+  border-color: #fff0a3;
+  color: #171205;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.75), transparent 16%),
+    linear-gradient(135deg, #8d6800 0%, #e3ce62 36%, #fff4a8 52%, #b88700 100%);
+  box-shadow: 0 0 16px rgba(227, 206, 98, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.activity-achievement-tag--week-one {
+  border-color: #f2b27c;
+  color: #1c0b02;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 245, 220, 0.78), transparent 18%),
+    linear-gradient(135deg, #7a2e12 0%, #c76d35 34%, #ffd0a3 52%, #9d431f 100%);
+  box-shadow: 0 0 16px rgba(199, 109, 53, 0.58), inset 0 1px 0 rgba(255, 238, 210, 0.62);
+}
+
+.activity-achievement-tag--flawless {
+  border-color: #ffffff;
+  color: #0f172a;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.95), transparent 18%),
+    linear-gradient(135deg, #94a3b8 0%, #f8fafc 38%, #ffffff 54%, #cbd5e1 100%);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.activity-card-flex-border {
+  --activity-card-flex-surface: rgba(21, 25, 34, 0.92);
+  --activity-card-flex-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(227, 206, 98, 0.85));
+  --activity-card-flex-glow: rgba(227, 206, 98, 0.34);
+  border-color: transparent !important;
+  background:
+    linear-gradient(var(--activity-card-flex-surface), var(--activity-card-flex-surface)) padding-box,
+    var(--activity-card-flex-gradient) border-box !important;
+  box-shadow:
+    0 0 18px var(--activity-card-flex-glow),
+    0 18px 36px rgba(0, 0, 0, 0.28) !important;
+}
+
+.activity-card-flex-border--day-one {
+  --activity-card-flex-gradient: linear-gradient(135deg, #8d6800 0%, #e3ce62 34%, #fff4a8 52%, #b88700 100%);
+  --activity-card-flex-glow: rgba(227, 206, 98, 0.46);
+}
+
+.activity-card-flex-border--week-one {
+  --activity-card-flex-gradient: linear-gradient(135deg, #7a2e12 0%, #c76d35 34%, #ffd0a3 52%, #9d431f 100%);
+  --activity-card-flex-glow: rgba(199, 109, 53, 0.46);
+}
+
+.activity-card-flex-border--flawless {
+  --activity-card-flex-gradient: linear-gradient(135deg, #94a3b8 0%, #f8fafc 38%, #ffffff 54%, #cbd5e1 100%);
+  --activity-card-flex-glow: rgba(255, 255, 255, 0.4);
+}
+
+.activity-card-scroll {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.activity-card-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.activity-card-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.activity-card-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
 }

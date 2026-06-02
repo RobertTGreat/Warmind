@@ -4,7 +4,8 @@ import { useSettingsStore } from '@/store/settingsStore';
 const DB_NAME = 'warmind_cache';
 const STORE_NAME = 'activity_history';
 const INVALID_STORE_NAME = 'invalid_instances';
-const DB_VERSION = 2; // Increment version
+const PGCR_STORE_NAME = 'pgcr_reports';
+const DB_VERSION = 3; // Increment version
 const DEFAULT_CACHE_DURATION_MINUTES = 60;
 const MILLISECONDS_PER_MINUTE = 60 * 1000;
 
@@ -13,6 +14,12 @@ const INVALID_INSTANCES_KEY = 'warmind_invalid_activity_instances';
 
 interface CacheEntry {
     key: string;
+    data: any;
+    timestamp: number;
+}
+
+interface PGCRCacheEntry {
+    instanceId: string;
     data: any;
     timestamp: number;
 }
@@ -37,6 +44,9 @@ if (typeof window !== 'undefined') {
             }
             if (!db.objectStoreNames.contains(INVALID_STORE_NAME)) {
                 db.createObjectStore(INVALID_STORE_NAME);
+            }
+            if (!db.objectStoreNames.contains(PGCR_STORE_NAME)) {
+                db.createObjectStore(PGCR_STORE_NAME, { keyPath: 'instanceId' });
             }
             
             // Migrate from localStorage to IDB if version is 1
@@ -120,14 +130,21 @@ export async function clearInvalidInstanceIds(): Promise<void> {
 }
 
 // Helper to filter out invalid instances from activity data
-async function filterInvalidActivities(data: { raids: any[]; dungeons: any[] }): Promise<{ raids: any[]; dungeons: any[] }> {
+async function filterInvalidActivities(data: { raids?: any[]; dungeons?: any[]; allActivities?: any[] }): Promise<{ raids: any[]; dungeons: any[]; allActivities?: any[] }> {
     const invalidIds = await getInvalidInstanceIds();
     const hasMethod = typeof (invalidIds as any)?.has === 'function';
-    if (!hasMethod || (invalidIds as Set<string>).size === 0) return data;
+    const normalizedData = {
+        raids: data.raids ?? [],
+        dungeons: data.dungeons ?? [],
+        allActivities: data.allActivities,
+    };
+
+    if (!hasMethod || (invalidIds as Set<string>).size === 0) return normalizedData;
     
     return {
-        raids: data.raids.filter(a => !(invalidIds as Set<string>).has(a.activityDetails?.instanceId)),
-        dungeons: data.dungeons.filter(a => !(invalidIds as Set<string>).has(a.activityDetails?.instanceId))
+        raids: normalizedData.raids.filter(a => !(invalidIds as Set<string>).has(a.activityDetails?.instanceId)),
+        dungeons: normalizedData.dungeons.filter(a => !(invalidIds as Set<string>).has(a.activityDetails?.instanceId)),
+        allActivities: normalizedData.allActivities?.filter(a => !(invalidIds as Set<string>).has(a.activityDetails?.instanceId))
     };
 }
 
@@ -173,6 +190,56 @@ export const clearCache = async () => {
     if (!dbPromise) return;
     const db = await dbPromise;
     await db.clear(STORE_NAME);
+    if (db.objectStoreNames.contains(PGCR_STORE_NAME)) {
+        await db.clear(PGCR_STORE_NAME);
+    }
+};
+
+export const getCachedPGCR = async (instanceId: string) => {
+    if (!dbPromise) return null;
+
+    try {
+        const db = await dbPromise;
+        const entry = await db.get(PGCR_STORE_NAME, instanceId) as PGCRCacheEntry | undefined;
+        return entry?.data ?? null;
+    } catch (error) {
+        console.error("PGCR cache read error", error);
+        return null;
+    }
+};
+
+export const setCachedPGCR = async (instanceId: string, data: any) => {
+    if (!dbPromise || !data) return;
+
+    try {
+        const db = await dbPromise;
+        await db.put(PGCR_STORE_NAME, {
+            instanceId,
+            data,
+            timestamp: Date.now(),
+        });
+    } catch (error) {
+        console.error("PGCR cache write error", error);
+    }
+};
+
+export const getOrFetchPGCR = async (instanceId: string) => {
+    const cachedPGCR = await getCachedPGCR(instanceId);
+
+    if (cachedPGCR) {
+        return cachedPGCR;
+    }
+
+    const response = await fetch(`/api/pgcr/${instanceId}`);
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        throw new Error(data?.ErrorStatus || data?.Message || 'Failed to fetch PGCR');
+    }
+
+    const pgcr = data?.Response;
+    await setCachedPGCR(instanceId, pgcr);
+    return pgcr;
 };
 
 // Remove invalid instances from cached data and update the cache
@@ -187,7 +254,7 @@ export const purgeInvalidInstancesFromCache = async () => {
         const entries = await store.getAll();
         
         for (const entry of entries) {
-            if (entry.data && (entry.data.raids || entry.data.dungeons)) {
+            if (entry.data && (entry.data.raids || entry.data.dungeons || entry.data.allActivities)) {
                 // Filter out invalid instances
                 const filteredData = await filterInvalidActivities(entry.data);
                 

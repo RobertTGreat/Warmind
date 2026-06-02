@@ -8,6 +8,7 @@ import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
 import { useManifestTable } from '@/hooks/useManifestTable';
 import { ItemTile, type ItemTileModel } from '@/components/ItemTile';
+import { DestinyItemCard } from '@/components/DestinyItemCard';
 import { buildBungieIconUrl, getClientManifestVersionCacheKey, normalizeBungieAssetPath } from '@/lib/bungieImageProxy';
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
 
@@ -18,6 +19,7 @@ interface CollectionsBrowserProps {
 type CollectionTileModel = ItemTileModel & {
     collectibleHash: number;
     isAcquired: boolean;
+    definition: any;
 };
 
 const COLLECTION_TILE_SIZE_PX = 80;
@@ -91,6 +93,7 @@ function buildCollectionTileModels(
             rarityClassName: isAcquired ? "border-white/20" : "border-white/10",
             isDimmed: !isAcquired,
             isAcquired,
+            definition: itemDefinition,
         }];
     });
 }
@@ -138,10 +141,31 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
 
     // Initialize Tier 1
     useEffect(() => {
-        if (topLevelNodes.length > 0 && !selectedTopHash) {
+        const selectedTopHashIsValid = topLevelNodes.some(
+            (node: any) => node.presentationNodeHash === selectedTopHash
+        );
+
+        if (topLevelNodes.length > 0 && !selectedTopHashIsValid) {
             setSelectedTopHash(topLevelNodes[0].presentationNodeHash);
+            setSelectedTier2Hash(null);
+            setSelectedTier3Hash(null);
         }
     }, [topLevelNodes, selectedTopHash]);
+
+    const handleTopLevelSelect = (hash: number) => {
+        if (hash === selectedTopHash) return;
+
+        setSelectedTopHash(hash);
+        setSelectedTier2Hash(null);
+        setSelectedTier3Hash(null);
+    };
+
+    const handleTier2Select = (hash: number) => {
+        if (hash === selectedTier2Hash) return;
+
+        setSelectedTier2Hash(hash);
+        setSelectedTier3Hash(null);
+    };
 
     return (
         <div className="flex flex-col h-[85vh] gap-4">
@@ -154,7 +178,7 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                             key={node.presentationNodeHash}
                             hash={node.presentationNodeHash}
                             isSelected={selectedTopHash === node.presentationNodeHash}
-                            onClick={() => setSelectedTopHash(node.presentationNodeHash)}
+                            onClick={() => handleTopLevelSelect(node.presentationNodeHash)}
                         />
                     ))}
                 </div>
@@ -184,7 +208,7 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                         <Tier2Selector 
                             parentHash={selectedTopHash} 
                             selectedHash={selectedTier2Hash} 
-                            onSelect={setSelectedTier2Hash}
+                            onSelect={handleTier2Select}
                         />
                     )}
 
@@ -255,22 +279,11 @@ function TopLevelTab({ hash, isSelected, onClick }: { hash: number, isSelected: 
 
 function Tier2Selector({ parentHash, selectedHash, onSelect }: { parentHash: number, selectedHash: number | null, onSelect: (h: number) => void }) {
     const { node } = usePresentationNode(parentHash);
-    
-    // Auto-select first child if none selected? 
-    // User didn't explicitly ask for auto-select, but it's good UX for "Tabs".
-    // However, "Horizontal Buttons" implies choice.
-    useEffect(() => {
-        if (node?.children?.presentationNodes?.length > 0 && !selectedHash) {
-            onSelect(node.children.presentationNodes[0].presentationNodeHash);
-        }
-    }, [node, selectedHash, onSelect]);
-
-    if (!node) return <div className="h-12 bg-white/5 animate-pulse" />;
 
     // Filter out "Featured" category (hash often varies, but name is consistent)
     // Or specifically for Exotics (parentHash === 1068557105), filter child named "Featured"
     const children = useMemo(() => {
-        if (!node.children?.presentationNodes) return [];
+        if (!node?.children?.presentationNodes) return [];
         
         if (parentHash === PRESENTATION_NODES.EXOTICS) {
             return node.children.presentationNodes.filter((n: any) => n.displayProperties?.name !== "Featured");
@@ -278,6 +291,18 @@ function Tier2Selector({ parentHash, selectedHash, onSelect }: { parentHash: num
         
         return node.children.presentationNodes;
     }, [node, parentHash]);
+
+    const selectedHashIsValid = children.some(
+        (child: any) => child.presentationNodeHash === selectedHash
+    );
+
+    useEffect(() => {
+        if (children.length > 0 && !selectedHashIsValid) {
+            onSelect(children[0].presentationNodeHash);
+        }
+    }, [children, selectedHashIsValid, onSelect]);
+
+    if (!node) return <div className="h-12 bg-white/5 animate-pulse" />;
 
     if (children.length === 0) return null;
 
@@ -339,12 +364,15 @@ function Tier3Sidebar({ parentHash, selectedHash, onSelect }: { parentHash: numb
         );
     }, [node]);
 
-    // Auto-select first child
+    const selectedHashIsValid = children.some(
+        (child: any) => child.presentationNodeHash === selectedHash
+    );
+
     useEffect(() => {
-        if (children.length > 0 && !selectedHash) {
+        if (children.length > 0 && !selectedHashIsValid) {
              onSelect(children[0].presentationNodeHash);
         }
-    }, [children, selectedHash, onSelect]);
+    }, [children, selectedHashIsValid, onSelect]);
 
     if (!node) return <div className="w-64 h-full bg-white/5 animate-pulse" />;
 
@@ -565,20 +593,85 @@ function CollectionTileGrid({
             overscan={240}
             components={components}
             itemContent={(index, item) => (
-                <ItemTile
+                <InteractiveCollectionTile
                     item={item}
-                    sizePx={COLLECTION_TILE_SIZE_PX}
-                    className="w-20"
                     fetchPriority={index < 18 ? "auto" : "low"}
-                >
-                    {!item.isAcquired && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <Lock className="w-4 h-4 text-white/50 drop-shadow-md" />
-                        </div>
-                    )}
-                </ItemTile>
+                />
             )}
             className="custom-scrollbar pb-20"
         />
+    );
+}
+
+function InteractiveCollectionTile({
+    item,
+    fetchPriority,
+}: {
+    item: CollectionTileModel;
+    fetchPriority: "auto" | "low";
+}) {
+    const [tooltipPosition, setTooltipPosition] = useState<{
+        x: number;
+        y: number;
+    } | null>(null);
+    const [contextMenuPosition, setContextMenuPosition] = useState<{
+        x: number;
+        y: number;
+    } | null>(null);
+
+    const updateTooltipPosition = (event: React.MouseEvent) => {
+        if (!contextMenuPosition) {
+            setTooltipPosition({ x: event.clientX, y: event.clientY });
+        }
+    };
+
+    const handleMouseLeave = () => {
+        setTooltipPosition(null);
+    };
+
+    const handleContextMenu = (event: React.MouseEvent) => {
+        event.preventDefault();
+        setTooltipPosition(null);
+        setContextMenuPosition({ x: event.clientX, y: event.clientY });
+    };
+
+    return (
+        <div
+            className="cursor-pointer"
+            onMouseEnter={updateTooltipPosition}
+            onMouseMove={updateTooltipPosition}
+            onMouseLeave={handleMouseLeave}
+            onContextMenu={handleContextMenu}
+        >
+            <ItemTile
+                item={item}
+                sizePx={COLLECTION_TILE_SIZE_PX}
+                className="w-20"
+                fetchPriority={fetchPriority}
+                title=""
+            >
+                {!item.isAcquired && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <Lock className="w-4 h-4 text-white/50 drop-shadow-md" />
+                    </div>
+                )}
+            </ItemTile>
+
+            {(tooltipPosition || contextMenuPosition) && (
+                <DestinyItemCard
+                    itemHash={item.itemHash}
+                    definition={item.definition}
+                    definitionIsPartial
+                    deferDetails
+                    renderTile={false}
+                    forcedTooltipPosition={tooltipPosition ?? undefined}
+                    forcedContextMenuPosition={contextMenuPosition ?? undefined}
+                    onCloseForcedContextMenu={() => setContextMenuPosition(null)}
+                    imageFetchPriority={fetchPriority}
+                    size="large"
+                    hideTooltipScreenshot
+                />
+            )}
+        </div>
     );
 }
