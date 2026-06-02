@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { bungieApi, endpoints } from '@/lib/bungie';
+import { fetchManifestDefinitions } from '@/lib/manifestTableClient';
 
 const CACHE_KEY_PREFIX = 'destiny_manifest_objective_';
 const CACHE_VERSION = 'v1';
@@ -59,20 +59,28 @@ export function useObjectiveDefinitions(objectiveHashes: number[]) {
             for (let i = 0; i < missingHashes.length; i += BATCH_SIZE) {
                 const batch = missingHashes.slice(i, i + BATCH_SIZE);
                 
-                await Promise.all(batch.map(async (hash) => {
-                    try {
-                        const res = await bungieApi.get(endpoints.getObjectiveDefinition(hash));
-                        const def = res.data.Response;
-                        if (def) {
-                            newDefs[hash] = def;
+                try {
+                    const fetchedDefinitions = await fetchManifestDefinitions<ObjectiveDefinition>(
+                        'DestinyObjectiveDefinition',
+                        batch
+                    );
+
+                    for (const hash of batch) {
+                        const definition = fetchedDefinitions[String(hash)];
+
+                        if (definition) {
+                            newDefs[hash] = definition;
                             try {
-                                localStorage.setItem(`${CACHE_KEY_PREFIX}${hash}_${CACHE_VERSION}`, JSON.stringify(def));
+                                localStorage.setItem(
+                                    `${CACHE_KEY_PREFIX}${hash}_${CACHE_VERSION}`,
+                                    JSON.stringify(definition)
+                                );
                             } catch (e) {}
                         }
-                    } catch (err) {
-                        console.error(`Failed to fetch objective def for ${hash}`, err);
                     }
-                }));
+                } catch (err) {
+                    console.error('Failed to fetch objective definitions', err);
+                }
                 
                 setDefinitions(prev => ({ ...prev, ...newDefs }));
             }

@@ -119,7 +119,6 @@ export function DestinyItemCard({
     forcedTooltipPosition,
     forcedContextMenuPosition,
     onCloseForcedContextMenu,
-    hideTooltipScreenshot,
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
   "use no memo"; // Opt out — avoids compiler/runtime `icon is not defined` in this component.
 
@@ -394,7 +393,6 @@ export function DestinyItemCard({
   const name = def?.displayProperties?.name;
   const rarity = def?.inventory?.tierTypeName; 
   const itemType = def?.itemTypeDisplayName;
-  const screenshot = def ? getBungieImage(def.screenshot) : null;
   const damageTypeHash = instanceData?.damageTypeHash || def?.defaultDamageTypeHash;
   const elementIcon = ELEMENT_ICONS[damageTypeHash];
   const elementIconSrc = useMemo(() => {
@@ -819,7 +817,6 @@ export function DestinyItemCard({
           rarity={rarity}
           icon={itemIconSrc || undefined}
           power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
-          screenshot={hideTooltipScreenshot ? undefined : screenshot || undefined}
           flavorText={def.flavorText}
           seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
           elementIcon={elementIcon}
@@ -872,7 +869,6 @@ export function DestinyItemCard({
           tooltipEnhancementTier={enhancementTier}
           tooltipIsShiny={isShiny}
           tooltipArmorQuality={armorQuality}
-          hideTooltipScreenshot={hideTooltipScreenshot}
       />
   ) : null;
 

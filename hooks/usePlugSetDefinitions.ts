@@ -1,18 +1,9 @@
 import { useMemo } from "react";
 import useSWR from "swr";
-import { bungieApi, endpoints } from "@/lib/bungie";
+import { fetchManifestDefinitions } from "@/lib/manifestTableClient";
 
 const fetchPlugSetDefinitions = async (plugSetHashes: number[]) => {
-  const plugSetDefinitions: Record<number, any> = {};
-
-  await Promise.all(
-    plugSetHashes.map(async (plugSetHash) => {
-      const response = await bungieApi.get(endpoints.getPlugSetDefinition(plugSetHash));
-      plugSetDefinitions[plugSetHash] = response.data.Response;
-    })
-  );
-
-  return plugSetDefinitions;
+  return fetchManifestDefinitions("DestinyPlugSetDefinition", plugSetHashes);
 };
 
 export function usePlugSetDefinitions(plugSetHashes: number[]) {

@@ -114,12 +114,43 @@ import { ScrollingText } from "@/components/ScrollingText";
 
 type TooltipPosition = { x: number; y: number };
 
+const TOOLTIP_WIDTH_PX = 350;
+const TOOLTIP_OFFSET_PX = 15;
+const TOOLTIP_VIEWPORT_PADDING_PX = 8;
+const TOOLTIP_ESTIMATED_HEIGHT_PX = 640;
+
 function computeTooltipPosition(clientX: number, clientY: number): TooltipPosition {
-  let x = clientX + 15;
-  let y = clientY + 15;
-  if (typeof window !== "undefined" && x + 350 > window.innerWidth) {
-    x = clientX - 365;
+  let x = clientX + TOOLTIP_OFFSET_PX;
+  let y = clientY + TOOLTIP_OFFSET_PX;
+
+  if (typeof window !== "undefined") {
+    const availableTooltipHeight = Math.max(
+      240,
+      Math.min(
+        TOOLTIP_ESTIMATED_HEIGHT_PX,
+        window.innerHeight - TOOLTIP_VIEWPORT_PADDING_PX * 2
+      )
+    );
+
+    if (x + TOOLTIP_WIDTH_PX > window.innerWidth - TOOLTIP_VIEWPORT_PADDING_PX) {
+      x = clientX - TOOLTIP_WIDTH_PX - TOOLTIP_OFFSET_PX;
+    }
+
+    x = Math.min(
+      Math.max(TOOLTIP_VIEWPORT_PADDING_PX, x),
+      Math.max(
+        TOOLTIP_VIEWPORT_PADDING_PX,
+        window.innerWidth - TOOLTIP_WIDTH_PX - TOOLTIP_VIEWPORT_PADDING_PX
+      )
+    );
+
+    if (y + availableTooltipHeight > window.innerHeight - TOOLTIP_VIEWPORT_PADDING_PX) {
+      y = window.innerHeight - availableTooltipHeight - TOOLTIP_VIEWPORT_PADDING_PX;
+    }
+
+    y = Math.max(TOOLTIP_VIEWPORT_PADDING_PX, y);
   }
+
   return { x, y };
 }
 
@@ -546,6 +577,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
   const shouldShowDetailedPerks =
     Boolean(detailedPerksForGrid && detailedPerksForGrid.length > 0);
   const shouldShowPlugSection = shouldShowDetailedPerks || mods.length > 0;
+  const showTooltipScreenshots = false;
 
   return (
     <>
@@ -643,7 +675,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
           )}
         >
             {/* Screenshot Section — Bungie often 404s old screenshot paths; fall back to item icon. */}
-            {screenshot && !screenshotFailed ? (
+            {showTooltipScreenshots && screenshot && !screenshotFailed ? (
                 <div className="relative w-full h-48 overflow-hidden mb-1 group">
                     <Image 
                         src={tooltipBungieImageSrc(screenshot, 350)} 
@@ -663,7 +695,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                         </div>
                     )}
                 </div>
-            ) : screenshot && screenshotFailed && icon ? (
+            ) : showTooltipScreenshots && screenshot && screenshotFailed && icon ? (
                 <div className="relative mb-1 flex h-48 w-full items-center justify-center overflow-hidden bg-slate-950/90 group">
                     <Image
                         src={tooltipBungieImageSrc(icon, 256)}
@@ -779,8 +811,8 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                     </div>
                 )}
 
-                {/* Details Grid - Show Power when no hero image (or screenshot URL 404'd with no icon fallback). */}
-                {(!screenshot || (screenshotFailed && !icon)) && power !== undefined && power !== 0 && (
+                {/* Details Grid */}
+                {power !== undefined && power !== 0 && (
                     <div className="flex items-center justify-between pb-2">
                         <span className="text-slate-400 uppercase text-xs font-bold tracking-widest">Power Level</span>
                         <div className="flex items-center">
@@ -1472,20 +1504,16 @@ export function ItemTooltip(props: ItemTooltipProps) {
 
   if (typeof document === "undefined" || !position) return null;
 
-  const flipY =
-    typeof window !== "undefined" && position.y > window.innerHeight - 500;
-
   return createPortal(
     <div
       ref={setShellRef}
       className={cn(
-        "fixed z-300 w-[350px] flex flex-col overflow-visible shadow-2xl font-sans backdrop-blur-md",
+        "fixed z-300 w-[350px] max-h-[calc(100vh-1rem)] flex flex-col overflow-visible shadow-2xl font-sans backdrop-blur-md",
         fixedPosition ? "pointer-events-auto" : "pointer-events-none",
       )}
       style={{
         left: position.x,
         top: position.y,
-        transform: flipY ? "translateY(-100%)" : "none",
       }}
     >
       <ItemTooltipBody {...props} />

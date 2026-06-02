@@ -10,6 +10,11 @@ import type { ArmorQuality } from '@/lib/destinyUtils';
 import { cn } from '@/lib/utils';
 import { ItemTooltip, WishListInfo } from './ItemTooltip';
 
+const CONTEXT_MENU_VIEWPORT_PADDING_PX = 8;
+const CONTEXT_MENU_ESTIMATED_HEIGHT_PX = 620;
+const CONTEXT_MENU_MIN_HEIGHT_PX = 240;
+const CONTEXT_MENU_ACTIONS_HEIGHT_PX = 220;
+
 interface ItemContextMenuProps {
     x: number;
     y: number;
@@ -38,7 +43,6 @@ interface ItemContextMenuProps {
     tooltipEnhancementTier?: number | null;
     tooltipIsShiny?: boolean;
     tooltipArmorQuality?: ArmorQuality | null;
-    hideTooltipScreenshot?: boolean;
 }
 
 function findOwnedItemCopy(profile: any, itemHash: number) {
@@ -96,7 +100,6 @@ export function ItemContextMenu({
     tooltipEnhancementTier,
     tooltipIsShiny,
     tooltipArmorQuality,
-    hideTooltipScreenshot,
 }: ItemContextMenuProps) {
     const shellRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
@@ -163,7 +166,6 @@ export function ItemContextMenu({
             rarity: itemDef.inventory?.tierTypeName || 'Common',
             icon: itemDef.displayProperties?.icon ? getBungieImage(itemDef.displayProperties.icon) : undefined,
             power: instanceData?.primaryStat?.value,
-            screenshot: hideTooltipScreenshot || !itemDef.screenshot ? undefined : getBungieImage(itemDef.screenshot),
             flavorText: itemDef.flavorText,
             stats: instanceData?.stats,
             itemHash,
@@ -208,7 +210,6 @@ export function ItemContextMenu({
         tooltipEnhancementTier,
         tooltipIsShiny,
         tooltipArmorQuality,
-        hideTooltipScreenshot,
     ]);
 
     const canManageInstance = Boolean(itemInstanceId && membershipInfo && ownerId);
@@ -219,21 +220,42 @@ export function ItemContextMenu({
         const hasTip = !!tooltipData;
         const shellW = menuW + (hasTip ? tooltipW : 0);
         if (typeof window === "undefined") {
-            return { left: x, top: y };
+            return {
+                actionMenuOffset: 0,
+                left: x,
+                maxHeight: CONTEXT_MENU_ESTIMATED_HEIGHT_PX,
+                top: y,
+            };
         }
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const pad = 8;
+        const pad = CONTEXT_MENU_VIEWPORT_PADDING_PX;
         let left = x;
         if (left + shellW > vw - pad) {
             left = Math.max(pad, vw - shellW - pad);
         }
         let top = y;
-        const estH = 620;
-        if (top + estH > vh - pad) {
-            top = Math.max(pad, vh - estH - pad);
+        const estimatedHeight = Math.max(
+            CONTEXT_MENU_MIN_HEIGHT_PX,
+            Math.min(CONTEXT_MENU_ESTIMATED_HEIGHT_PX, vh - pad * 2)
+        );
+        if (top + estimatedHeight > vh - pad) {
+            top = Math.max(pad, vh - estimatedHeight - pad);
         }
-        return { left, top };
+        const maxHeight = Math.max(CONTEXT_MENU_MIN_HEIGHT_PX, vh - top - pad);
+        const actionMenuOffset = hasTip
+            ? Math.min(
+                Math.max(0, y - top),
+                Math.max(0, maxHeight - CONTEXT_MENU_ACTIONS_HEIGHT_PX)
+            )
+            : 0;
+
+        return {
+            actionMenuOffset,
+            left,
+            maxHeight,
+            top,
+        };
     }, [canManageInstance, x, y, tooltipData]);
     
     useEffect(() => {
@@ -409,16 +431,24 @@ export function ItemContextMenu({
                 'fixed z-200 flex flex-row items-start gap-0 shadow-2xl',
                 !tooltipData && canManageInstance && 'w-64'
             )}
-            style={{ left: shellLayout.left, top: shellLayout.top }}
+            style={{
+                left: shellLayout.left,
+                top: shellLayout.top,
+                maxHeight: shellLayout.maxHeight,
+            }}
         >
             {canManageInstance && (
                 <div
                     className={cn(
-                        'flex w-64 shrink-0 flex-col self-start h-fit py-1 overflow-hidden text-sm text-gray-200 select-none bg-gray-800/90 backdrop-blur-md',
+                        'flex w-64 shrink-0 flex-col self-start h-fit py-1 overflow-y-auto overflow-x-hidden text-sm text-gray-200 select-none bg-gray-800/90 backdrop-blur-md custom-scrollbar',
                         tooltipData
                             ? 'rounded-l-sm border border-white/10'
                             : 'rounded-sm border border-white/10'
                     )}
+                    style={{
+                        marginTop: shellLayout.actionMenuOffset,
+                        maxHeight: shellLayout.maxHeight,
+                    }}
                 >
                     {/* Equip Options */}
                     <div className="px-3 py-1 text-[10px] text-white uppercase tracking-wider">Equip</div>
@@ -508,6 +538,7 @@ export function ItemContextMenu({
                         "flex h-fit w-[350px] shrink-0 flex-col min-w-0 overflow-visible border border-white/10 bg-gray-950/40 backdrop-blur-md",
                         canManageInstance ? "rounded-r-sm" : "rounded-sm"
                     )}
+                    style={{ maxHeight: shellLayout.maxHeight }}
                 >
                     <ItemTooltip
                         {...tooltipData}

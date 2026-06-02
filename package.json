@@ -6,6 +6,7 @@
     "dev": "node scripts/run-next-https.mjs dev",
     "build": "next build",
     "start": "next start",
+    "manifest:update": "node scripts/update-static-manifest.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

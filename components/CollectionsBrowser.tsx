@@ -459,7 +459,7 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
     const hasItems = node.children?.collectibles?.length > 0;
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
              {/* Header for Current Selection */}
              <div className="sticky top-0 z-10 py-2 border-b border-white/10 mb-4">
                 <h2 className="text-xl font-light text-white">{node.displayProperties?.name}</h2>
@@ -526,20 +526,20 @@ function CollectionGroup({
     if (collectibles.length === 0) return null;
     if (items.length === 0) return null;
 
-    const groupHeight = Math.min(
-        460,
-        Math.max(132, Math.ceil(items.length / 8) * 96)
-    );
+    const estimatedItemsPerRow = 8;
+    const tileRowHeight = COLLECTION_TILE_SIZE_PX + 16;
+    const rowCount = Math.ceil(items.length / estimatedItemsPerRow);
+    const groupHeight = Math.min(460, rowCount * tileRowHeight);
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-2">
             <h3 className="text-sm font-bold text-destiny-gold uppercase tracking-wider border-b border-white/5 pb-1 flex items-center gap-2">
                 {node.displayProperties?.hasIcon && (
                     <Image src={getBungieImage(node.displayProperties.icon)} width={16} height={16} alt="" className="opacity-70" />
                 )}
                 {node.displayProperties?.name}
             </h3>
-            <CollectionTileGrid items={items} height={groupHeight} />
+            <CollectionTileGrid items={items} height={groupHeight} addBottomPadding={false} />
         </div>
     );
 }
@@ -547,9 +547,11 @@ function CollectionGroup({
 function CollectionTileGrid({
     items,
     height,
+    addBottomPadding = true,
 }: {
     items: CollectionTileModel[];
     height: number | string;
+    addBottomPadding?: boolean;
 }) {
     const components: GridComponents<CollectionTileModel> = useMemo(() => {
         const List = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
@@ -598,7 +600,7 @@ function CollectionTileGrid({
                     fetchPriority={index < 18 ? "auto" : "low"}
                 />
             )}
-            className="custom-scrollbar pb-20"
+            className={cn("custom-scrollbar", addBottomPadding && "pb-20")}
         />
     );
 }

@@ -9,11 +9,11 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { bungieApi, endpoints } from '@/lib/bungie';
 import { 
     getItemDefinitions as getCachedDefinitions,
     cacheItemDefinition,
 } from '@/lib/manifestCache';
+import { fetchManifestDefinitions } from '@/lib/manifestTableClient';
 
 // Global in-memory cache to avoid refetching on every component render
 const globalCache: Record<number, ItemDefinition> = {};
@@ -175,8 +175,11 @@ async function fetchFromApi(
         // Create fetch promise
         const fetchPromise = (async (): Promise<ItemDefinition | null> => {
             try {
-                const response = await bungieApi.get(endpoints.getItemDefinition(hash));
-                const def = response.data.Response as ItemDefinition;
+                const fetchedDefinitions = await fetchManifestDefinitions<ItemDefinition>(
+                    'DestinyInventoryItemDefinition',
+                    [hash]
+                );
+                const def = fetchedDefinitions[String(hash)];
                 
                 if (def) {
                     // Update caches
@@ -257,11 +260,14 @@ export async function preloadItemDefinitions(hashes: number[]): Promise<void> {
             await Promise.all(
                 batch.map(async (hash) => {
                     try {
-                        const response = await bungieApi.get(endpoints.getItemDefinition(hash));
-                        const def = response.data.Response;
+                        const fetchedDefinitions = await fetchManifestDefinitions<ItemDefinition>(
+                            'DestinyInventoryItemDefinition',
+                            [hash]
+                        );
+                        const def = fetchedDefinitions[String(hash)];
                         if (def) {
                             globalCache[hash] = def;
-                            await cacheItemDefinition(hash, def);
+                            await cacheItemDefinition(hash, def as any);
                         }
                     } catch {
                         // Silently fail

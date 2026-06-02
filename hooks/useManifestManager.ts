@@ -16,7 +16,7 @@ export function useManifestManager() {
             try {
                 const storedVersion = localStorage.getItem('destiny_manifest_version');
                 
-                // Fetch lightweight manifest metadata
+                // Fetch lightweight static manifest metadata
                 const response = await bungieApi.get(endpoints.getDestinyManifest());
                 const latestVersion = response.data.Response.version;
 
@@ -35,7 +35,7 @@ export function useManifestManager() {
                     
                     if (storedVersion) {
                         toast.info("Destiny Database Updated", {
-                            description: "Downloaded latest item definitions from Bungie.",
+                            description: "Loaded the latest static item definitions.",
                             duration: 4000,
                         });
                     }

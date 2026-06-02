@@ -18,7 +18,6 @@ import {
     clearManifestCache,
     ManifestDefinition
 } from './manifestCache';
-import { bungieApi } from './bungie';
 
 // ============================================================================
 // CONSTANTS
@@ -119,10 +118,17 @@ export async function buildManifestIndex(forceRebuild = false): Promise<{
 
     console.log('[ManifestIndex] Building new index...');
 
-    // Fetch manifest metadata
-    const manifestResponse = await bungieApi.get('/Destiny2/Manifest/');
-    const manifest = manifestResponse.data.Response;
-    const version = manifest.version;
+    const itemDefsResponse = await fetch('/api/manifest-table/DestinyInventoryItemDefinition');
+
+    if (!itemDefsResponse.ok) {
+        throw new Error('Failed to fetch item definitions');
+    }
+
+    const version = itemDefsResponse.headers.get('X-Warmind-Manifest-Version') ?? '';
+
+    if (!version) {
+        throw new Error('Manifest table response did not include a version');
+    }
 
     // Check if version changed and clear old cache
     if (hasManifestVersionChanged(version)) {
@@ -131,15 +137,6 @@ export async function buildManifestIndex(forceRebuild = false): Promise<{
         await db.manifestIndex.clear();
     }
 
-    // Get the JSON world content URL for items
-    const itemDefsPath = manifest.jsonWorldComponentContentPaths?.en?.DestinyInventoryItemDefinition;
-    
-    if (!itemDefsPath) {
-        throw new Error('Could not find item definitions path in manifest');
-    }
-
-    // Fetch all item definitions
-    const itemDefsResponse = await fetch(`https://www.bungie.net${itemDefsPath}`);
     const itemDefs: Record<string, any> = await itemDefsResponse.json();
 
     // Build index entries
@@ -190,7 +187,11 @@ export async function buildManifestIndex(forceRebuild = false): Promise<{
     storeManifestVersion({
         version,
         lastChecked: Date.now(),
-        jsonWorldContentPaths: manifest.jsonWorldComponentContentPaths,
+        jsonWorldContentPaths: {
+            en: {
+                DestinyInventoryItemDefinition: '/api/manifest-table/DestinyInventoryItemDefinition',
+            },
+        },
     });
     localStorage.setItem(MANIFEST_INDEX_VERSION_KEY, version);
 

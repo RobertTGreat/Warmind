@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
@@ -16,6 +16,8 @@ import {
     buildWeaponSocketGroups,
     collectWeaponPlugHashes,
     getWeaponPlugSetHashes,
+    isFunctionalWeaponPerk,
+    type WeaponSocketGroup,
 } from '@/lib/weaponPlugAnalysis';
 import {
     getExoticArmorTraitPlugs,
@@ -23,6 +25,11 @@ import {
     getPlugHash,
     getPlugTypeText,
 } from '@/lib/armorTraits';
+import {
+    formatArmorSetBonusRequirement,
+    getArmorSetBonusInfo,
+    type ArmorSetBonusInfo,
+} from '@/lib/armorSetBonus';
 import { getItemSourceInfo, type ItemSourceInfo } from '@/lib/itemSourceInfo';
 import type { ClarityDescription } from '@/lib/clarityDescriptions';
 
@@ -67,11 +74,46 @@ function getOverlayIntrinsicPlug(socketGroups: any[]) {
     return intrinsicSocketGroup ? getActiveOverlaySocketOption(intrinsicSocketGroup) : null;
 }
 
+function getArmorSetBonusClarityHashes(armorSetBonus: ArmorSetBonusInfo | null) {
+    const clarityHashes = new Set<number>();
+
+    for (const bonusTier of armorSetBonus?.bonuses ?? []) {
+        if (bonusTier.plugHash) {
+            clarityHashes.add(bonusTier.plugHash);
+        }
+
+        if (bonusTier.sandboxPerkHash) {
+            clarityHashes.add(bonusTier.sandboxPerkHash);
+        }
+    }
+
+    return Array.from(clarityHashes);
+}
+
+function getBasicSocketTitle(socketGroup: WeaponSocketGroup) {
+    const activePlug = socketGroup.activePlugDefinition;
+    const typeName = activePlug?.itemTypeDisplayName;
+    const category = socketGroup.categoryIdentifier;
+
+    if (socketGroup.isIntrinsic) return "Intrinsic";
+    if (socketGroup.isMasterworkColumn) return "Masterwork";
+    if (socketGroup.isOriginColumn) return "Origin Trait";
+    if (typeName) return typeName;
+    if (category.includes("barrels")) return "Barrel";
+    if (category.includes("magazines")) return "Magazine";
+
+    return `Column ${socketGroup.socketIndex + 1}`;
+}
+
 export function ItemDetailsOverlay() {
   const { detailsItem, setDetailsItem, setFullDetailsItem } = useUIStore();
   const { profile, membershipInfo } = useDestinyProfileContext();
   const { table: collectibleDefinitions } =
     useManifestTable<any>("DestinyCollectibleDefinition");
+  const { table: equipableItemSetDefinitions } =
+    useManifestTable<any>("DestinyEquipableItemSetDefinition");
+  const { table: sandboxPerkDefinitions } =
+    useManifestTable<any>("DestinySandboxPerkDefinition");
   
   // Fetch definition for the item
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
@@ -147,8 +189,41 @@ export function ItemDetailsOverlay() {
         .filter((traitHash): traitHash is number => Boolean(traitHash)),
     [detailTraitPlugs]
   );
-  const { descriptions: detailTraitClarityDescriptions } =
-    useClarityDescriptions(detailTraitHashes);
+  const armorSetBonus = useMemo(
+    () =>
+      getArmorSetBonusInfo({
+        itemDefinition: itemDef,
+        itemType: itemDef?.itemTypeDisplayName ?? "",
+        equipableItemSetDefinitions,
+        sandboxPerkDefinitions,
+        socketsData: selectedSocketsData,
+        plugDefinitions: overlayPlugDefinitions,
+      }),
+    [
+      equipableItemSetDefinitions,
+      itemDef,
+      overlayPlugDefinitions,
+      sandboxPerkDefinitions,
+      selectedSocketsData,
+    ]
+  );
+  const armorSetBonusClarityHashes = useMemo(
+    () => getArmorSetBonusClarityHashes(armorSetBonus),
+    [armorSetBonus]
+  );
+  const basicClarityHashes = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...overlayPlugHashes,
+          ...detailTraitHashes,
+          ...armorSetBonusClarityHashes,
+        ])
+      ),
+    [armorSetBonusClarityHashes, detailTraitHashes, overlayPlugHashes]
+  );
+  const { descriptions: basicClarityDescriptions } =
+    useClarityDescriptions(basicClarityHashes);
   const itemSourceInfo = useMemo(
     () =>
       getItemSourceInfo({
@@ -180,7 +255,7 @@ export function ItemDetailsOverlay() {
         onClick={() => setDetailsItem(null)}
     >
         <div 
-            className="w-full max-w-[1400px] aspect-video max-h-[90vh] bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl overflow-hidden relative group flex flex-col md:flex-row isolate"
+            className="relative isolate flex h-full max-h-[calc(100vh-2rem)] w-full max-w-[1400px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#1e1e1e] shadow-2xl md:aspect-video md:h-auto md:max-h-[90vh] md:flex-row"
             onClick={(e) => e.stopPropagation()}
         >
              {/* Background Image (Blurred/Faded) */}
@@ -202,13 +277,13 @@ export function ItemDetailsOverlay() {
              </div>
 
              {/* Controls */}
-             <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
+             <div className="absolute right-4 top-4 z-50 flex max-w-[calc(100%-2rem)] items-center gap-2 md:right-6 md:top-6 md:gap-4">
                 {isWeapon && (
                     <button
                         onClick={handleOpenFullDetails}
-                        className="border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-bold uppercase text-slate-300 transition-colors hover:border-destiny-gold/50 hover:text-destiny-gold"
+                        className="whitespace-nowrap border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-bold uppercase text-slate-300 transition-colors hover:border-destiny-gold/50 hover:text-destiny-gold"
                     >
-                        Show Perks
+                        Full Details
                     </button>
                 )}
 
@@ -221,16 +296,16 @@ export function ItemDetailsOverlay() {
              </div>
 
              {/* Left Panel: Header & Sockets */}
-             <div className="relative z-10 w-full md:w-[500px] h-full p-8 flex flex-col gap-8 overflow-y-auto scrollbar-hide">
+             <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden p-5 scrollbar-hide md:h-full md:w-[500px] md:flex-none md:gap-8 md:p-8">
                   
                   {/* Header */}
                   <div className="flex gap-5 items-start">
-                      <div className="w-20 h-20 border border-white/20 rounded-sm overflow-hidden shadow-lg shrink-0 bg-[#2a2a2a] relative">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-sm border border-white/20 bg-[#2a2a2a] shadow-lg">
                           {itemDef?.displayProperties?.icon && (
                               <Image 
                                 src={getBungieImage(itemDef.displayProperties.icon)} 
                                 fill 
-                                sizes="80px"
+                                sizes="64px"
                                 className="object-cover" 
                                 alt="" 
                               />
@@ -240,14 +315,14 @@ export function ItemDetailsOverlay() {
                               <Image 
                                 src={getBungieImage(itemDef.iconWatermark)} 
                                 fill
-                                sizes="80px"
+                                sizes="64px"
                                 className="object-cover opacity-80"
                                 alt=""
                               />
                           )}
                       </div>
-                      <div>
-                          <h2 className="text-3xl md:text-4xl font-bold text-white leading-none uppercase tracking-wide">{itemDef?.displayProperties?.name}</h2>
+                      <div className="min-w-0 flex-1 pr-24 md:pr-0">
+                          <h2 className="break-words text-2xl font-bold uppercase leading-tight tracking-wide text-white md:text-4xl">{itemDef?.displayProperties?.name}</h2>
                           <div className="text-sm text-slate-300 font-medium uppercase tracking-widest mt-2 flex items-center gap-3 flex-wrap">
                               <span>{itemDef?.itemTypeDisplayName}</span>
                               {tierNumber > 1 && (
@@ -261,17 +336,14 @@ export function ItemDetailsOverlay() {
                                   </span>
                               )}
                           </div>
-                          
-                          <div className="text-slate-400 italic text-xs mt-2 opacity-80 leading-relaxed border-l-2 border-white/20 pl-3">
-                              "{itemDef?.flavorText}"
-                          </div>
                       </div>
                   </div>
 
                   <BasicItemInfo
                     sourceInfo={itemSourceInfo}
-                    traitPlugs={detailTraitPlugs}
-                    clarityDescriptions={detailTraitClarityDescriptions}
+                    traitPlugs={isWeapon ? [] : detailTraitPlugs}
+                    clarityDescriptions={basicClarityDescriptions}
+                    armorSetBonus={armorSetBonus}
                     itemDef={itemDef}
                   />
 
@@ -293,6 +365,7 @@ export function ItemDetailsOverlay() {
                                  profile={profile}
                                  membershipInfo={membershipInfo}
                                  isSubclass={isSubclass}
+                                 clarityDescriptions={basicClarityDescriptions}
                              />
                          )
                      )}
@@ -308,7 +381,7 @@ export function ItemDetailsOverlay() {
              </div>
 
             {/* Right Panel: Stats & History */}
-            <div className="relative z-10 w-full md:w-[350px] lg:w-[400px] h-full bg-[#121212]/60 md:bg-transparent p-8 flex flex-col gap-8 overflow-y-auto border-l border-white/5">
+            <div className="relative z-10 flex max-h-[40vh] w-full shrink-0 flex-col gap-8 overflow-y-auto overflow-x-hidden border-t border-white/5 bg-[#121212]/60 p-5 md:h-full md:max-h-none md:w-[350px] md:border-l md:border-t-0 md:bg-transparent md:p-8 lg:w-[400px]">
                {/* Stats */}
                <div className="mt-auto">
                    {!isSubclass && (
@@ -333,34 +406,37 @@ function BasicItemInfo({
     sourceInfo,
     traitPlugs,
     clarityDescriptions,
+    armorSetBonus,
     itemDef,
 }: {
     sourceInfo: ItemSourceInfo | null;
     traitPlugs: any[];
     clarityDescriptions: Record<number, ClarityDescription>;
+    armorSetBonus: ArmorSetBonusInfo | null;
     itemDef: any;
 }) {
     const hasSourceInfo = Boolean(sourceInfo?.sourceText || sourceInfo?.requirementText);
     const hasTraits = traitPlugs.length > 0;
+    const hasArmorSetBonus = Boolean(armorSetBonus);
 
-    if (!hasSourceInfo && !hasTraits) return null;
+    if (!hasSourceInfo && !hasTraits && !hasArmorSetBonus) return null;
 
     const isExotic = itemDef?.inventory?.tierTypeName === "Exotic";
 
     return (
-        <div className="space-y-3 border-y border-white/10 py-4">
+        <div className="space-y-3 overflow-hidden border-y border-white/10 py-4">
             {hasSourceInfo && (
                 <div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-destiny-gold">
                         Drop Source
                     </p>
                     {sourceInfo?.sourceText && (
-                        <p className="mt-1 text-sm leading-relaxed text-slate-200">
+                        <p className="mt-1 break-words text-sm leading-relaxed text-slate-200">
                             {sourceInfo.sourceText}
                         </p>
                     )}
                     {sourceInfo?.requirementText && (
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <p className="mt-1 break-words text-xs font-semibold uppercase tracking-wide text-slate-500">
                             {sourceInfo.requirementText}
                         </p>
                     )}
@@ -387,6 +463,13 @@ function BasicItemInfo({
                     </div>
                 </div>
             )}
+
+            {armorSetBonus && (
+                <BasicArmorSetBonus
+                    armorSetBonus={armorSetBonus}
+                    clarityDescriptions={clarityDescriptions}
+                />
+            )}
         </div>
     );
 }
@@ -406,25 +489,92 @@ function BasicTraitCard({
         : null;
 
     return (
-        <div className="flex items-start gap-3 border border-white/10 bg-black/20 p-3">
+        <div className="space-y-3 border border-white/10 bg-black/20 p-3">
+            <div className="flex min-w-0 items-start gap-3">
             {traitIcon && (
-                <div className="relative h-10 w-10 shrink-0 overflow-hidden">
-                    <Image src={traitIcon} alt="" fill sizes="40px" className="object-contain" />
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden">
+                    <Image src={traitIcon} alt="" fill sizes="48px" className="object-contain" />
                 </div>
             )}
             <div className="min-w-0">
-                <p className="text-sm font-bold leading-tight text-white">{traitName}</p>
+                <p className="break-words text-sm font-bold leading-tight text-white">{traitName}</p>
                 {traitType && (
                     <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-destiny-gold">
                         {traitType}
                     </p>
                 )}
                 {traitDescription && (
-                    <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                    <p className="mt-1 break-words text-xs leading-relaxed text-slate-300">
                         {traitDescription}
                     </p>
                 )}
-                <BasicClaritySection clarityDescription={clarityDescription} />
+            </div>
+            </div>
+            <BasicClaritySection clarityDescription={clarityDescription} />
+        </div>
+    );
+}
+
+function BasicArmorSetBonus({
+    armorSetBonus,
+    clarityDescriptions,
+}: {
+    armorSetBonus: ArmorSetBonusInfo;
+    clarityDescriptions: Record<number, ClarityDescription>;
+}) {
+    return (
+        <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                Armor Set Bonus
+            </p>
+            <div className="flex items-start gap-3 border border-white/10 bg-black/20 p-3">
+                {armorSetBonus.icon && (
+                    <div className="relative h-10 w-10 shrink-0 overflow-hidden border border-white/10 bg-white/5">
+                        <Image
+                            src={getBungieImage(armorSetBonus.icon)}
+                            alt=""
+                            fill
+                            sizes="40px"
+                            className="object-cover"
+                        />
+                    </div>
+                )}
+                <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-bold leading-tight text-destiny-gold">
+                        {armorSetBonus.name}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                        {armorSetBonus.bonuses.map((bonusTier) => (
+                            <div
+                                key={`${bonusTier.requiredSetCount ?? "bonus"}-${bonusTier.sandboxPerkHash ?? bonusTier.plugHash ?? bonusTier.name}`}
+                                className="border border-white/10 bg-black/20 p-2"
+                            >
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-destiny-gold">
+                                    {formatArmorSetBonusRequirement(bonusTier.requiredSetCount)}
+                                    {bonusTier.name && (
+                                        <span className="ml-1 normal-case tracking-normal text-slate-100">
+                                            - {bonusTier.name}
+                                        </span>
+                                    )}
+                                </p>
+                                {bonusTier.description && (
+                                    <p className="mt-1 break-words text-xs leading-relaxed text-slate-300">
+                                        {bonusTier.description}
+                                    </p>
+                                )}
+                                <BasicClaritySection
+                                    clarityDescription={
+                                        clarityDescriptions[
+                                            bonusTier.plugHash ??
+                                            bonusTier.sandboxPerkHash ??
+                                            0
+                                        ]
+                                    }
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -1134,7 +1284,15 @@ function SubclassStats({ sockets, itemDef, profile, item }: any) {
     );
 }
 
-function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubclass }: any) {
+function SocketViewer({
+    sockets,
+    itemDef,
+    item,
+    profile,
+    membershipInfo,
+    isSubclass,
+    clarityDescriptions,
+}: any) {
     const { definitions: categoryDefs } = useSocketCategoryDefinitions(itemDef?.sockets?.socketCategories?.map((c: any) => c.socketCategoryHash) || []);
     
     const reusablePlugsData = profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs;
@@ -1242,14 +1400,37 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
 
         if (validSockets.length === 0) return null;
 
+        const categoryName = categoryDef.displayProperties?.name ?? "";
+        const categoryNameLower = categoryName.toLowerCase();
+        const isWeaponPerkCategory =
+            itemDef?.itemType === 3 &&
+            !categoryNameLower.includes("intrinsic") &&
+            !categoryNameLower.includes("mod") &&
+            !categoryNameLower.includes("masterwork");
+        const isWeaponIntrinsicCategory =
+            itemDef?.itemType === 3 &&
+            (categoryNameLower.includes("intrinsic") ||
+                categoryNameLower.includes("archetype"));
+
         return (
-            <div key={category.socketCategoryHash} className="flex flex-col gap-3">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-white/10 pb-1">
-                    {categoryDef.displayProperties?.name}
-                </h3>
+            <div
+                key={category.socketCategoryHash}
+                className={cn(
+                    "flex min-w-0 flex-col gap-3 overflow-visible",
+                    isWeaponIntrinsicCategory && "self-end"
+                )}
+            >
+                {!isWeaponIntrinsicCategory && (
+                    <h3 className="border-b border-white/20 pb-1 text-sm font-medium text-slate-300">
+                        {categoryDef.displayProperties?.name}
+                    </h3>
+                )}
                 
-                <div className="flex flex-wrap gap-3">
-                    {validSockets.map((socket: any) => (
+                <div className={cn(
+                    "flex max-w-full flex-wrap overflow-visible",
+                    isWeaponPerkCategory ? "w-fit gap-x-3 gap-y-4" : "gap-1.5"
+                )}>
+                    {validSockets.map((socket: any, socketIndex: number) => (
                         <Socket 
                             key={socket.socketIndex} 
                             socket={socket} 
@@ -1261,6 +1442,21 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
                             membershipInfo={membershipInfo}
                             profile={profile}
                             isSubclass={isSubclass}
+                            clarityDescriptions={clarityDescriptions}
+                            isFirstSocket={socketIndex === 0}
+                            socketTitle={getBasicSocketTitle({
+                                socketIndex: socket.socketIndex,
+                                socketName: categoryDef.displayProperties?.name ?? "",
+                                categoryIdentifier: categoryDef.categoryStyleIdentifier ?? "",
+                                activePlugHash: socket.plugHash,
+                                activePlugDefinition: plugDefs[socket.plugHash],
+                                options: [],
+                                isIntrinsic: categoryNameLower.includes("intrinsic"),
+                                isPerkColumn: isWeaponPerkCategory,
+                                isMasterworkColumn: categoryNameLower.includes("masterwork"),
+                                isOriginColumn: categoryNameLower.includes("origin"),
+                                isCosmeticColumn: false,
+                            })}
                         />
                     ))}
                 </div>
@@ -1270,8 +1466,20 @@ function SocketViewer({ sockets, itemDef, item, profile, membershipInfo, isSubcl
 
     if (!itemDef?.sockets?.socketCategories) return null;
 
+    if (itemDef?.itemType === 3) {
+        return (
+            <div className="flex min-w-0 flex-col gap-6 overflow-x-hidden pb-6">
+                {perks.map(renderCategory)}
+                <div className="flex max-w-full flex-wrap items-end gap-3 overflow-visible">
+                    {intrinsic.map(renderCategory)}
+                    {mods.map(renderCategory)}
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex flex-col gap-8 pb-20">
+        <div className="flex min-w-0 flex-col gap-8 overflow-x-hidden pb-6">
             {/* Intrinsic & Mods Row */}
             <div className="flex flex-wrap gap-8">
                 {intrinsic.map(renderCategory)}
@@ -1290,30 +1498,30 @@ function PortalTooltip({ content, targetRect, position = 'top' }: any) {
     if (!targetRect || !content) return null;
     if (typeof document === 'undefined') return null;
 
-    // Calculate position
-    let top = 0;
-    let left = 0;
-    const tooltipWidth = 240; // Approx width
+    const viewportPadding = 16;
+    const tooltipWidth = Math.min(320, window.innerWidth - viewportPadding * 2);
     const gap = 8;
-
-    const scrollX = window.scrollX || 0;
-    const scrollY = window.scrollY || 0;
-
-    if (position === 'top') {
-        top = targetRect.top + scrollY - gap;
-        left = targetRect.left + scrollX + (targetRect.width / 2);
-    }
+    const targetCenter = targetRect.left + targetRect.width / 2;
+    const left = Math.min(
+        Math.max(targetCenter, viewportPadding + tooltipWidth / 2),
+        window.innerWidth - viewportPadding - tooltipWidth / 2
+    );
+    const hasTopSpace = targetRect.top > 180;
+    const shouldPlaceOnTop = position === 'top' && hasTopSpace;
+    const top = shouldPlaceOnTop ? targetRect.top - gap : targetRect.bottom + gap;
+    const transform = shouldPlaceOnTop ? 'translate(-50%, -100%)' : 'translate(-50%, 0)';
 
     return createPortal(
         <div 
-            className="fixed z-200 pointer-events-none"
+            className="fixed z-200 pointer-events-none max-w-[calc(100vw-2rem)]"
             style={{ 
                 top: top, 
                 left: left,
-                transform: 'translate(-50%, -100%)' 
+                width: tooltipWidth,
+                transform,
             }}
         >
-            <div className="w-60 bg-[#1a1a1a] border border-white/20 p-3 rounded shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+            <div className="rounded border border-white/20 bg-[#1a1a1a] p-3 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
                 {content}
             </div>
         </div>,
@@ -1321,10 +1529,149 @@ function PortalTooltip({ content, targetRect, position = 'top' }: any) {
     );
 }
 
-function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, membershipInfo, profile, isSubclass }: any) {
+function BasicPlugTooltipContent({
+    plug,
+    fallbackType,
+    clarityDescription,
+}: {
+    plug: any;
+    fallbackType?: string;
+    clarityDescription?: ClarityDescription;
+}) {
+    return (
+        <>
+            <p className="break-words text-sm font-bold leading-tight text-destiny-gold">
+                {plug.displayProperties?.name}
+            </p>
+            <p className="mb-2 mt-1 break-words text-[10px] font-semibold uppercase text-slate-400">
+                {plug.itemTypeDisplayName ?? fallbackType}
+            </p>
+            {plug.displayProperties?.description && (
+                <p className="break-words text-xs leading-relaxed text-slate-300">
+                    {plug.displayProperties.description}
+                </p>
+            )}
+            <BasicClaritySection clarityDescription={clarityDescription} />
+        </>
+    );
+}
+
+function SocketOptionsOverlay({
+    options,
+    activePlugHash,
+    isCircle,
+    targetRect,
+    onClose,
+    onSelect,
+}: {
+    options: Array<{ hash: number; def: any }>;
+    activePlugHash?: number;
+    isCircle: boolean;
+    targetRect: DOMRect;
+    onClose: () => void;
+    onSelect: (plugHash: number, plugName: string) => void;
+}) {
+    if (typeof document === 'undefined') return null;
+
+    const viewportPadding = 16;
+    const gap = 8;
+    const overlayWidth = Math.min(260, window.innerWidth - viewportPadding * 2);
+    const left = Math.min(
+        Math.max(targetRect.left, viewportPadding),
+        window.innerWidth - viewportPadding - overlayWidth
+    );
+    const bottomSpace = window.innerHeight - targetRect.bottom - viewportPadding;
+    const topSpace = targetRect.top - viewportPadding;
+    const shouldPlaceBelow = bottomSpace >= 220 || bottomSpace >= topSpace;
+    const availableSpace = Math.max(
+        120,
+        (shouldPlaceBelow ? bottomSpace : topSpace) - gap
+    );
+    const maxHeight = Math.min(320, availableSpace);
+    const verticalPosition = shouldPlaceBelow
+        ? { top: targetRect.bottom + gap }
+        : { bottom: window.innerHeight - targetRect.top + gap };
+
+    return createPortal(
+        <>
+            <div
+                className="fixed inset-0 z-[205] bg-transparent"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onClose();
+                }}
+            />
+            <div
+                className="fixed z-[210] flex flex-col overflow-hidden rounded border border-white/20 bg-[#1a1a1a] p-2 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+                style={{
+                    left,
+                    width: overlayWidth,
+                    maxHeight,
+                    ...verticalPosition,
+                }}
+            >
+                <div className="mb-1 border-b border-white/10 px-2 pb-1 text-xs font-bold uppercase text-slate-500">
+                    Select Option
+                </div>
+                <div className="grid grid-cols-4 gap-2 overflow-y-auto p-1 custom-scrollbar">
+                    {options.map((option) => {
+                        const isSelected = option.hash === activePlugHash;
+
+                        return (
+                            <button
+                                key={option.hash}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onSelect(
+                                        option.hash,
+                                        option.def.displayProperties?.name ?? "Option"
+                                    );
+                                }}
+                                className={cn(
+                                    "relative h-10 w-10 overflow-hidden border transition-transform hover:scale-110",
+                                    isCircle ? "rounded-full" : "rounded-sm",
+                                    isSelected
+                                        ? "border-destiny-gold ring-1 ring-destiny-gold"
+                                        : "border-slate-600 hover:border-white"
+                                )}
+                                title={option.def.displayProperties?.name}
+                            >
+                                {option.def.displayProperties?.icon && (
+                                    <Image
+                                        src={getBungieImage(option.def.displayProperties.icon)}
+                                        fill
+                                        className="object-cover"
+                                        alt=""
+                                    />
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+        </>,
+        document.body
+    );
+}
+
+function Socket({
+    socket,
+    activePlug,
+    plugDefs,
+    item,
+    itemDef,
+    categoryDef,
+    membershipInfo,
+    profile,
+    isSubclass,
+    clarityDescriptions,
+    isFirstSocket,
+    socketTitle,
+}: any) {
     const [isOpen, setIsOpen] = useState(false);
     const [hoveredPlug, setHoveredPlug] = useState<any>(null);
     const [hoverTarget, setHoverTarget] = useState<HTMLElement | null>(null);
+    const socketButtonRef = useRef<HTMLButtonElement | null>(null);
     
     const handleMouseEnter = (e: React.MouseEvent<HTMLElement>, plug: any) => {
         setHoveredPlug(plug);
@@ -1342,22 +1689,6 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
     const categoryName = categoryDef?.displayProperties?.name || "";
     const categoryNameLower = categoryName.toLowerCase();
     
-    // More precise check for what should be a vertical column
-    // - Traits, Magazines, Barrels, Sights, Scopes
-    // - NOT Intrinsic (those are single usually)
-    // - NOT Mods
-    const isWeaponPerk = 
-        itemDef?.itemType === 3 && 
-        (categoryNameLower.includes("trait") || 
-         categoryNameLower.includes("magazine") || 
-         categoryNameLower.includes("barrel") || 
-         categoryNameLower.includes("sight") || 
-         categoryNameLower.includes("scope") || 
-         categoryNameLower.includes("perk")) &&
-        !categoryNameLower.includes("intrinsic") && // Intrinsics should be single
-        !categoryNameLower.includes("mod") &&
-        !categoryNameLower.includes("masterwork");
-        
     const isWeaponMod = itemDef?.itemType === 3 && categoryNameLower.includes("mod");
     
     // Determine Shape
@@ -1444,7 +1775,7 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
         setIsOpen(false);
     };
 
-    if (!activePlug && options.length === 0) return <div className={cn("w-12 h-12 bg-white/5 border border-dashed border-white/20", isCircle ? "rounded-full" : "rounded-sm")} />;
+    if (!activePlug && options.length === 0) return <div className={cn("h-11 w-11 border border-dashed border-white/20 bg-white/5", isCircle ? "rounded-full" : "rounded-sm")} />;
 
     const displayPlug = activePlug || options[0]?.def;
     if (!displayPlug) return null;
@@ -1452,15 +1783,36 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
     // Single View (Armor Mods, Cosmetics, Single Perks)
     const isEnhanced = displayPlug.displayProperties?.name?.includes("Enhanced");
     const hasOptions = options.length > 1;
+    const displayPlugHash = getPlugHash(displayPlug);
+    const displayClarityDescription = displayPlugHash
+        ? clarityDescriptions?.[displayPlugHash]
+        : undefined;
+    const plugLooksLikeFunctionalWeaponPerk = isFunctionalWeaponPerk(displayPlug);
+    const isWeaponPerk =
+        itemDef?.itemType === 3 &&
+        (categoryNameLower.includes("trait") ||
+         categoryNameLower.includes("magazine") ||
+         categoryNameLower.includes("barrel") ||
+         categoryNameLower.includes("sight") ||
+         categoryNameLower.includes("scope") ||
+         categoryNameLower.includes("perk") ||
+         plugLooksLikeFunctionalWeaponPerk) &&
+        !categoryNameLower.includes("intrinsic") &&
+        !categoryNameLower.includes("mod") &&
+        !categoryNameLower.includes("masterwork");
 
     // Weapon Perks: Render as Vertical Column (Reusable Plugs System)
     if (isWeaponPerk) {
         return (
-            <div className="flex flex-col gap-2 pt-2">
+            <div className={cn(
+                "w-12 shrink-0 border-l border-white/10 pl-2 first:border-l-0 first:pl-0",
+                isFirstSocket && "border-l-0 pl-0"
+            )}>
+                <div className="flex flex-col gap-1.5 overflow-visible">
                  {options.map((opt: any) => {
                      const isSelected = opt.hash === socket.plugHash;
                      const isOptEnhanced = opt.def.displayProperties?.name?.includes("Enhanced");
-                     
+
                      return (
                         <div 
                             key={opt.hash}
@@ -1471,7 +1823,7 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
                             <button
                                 onClick={(e) => { e.stopPropagation(); handleSelectPlug(opt.hash, opt.def.displayProperties.name); }}
                                 className={cn(
-                                    "w-13 h-13 rounded-full overflow-hidden border relative transition-all",
+                                    "relative h-10 w-10 overflow-hidden rounded-full border transition-all",
                                     isSelected 
                                         ? "border-destiny-gold bg-[#5b94be] opacity-100 ring-1 ring-destiny-gold" 
                                         : "border-gray-600 bg-black/40 opacity-50 hover:opacity-100 hover:border-gray-400"
@@ -1498,14 +1850,17 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
                     <PortalTooltip 
                         targetRect={hoverTarget.getBoundingClientRect()} 
                         content={
-                            <>
-                                <p className="text-sm font-bold text-destiny-gold mb-1">{hoveredPlug.displayProperties?.name}</p>
-                                <p className="text-[10px] text-slate-400 uppercase mb-2">{hoveredPlug.itemTypeDisplayName}</p>
-                                <p className="text-xs text-slate-300 leading-relaxed">{hoveredPlug.displayProperties?.description}</p>
-                            </>
+                            <BasicPlugTooltipContent
+                                plug={hoveredPlug}
+                                fallbackType={socketTitle}
+                                clarityDescription={
+                                    clarityDescriptions?.[getPlugHash(hoveredPlug) ?? 0]
+                                }
+                            />
                         } 
                     />
                 )}
+                </div>
             </div>
         );
     }
@@ -1514,11 +1869,12 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
     return (
         <div className="relative group/socket">
             <button 
+                ref={socketButtonRef}
                 onClick={() => hasOptions && setIsOpen(true)}
                 onMouseEnter={(e) => handleMouseEnter(e, displayPlug)}
                 onMouseLeave={handleMouseLeave}
                 className={cn(
-                    "w-12 h-12 md:w-14 md:h-14 overflow-hidden border-2 relative transition-all",
+                    "relative h-11 w-11 overflow-hidden border transition-all",
                     isCircle ? "rounded-full" : "rounded-sm",
                     hasOptions ? "cursor-pointer hover:border-white" : "cursor-default",
                     isEnhanced ? "border-destiny-gold" : "border-slate-500 bg-[#0f0f0f]",
@@ -1546,9 +1902,11 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
                     targetRect={hoverTarget.getBoundingClientRect()} 
                     content={
                         <>
-                            <p className="text-sm font-bold text-destiny-gold mb-1">{hoveredPlug.displayProperties?.name}</p>
-                            <p className="text-[10px] text-slate-400 uppercase mb-2">{hoveredPlug.itemTypeDisplayName}</p>
-                            <p className="text-xs text-slate-300 leading-relaxed">{hoveredPlug.displayProperties?.description}</p>
+                            <BasicPlugTooltipContent
+                                plug={hoveredPlug}
+                                fallbackType={socketTitle}
+                                clarityDescription={displayClarityDescription}
+                            />
                             {hasOptions && !isWeaponMod && (
                                 <div className="mt-3 border-t border-white/10 pt-2">
                                     <p className="text-[9px] font-bold text-slate-500 uppercase mb-1">Available Options</p>
@@ -1575,37 +1933,15 @@ function Socket({ socket, activePlug, plugDefs, item, itemDef, categoryDef, memb
             )}
 
             {/* Options Popup (For Single View Types with Options - e.g. Mods) */}
-            {isOpen && (
-                <>
-                    <div className="fixed inset-0 z-60 bg-transparent" onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} />
-                    <div className="absolute top-full left-0 mt-2 z-70 flex flex-col gap-2 bg-[#1a1a1a] border border-white/20 p-2 rounded shadow-2xl min-w-[220px] animate-in fade-in zoom-in-95 duration-100">
-                        <div className="text-xs uppercase font-bold text-slate-500 px-2 pb-1 border-b border-white/10 mb-1">Select Option</div>
-                         <div className="grid grid-cols-4 gap-2 max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
-                             {options.map((opt: any) => {
-                                 const isOptSelected = opt.hash === socket.plugHash;
-                                 return (
-                                     <button
-                                         key={opt.hash}
-                                         onClick={(e) => { e.stopPropagation(); handleSelectPlug(opt.hash, opt.def.displayProperties.name); }}
-                                         className={cn(
-                                             "w-10 h-10 overflow-hidden border relative hover:scale-110 transition-transform",
-                                             isCircle ? "rounded-full" : "rounded-sm",
-                                             isOptSelected ? "border-destiny-gold ring-1 ring-destiny-gold" : "border-slate-600 hover:border-white"
-                                         )}
-                                         title={opt.def.displayProperties.name}
-                                     >
-                                         <Image 
-                                             src={getBungieImage(opt.def.displayProperties.icon)} 
-                                             fill 
-                                             className="object-cover" 
-                                             alt="" 
-                                         />
-                                     </button>
-                                 );
-                             })}
-                         </div>
-                    </div>
-                </>
+            {isOpen && socketButtonRef.current && (
+                <SocketOptionsOverlay
+                    options={options}
+                    activePlugHash={socket.plugHash}
+                    isCircle={isCircle}
+                    targetRect={socketButtonRef.current.getBoundingClientRect()}
+                    onClose={() => setIsOpen(false)}
+                    onSelect={handleSelectPlug}
+                />
             )}
         </div>
     );

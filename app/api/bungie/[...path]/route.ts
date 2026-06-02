@@ -1,6 +1,10 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerBungieApiKey } from '@/lib/serverBungie';
+import {
+  getStaticManifestApiResponse,
+  getStaticManifestDefinition,
+} from '@/lib/staticManifest.server';
 
 const BUNGIE_API_BASE = 'https://www.bungie.net/Platform';
 
@@ -8,7 +12,87 @@ type RouteParams = {
   params: Promise<{ path: string[] }>;
 };
 
+function buildBungieResponse(response: unknown) {
+  return {
+    Response: response,
+    ErrorCode: 1,
+    ThrottleSeconds: 0,
+    ErrorStatus: 'Success',
+    Message: 'Ok',
+    MessageData: {},
+  };
+}
+
+function isStaticManifestMetadataPath(path: string[]) {
+  return path.length === 2 && path[0] === 'Destiny2' && path[1] === 'Manifest';
+}
+
+function getStaticManifestDefinitionPath(path: string[]) {
+  if (path.length !== 4 || path[0] !== 'Destiny2' || path[1] !== 'Manifest') {
+    return null;
+  }
+
+  return {
+    definitionType: path[2],
+    hash: path[3],
+  };
+}
+
+async function maybeServeStaticManifest(request: NextRequest, path: string[]) {
+  if (request.method !== 'GET') {
+    return null;
+  }
+
+  if (isStaticManifestMetadataPath(path)) {
+    return NextResponse.json(await getStaticManifestApiResponse(), {
+      headers: {
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=604800',
+      },
+    });
+  }
+
+  const definitionPath = getStaticManifestDefinitionPath(path);
+
+  if (!definitionPath) {
+    return null;
+  }
+
+  let staticDefinition;
+  try {
+    staticDefinition = await getStaticManifestDefinition(
+      definitionPath.definitionType,
+      definitionPath.hash
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Manifest definition not found';
+    return NextResponse.json({ error: message }, { status: 404 });
+  }
+
+  const { definition, version } = staticDefinition;
+
+  if (!definition) {
+    return NextResponse.json({ error: 'Manifest definition not found' }, { status: 404 });
+  }
+
+  return NextResponse.json(buildBungieResponse(definition), {
+    headers: {
+      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=604800',
+      'X-Warmind-Manifest-Version': version,
+    },
+  });
+}
+
 async function proxyToBungie(request: NextRequest, { params }: RouteParams) {
+  const { path } = await params;
+  if (!path?.length) {
+    return NextResponse.json({ error: 'Missing Bungie path' }, { status: 400 });
+  }
+
+  const staticManifestResponse = await maybeServeStaticManifest(request, path);
+  if (staticManifestResponse) {
+    return staticManifestResponse;
+  }
+
   const apiKey = getServerBungieApiKey();
 
   if (!apiKey) {
@@ -16,11 +100,6 @@ async function proxyToBungie(request: NextRequest, { params }: RouteParams) {
       { error: 'Server configuration error: API Key missing' },
       { status: 500 }
     );
-  }
-
-  const { path } = await params;
-  if (!path?.length) {
-    return NextResponse.json({ error: 'Missing Bungie path' }, { status: 400 });
   }
 
   const targetUrl = new URL(`${BUNGIE_API_BASE}/${path.join('/')}`);

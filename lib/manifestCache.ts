@@ -30,7 +30,7 @@ export interface ManifestDefinition {
 export interface ManifestVersionInfo {
     version: string;
     lastChecked: number;
-    jsonWorldContentPaths: Record<string, string>;
+    jsonWorldContentPaths: Record<string, Record<string, string>>;
 }
 
 // ============================================================================

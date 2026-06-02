@@ -1,20 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerBungieApiKey } from "@/lib/serverBungie";
-
-const ALLOWED_TYPES = new Set([
-  "DestinyActivityDefinition",
-  "DestinyActivityModeDefinition",
-  "DestinyActivityTypeDefinition",
-  "DestinyInventoryItemDefinition",
-  "DestinyCollectibleDefinition",
-  "DestinyEquipableItemSetDefinition",
-  "DestinyPresentationNodeDefinition",
-  "DestinyRecordDefinition",
-  "DestinySandboxPerkDefinition",
-  "DestinySocketCategoryDefinition",
-  "DestinySocketTypeDefinition",
-  "DestinyStatDefinition",
-]);
+import { getStaticManifestTable } from "@/lib/staticManifest.server";
 
 type ManifestTableCacheEntry = {
   table: Record<string, any>;
@@ -167,14 +152,6 @@ function pickTableFields(definitionType: string, table: Record<string, any>, vie
   return table;
 }
 
-function validateDefinitionType(definitionType: string) {
-  if (!ALLOWED_TYPES.has(definitionType)) {
-    return NextResponse.json({ error: "Unsupported definition type" }, { status: 400 });
-  }
-
-  return null;
-}
-
 function isActivityReportCandidate(definition: any) {
   if (
     !definition.displayProperties?.name ||
@@ -219,53 +196,16 @@ function isActivityReportCandidate(definition: any) {
 }
 
 async function getManifestTable(definitionType: string) {
-  const apiKey = getServerBungieApiKey();
-
-  if (!apiKey) {
-    throw new Error("Missing Bungie API key");
-  }
-
-  const manifestResponse = await fetch(
-    "https://www.bungie.net/Platform/Destiny2/Manifest/",
-    {
-      headers: {
-        "X-API-Key": apiKey,
-      },
-      next: { revalidate: 3600 },
-    }
-  );
-
-  if (!manifestResponse.ok) {
-    throw new Error("Failed to fetch manifest");
-  }
-
-  const manifestJson = await manifestResponse.json();
-  const manifestVersion = manifestJson.Response?.version ?? "";
-  const tablePath =
-    manifestJson.Response?.jsonWorldComponentContentPaths?.en?.[definitionType];
-
-  if (!tablePath) {
-    throw new Error("Definition table not found");
-  }
-
-  const cacheKey = `${manifestVersion}:${tablePath}`;
+  const { table, version: manifestVersion } = await getStaticManifestTable(definitionType);
+  const cacheKey = `${manifestVersion}:${definitionType}`;
   const cachedTable = manifestTableCache.get(cacheKey);
 
   if (cachedTable && cachedTable.expiresAt > Date.now()) {
     return cachedTable;
   }
 
-  const tableResponse = await fetch(`https://www.bungie.net${tablePath}`, {
-    cache: "no-store",
-  });
-
-  if (!tableResponse.ok) {
-    throw new Error("Failed to fetch definition table");
-  }
-
-  const rawTable = await tableResponse.json();
   const cacheEntry = {
-    table: rawTable,
+    table,
     version: manifestVersion,
     expiresAt: Date.now() + 24 * 60 * 60 * 1000,
   };
@@ -278,9 +218,7 @@ async function getManifestTable(definitionType: string) {
 function toErrorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "Failed to fetch definition table";
   const status =
-    message === "Missing Bungie API key"
-      ? 500
-      : message === "Definition table not found"
+    message === "Definition table not found"
         ? 404
         : 502;
 
@@ -292,11 +230,6 @@ export async function GET(
   { params }: { params: Promise<{ definitionType: string }> }
 ) {
   const { definitionType } = await params;
-  const validationError = validateDefinitionType(definitionType);
-
-  if (validationError) {
-    return validationError;
-  }
 
   try {
     const { table: rawTable, version } = await getManifestTable(definitionType);
@@ -322,11 +255,6 @@ export async function POST(
   { params }: { params: Promise<{ definitionType: string }> }
 ) {
   const { definitionType } = await params;
-  const validationError = validateDefinitionType(definitionType);
-
-  if (validationError) {
-    return validationError;
-  }
 
   try {
     const body = await request.json();

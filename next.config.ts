@@ -9,6 +9,9 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  outputFileTracingIncludes: {
+    "/*": ["./data/destiny-manifest/**/*"],
+  },
   turbopack: {
     root: path.join(__dirname),
   },
