@@ -7,12 +7,7 @@ export const DEFAULT_PAGE_OPTIONS = [
   {
     value: "/character",
     label: "Character",
-    description: "Character equipment overview",
-  },
-  {
-    value: "/character/inventory",
-    label: "Inventory",
-    description: "Inventory and vault management",
+    description: "Character equipment, inventory, and vault management",
   },
   {
     value: "/character/loadouts",
@@ -55,6 +50,23 @@ export type DefaultPage = (typeof DEFAULT_PAGE_OPTIONS)[number]["value"];
 
 export const DEFAULT_PAGE_FALLBACK: DefaultPage = "/";
 
+const DEFAULT_PAGE_ALIASES: Record<string, DefaultPage> = {
+  "/character/inventory": "/character",
+};
+
 export function isDefaultPage(page: string): page is DefaultPage {
   return DEFAULT_PAGE_OPTIONS.some((option) => option.value === page);
+}
+
+export function normalizeDefaultPage(page: string | null | undefined): DefaultPage {
+  if (!page) {
+    return DEFAULT_PAGE_FALLBACK;
+  }
+
+  const aliasedPage = DEFAULT_PAGE_ALIASES[page];
+  if (aliasedPage) {
+    return aliasedPage;
+  }
+
+  return isDefaultPage(page) ? page : DEFAULT_PAGE_FALLBACK;
 }

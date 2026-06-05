@@ -59,6 +59,23 @@ export const PROFILE_COMPONENTS = {
     800, // profile collectibles
   ],
 
+  collectionSets: [
+    100, // profiles
+    200, // characters
+    700, // character collectibles
+    800, // profile collectibles
+    900, // profile records for weapon pattern progress
+    901, // character records for weapon pattern progress
+  ],
+
+  armorSets: [
+    100, // profiles
+    200, // characters
+    205, // character equipment
+    700, // character collectibles
+    800, // profile collectibles
+  ],
+
   records: [
     100,
     200,
@@ -77,8 +94,16 @@ export const PROFILE_COMPONENTS = {
 } as const;
 
 export function getProfileComponentsForPathname(pathname: string | null) {
-  if (pathname === '/character' || pathname?.startsWith('/character/inventory')) {
+  if (pathname === '/character') {
     return PROFILE_COMPONENTS.inventory;
+  }
+
+  if (pathname?.startsWith('/collections/armor-set-bonuses')) {
+    return PROFILE_COMPONENTS.armorSets;
+  }
+
+  if (pathname?.startsWith('/collections/sets')) {
+    return PROFILE_COMPONENTS.collectionSets;
   }
 
   if (pathname?.startsWith('/collections')) {

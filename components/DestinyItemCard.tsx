@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { getWishListMatchTextClass } from '@/lib/wishlistVisuals';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { ItemTooltip } from './ItemTooltip';
+import { ItemTooltip, type PatternUnlockProgress } from './ItemTooltip';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
 import { useTransferStore, TransferStatus } from '@/store/transferStore';
@@ -55,6 +55,7 @@ interface DestinyItemCardProps {
     forcedContextMenuPosition?: { x: number; y: number };
     onCloseForcedContextMenu?: () => void;
     hideTooltipScreenshot?: boolean;
+    patternUnlockProgress?: PatternUnlockProgress;
 }
 
 // Element Icons (Updated with transparent PNGs where possible)
@@ -119,6 +120,7 @@ export function DestinyItemCard({
     forcedTooltipPosition,
     forcedContextMenuPosition,
     onCloseForcedContextMenu,
+    patternUnlockProgress,
 }: DestinyItemCardProps & { definition?: any; objectives?: any[] }) {
   "use no memo"; // Opt out — avoids compiler/runtime `icon is not defined` in this component.
 
@@ -839,6 +841,7 @@ export function DestinyItemCard({
           socketsData={socketsData}
           plugDefs={plugDefs}
           wishListInfo={wishListInfo}
+          patternUnlockProgress={patternUnlockProgress}
       />
   ) : null;
   const contextMenuNode = activeContextMenuPosition ? (

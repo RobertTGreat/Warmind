@@ -60,7 +60,7 @@ export default function manifest(): MetadataRoute.Manifest {
         name: 'Inventory',
         short_name: 'Inventory',
         description: 'Manage current character inventory',
-        url: '/character/inventory',
+        url: '/character',
         icons: [{ src: '/icons/inventory.png', sizes: '192x192' }],
       },
     ],

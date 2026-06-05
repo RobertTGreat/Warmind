@@ -68,6 +68,12 @@ export interface WishListInfo {
     matchedPerkHashes: number[];
 }
 
+export interface PatternUnlockProgress {
+    current: number;
+    total: number;
+    isComplete?: boolean;
+}
+
 export interface ItemTooltipProps {
   name: string;
   itemType: string;
@@ -104,6 +110,7 @@ export interface ItemTooltipProps {
     socketsData?: any; // Socket data to check for archetype
     plugDefs?: Record<number, any>; // Plug definitions for archetype lookup
     wishListInfo?: WishListInfo; // Wish list match info
+    patternUnlockProgress?: PatternUnlockProgress;
     showWishListSection?: boolean; // Only show wish list section when true (context menu)
     showFullSetBonusDescriptions?: boolean;
     /** Render body only (no portal) — use inside a parent shell, e.g. context menu + tooltip row. */
@@ -210,6 +217,45 @@ function collectClarityPlugHashes({
   return Array.from(hashes);
 }
 
+function PatternUnlockProgressFooter({
+  progress,
+}: {
+  progress: PatternUnlockProgress;
+}) {
+  const requiredPatterns = Math.max(1, progress.total);
+  const completedPatterns = Math.min(
+    requiredPatterns,
+    Math.max(0, progress.current)
+  );
+  const progressPercent = progress.isComplete
+    ? 100
+    : (completedPatterns / requiredPatterns) * 100;
+
+  return (
+    <div className="overflow-hidden border border-red-400/25 bg-red-950/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="relative min-h-9">
+        <div
+          className="absolute inset-y-0 left-0 bg-red-500/80"
+          style={{ width: `${progressPercent}%` }}
+        />
+        <div className="relative z-10 flex min-h-9 items-center gap-3 pr-3 text-sm font-bold text-red-50">
+          <Image
+            src="/deepsight.png"
+            width={36}
+            height={36}
+            alt=""
+            className="h-9 w-9 shrink-0 object-cover"
+          />
+          <span className="min-w-0 flex-1 truncate">Pattern unlock progress</span>
+          <span className="shrink-0 text-red-100">
+            {completedPatterns}/{requiredPatterns}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClarityTooltipSection({
   clarityDescription,
 }: {
@@ -273,6 +319,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
     socketsData,
     plugDefs,
     wishListInfo,
+    patternUnlockProgress,
     showWishListSection = false,
     showFullSetBonusDescriptions = false,
     docked = false,
@@ -1431,6 +1478,10 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                         ))}
                     </div>
                 ))}
+
+                {patternUnlockProgress && (
+                    <PatternUnlockProgressFooter progress={patternUnlockProgress} />
+                )}
 
             </div>
         </div>

@@ -5,10 +5,12 @@ interface UIStore {
   setDetailsItem: (item: any | null) => void;
   fullDetailsItem: any | null;
   setFullDetailsItem: (item: any | null) => void;
-  characterSearchQuery: string;
-  setCharacterSearchQuery: (query: string) => void;
-  characterSearchVisible: boolean;
-  setCharacterSearchVisible: (isVisible: boolean) => void;
+  headerSearchQuery: string;
+  setHeaderSearchQuery: (query: string) => void;
+  headerSearchVisible: boolean;
+  setHeaderSearchVisible: (isVisible: boolean) => void;
+  headerSearchPlaceholder: string;
+  setHeaderSearchPlaceholder: (placeholder: string) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -16,9 +18,10 @@ export const useUIStore = create<UIStore>((set) => ({
   setDetailsItem: (item) => set({ detailsItem: item }),
   fullDetailsItem: null,
   setFullDetailsItem: (item) => set({ fullDetailsItem: item }),
-  characterSearchQuery: '',
-  setCharacterSearchQuery: (characterSearchQuery) => set({ characterSearchQuery }),
-  characterSearchVisible: false,
-  setCharacterSearchVisible: (characterSearchVisible) => set({ characterSearchVisible }),
+  headerSearchQuery: '',
+  setHeaderSearchQuery: (headerSearchQuery) => set({ headerSearchQuery }),
+  headerSearchVisible: false,
+  setHeaderSearchVisible: (headerSearchVisible) => set({ headerSearchVisible }),
+  headerSearchPlaceholder: 'Search',
+  setHeaderSearchPlaceholder: (headerSearchPlaceholder) => set({ headerSearchPlaceholder }),
 }));
-

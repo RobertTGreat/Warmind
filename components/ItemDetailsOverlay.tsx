@@ -32,8 +32,24 @@ import {
 } from '@/lib/armorSetBonus';
 import { getItemSourceInfo, type ItemSourceInfo } from '@/lib/itemSourceInfo';
 import type { ClarityDescription } from '@/lib/clarityDescriptions';
+import { StatHashes } from '@/lib/dim-stats';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
+
+const fallbackElementIconsByDamageTypeHash: Record<number, string> = {
+    1847026933:
+        "https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_2a1773e10968f2d088b97c22b22bba9e.png",
+    2303181850:
+        "https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_092d066688b879c807c3b460afdd61e6.png",
+    3454344768:
+        "https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_ceb2f6197dccf3958bb31cc783eb97a0.png",
+    151347233:
+        "https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_530c4c3e7981dc2aefd24fd3293482bf.png",
+    3949783978:
+        "https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_b2fe51a94f3533f97079dfa0d27a4096.png",
+    2817963223:
+        "https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_b9c5a3f0c98bc973e8e507e2d9b31c5e.png",
+};
 
 // Stat order matching the screenshot/game
 const WEAPON_STAT_ORDER = [
@@ -46,6 +62,7 @@ const WEAPON_STAT_ORDER = [
     155624089,  // Stability
     943549884,  // Handling
     4188031367, // Reload Speed
+    4284893193, // Rounds Per Minute
     1345609583, // Aim Assistance
     3555269338, // Zoom
     2715839340, // Recoil Direction
@@ -105,6 +122,34 @@ function getBasicSocketTitle(socketGroup: WeaponSocketGroup) {
     return `Column ${socketGroup.socketIndex + 1}`;
 }
 
+function getDetailDamageTypeHash(itemDefinition: any, instanceData: any): number | null {
+    const damageTypeHash =
+        instanceData?.damageTypeHash ??
+        instanceData?.damageType ??
+        itemDefinition?.defaultDamageTypeHash;
+    const numericDamageTypeHash = Number(damageTypeHash);
+
+    return Number.isFinite(numericDamageTypeHash) ? numericDamageTypeHash : null;
+}
+
+function getDetailDamageTypeIcon(
+    damageTypeHash: number | null,
+    damageTypeDefinitions?: Record<string, any>
+): string | null {
+    if (!damageTypeHash) return null;
+
+    const damageTypeDefinition =
+        damageTypeDefinitions?.[damageTypeHash] ??
+        damageTypeDefinitions?.[String(damageTypeHash)];
+    const manifestIcon = damageTypeDefinition?.displayProperties?.icon;
+
+    if (manifestIcon) {
+        return getBungieImage(manifestIcon);
+    }
+
+    return fallbackElementIconsByDamageTypeHash[damageTypeHash] ?? null;
+}
+
 export function ItemDetailsOverlay() {
   const { detailsItem, setDetailsItem, setFullDetailsItem } = useUIStore();
   const { profile, membershipInfo } = useDestinyProfileContext();
@@ -114,6 +159,8 @@ export function ItemDetailsOverlay() {
     useManifestTable<any>("DestinyEquipableItemSetDefinition");
   const { table: sandboxPerkDefinitions } =
     useManifestTable<any>("DestinySandboxPerkDefinition");
+  const { table: damageTypeDefinitions } =
+    useManifestTable<any>("DestinyDamageTypeDefinition");
   
   // Fetch definition for the item
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
@@ -234,12 +281,22 @@ export function ItemDetailsOverlay() {
   );
 
   const tierNumber = instance?.gearTier ?? 0;
+  const damageTypeHash = getDetailDamageTypeHash(itemDef, instance);
+  const damageTypeIcon = getDetailDamageTypeIcon(damageTypeHash, damageTypeDefinitions);
+  const [backgroundImageFailed, setBackgroundImageFailed] = useState(false);
+
+  useEffect(() => {
+    setBackgroundImageFailed(false);
+  }, [detailsItem?.itemHash, itemDef?.screenshot]);
 
   if (!detailsItem) return null;
 
     const isSubclass = itemDef?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
     const isWeapon = itemDef?.itemType === 3;
     const isArmor = itemDef?.itemType === 2;
+    const backgroundImage = itemDef?.screenshot && !backgroundImageFailed
+        ? getBungieImage(itemDef.screenshot)
+        : "/blank.jpg";
     const handleOpenFullDetails = () => {
         setFullDetailsItem({
             itemHash: detailsItem.itemHash,
@@ -260,20 +317,18 @@ export function ItemDetailsOverlay() {
         >
              {/* Background Image (Blurred/Faded) */}
              <div className="absolute inset-0 z-[-1] bg-[#0f0f0f]">
-                 {itemDef?.screenshot && (
-                     <>
-                        <Image 
-                            src={getBungieImage(itemDef.screenshot)} 
-                            fill 
-                            className="object-cover opacity-60" 
-                            alt="" 
-                        />
-                        {/* Gradients to make text readable */}
-                        <div className="absolute inset-0 bg-linear-to-r from-[#121212] via-[#121212]/80 to-transparent w-2/3" />
-                        <div className="absolute inset-0 bg-linear-to-t from-[#121212] via-transparent to-transparent h-1/2 bottom-0 top-auto" />
-                        <div className="absolute inset-y-0 right-0 w-1/3 bg-linear-to-l from-[#121212]/90 to-transparent" />
-                     </>
-                 )}
+                <Image
+                    src={backgroundImage}
+                    fill
+                    sizes="100vw"
+                    className="object-cover opacity-60"
+                    onError={() => setBackgroundImageFailed(true)}
+                    alt=""
+                />
+                {/* Gradients to make text readable */}
+                <div className="absolute inset-0 bg-linear-to-r from-[#121212] via-[#121212]/80 to-transparent w-2/3" />
+                <div className="absolute inset-0 bg-linear-to-t from-[#121212] via-transparent to-transparent h-1/2 bottom-0 top-auto" />
+                <div className="absolute inset-y-0 right-0 w-1/3 bg-linear-to-l from-[#121212]/90 to-transparent" />
              </div>
 
              {/* Controls */}
@@ -325,7 +380,7 @@ export function ItemDetailsOverlay() {
                           <h2 className="break-words text-2xl font-bold uppercase leading-tight tracking-wide text-white md:text-4xl">{itemDef?.displayProperties?.name}</h2>
                           <div className="text-sm text-slate-300 font-medium uppercase tracking-widest mt-2 flex items-center gap-3 flex-wrap">
                               <span>{itemDef?.itemTypeDisplayName}</span>
-                              {tierNumber > 1 && (
+                              {false && tierNumber > 1 && (
                                   <span className={cn(
                                       "px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border",
                                       tierNumber === 5 
@@ -391,6 +446,8 @@ export function ItemDetailsOverlay() {
                            instance={instance} 
                            objectives={objectives}
                            isWeapon={isWeapon}
+                           tierNumber={tierNumber}
+                           damageTypeIcon={damageTypeIcon}
                        />
                    )}
                </div>
@@ -614,7 +671,43 @@ function BasicClaritySection({
     );
 }
 
-function ItemStats({ stats, itemDef, instance, objectives, isWeapon }: any) {
+function DetailTierDiamonds({ tier }: { tier?: number }) {
+    const filledTierCount = Math.max(0, Math.min(5, Number(tier) || 0));
+
+    return (
+        <div className="flex items-center gap-2" aria-label={`Tier ${filledTierCount}`}>
+            {Array.from({ length: 5 }).map((_, tierIndex) => (
+                <span
+                    key={tierIndex}
+                    className={cn(
+                        "h-3 w-3 rotate-45",
+                        tierIndex < filledTierCount ? "bg-destiny-gold" : "bg-white/45"
+                    )}
+                />
+            ))}
+        </div>
+    );
+}
+
+function isRoundsPerMinuteStat(statHash: number, statName: string): boolean {
+    const normalizedStatName = statName.toLowerCase();
+
+    return (
+        statHash === StatHashes.RoundsPerMinute ||
+        normalizedStatName === "rpm" ||
+        normalizedStatName.includes("rounds per minute")
+    );
+}
+
+function ItemStats({
+    stats,
+    itemDef,
+    instance,
+    objectives,
+    isWeapon,
+    tierNumber,
+    damageTypeIcon,
+}: any) {
     const relevantStats = useMemo(() => {
         if (!itemDef?.stats?.stats) return [];
         
@@ -656,17 +749,42 @@ function ItemStats({ stats, itemDef, instance, objectives, isWeapon }: any) {
         if (killObj) return killObj.progress;
         return null;
     }, [objectives]);
+    const primaryStatValue = instance?.primaryStat?.value ?? itemDef?.primaryStat?.value ?? 0;
 
     return (
         <div className="flex flex-col gap-6">
              {/* Weapon Tier / Primary Stat */}
-             <div className="flex items-center justify-between border-b border-white/20 pb-4">
-                 <div>
-                     <div className="text-slate-400 text-xs uppercase font-bold tracking-widest mb-1">Power</div>
-                     <div className="text-4xl font-bold text-destiny-gold flex items-start gap-1">
-                         {instance?.primaryStat?.value || itemDef?.primaryStat?.value || 0}
-                         <span className="text-2xl mt-1">✧</span>
+             <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/20 pb-4">
+                 <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+                     <div className="flex items-end gap-3">
+                         {damageTypeIcon && (
+                             <div className="relative mb-1 h-10 w-10 shrink-0">
+                                 <Image
+                                     src={damageTypeIcon}
+                                     alt=""
+                                     fill
+                                     sizes="40px"
+                                     className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)]"
+                                 />
+                             </div>
+                         )}
+                         <div>
+                             <div className="text-sm text-slate-200">Power</div>
+                            <div className="text-5xl font-bold leading-none text-white">
+                                {primaryStatValue}
+                            </div>
+                        </div>
+                    </div>
+                 {tierNumber > 1 && (
+                     <div className="pb-1">
+                         <div className="text-sm font-medium text-slate-200">
+                             {isWeapon ? "Weapon Tier" : "Armor Tier"}
+                         </div>
+                         <div className="mt-2">
+                             <DetailTierDiamonds tier={tierNumber} />
+                         </div>
                      </div>
+                 )}
                  </div>
                  {killCount !== null && (
                      <div className="text-right">
@@ -694,13 +812,24 @@ function StatRow({ statHash, value, isWeapon }: { statHash: number, value: numbe
     if (["Attack", "Defense", "Power"].includes(def.displayProperties.name)) return null;
 
     // Bar Logic
-    const maxValue = isWeapon ? 100 : 42; // Armor stats max ~42 visible usually
-    const showBar = isWeapon && !["Recoil Direction", "RPM", "Magazine", "Draw Time", "Charge Time", "Swing Speed"].includes(def.displayProperties.name);
+    const statName = def.displayProperties.name ?? "";
+    const displayStatName = isRoundsPerMinuteStat(statHash, statName) ? "RPM" : statName;
+    const nonBarStatNames = [
+        "Recoil Direction",
+        "Magazine",
+        "Draw Time",
+        "Charge Time",
+        "Swing Speed",
+    ];
+    const showBar =
+        isWeapon &&
+        !isRoundsPerMinuteStat(statHash, statName) &&
+        !nonBarStatNames.includes(displayStatName);
 
     return (
         <div className="flex items-center gap-4 text-sm group">
             <div className="w-32 text-slate-400 font-bold uppercase text-[11px] tracking-wider text-right group-hover:text-white transition-colors truncate">
-                {def.displayProperties.name}
+                {displayStatName}
             </div>
             <div className="flex-1 flex items-center gap-3">
                 {showBar ? (

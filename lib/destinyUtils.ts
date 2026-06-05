@@ -48,6 +48,7 @@ export const PRESENTATION_NODES = {
     TRIUMPHS_ROOT: 1024788583,
     SEALS_ROOT: 616318467,
     EXOTICS: 1068557105, // Added Exotics
+    LEGENDARY_ARMOR: 1605042242,
 };
 
 // Armor Stat Hashes (Primary use - these are the canonical hashes for armor)

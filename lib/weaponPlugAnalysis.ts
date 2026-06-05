@@ -119,6 +119,28 @@ function getPlugText(definition: any): string {
     .toLowerCase();
 }
 
+function isWeaponModPlug(definition: any): boolean {
+  const itemTypeDisplayName = definition?.itemTypeDisplayName?.toLowerCase() ?? "";
+  const plugCategoryIdentifier =
+    definition?.plug?.plugCategoryIdentifier?.toLowerCase() ?? "";
+
+  return (
+    itemTypeDisplayName === "weapon mod" ||
+    plugCategoryIdentifier.includes("weapon.mod")
+  );
+}
+
+function isOriginTraitPlug(definition: any): boolean {
+  const itemTypeDisplayName = definition?.itemTypeDisplayName?.toLowerCase() ?? "";
+  const plugCategoryIdentifier =
+    definition?.plug?.plugCategoryIdentifier?.toLowerCase() ?? "";
+
+  return (
+    itemTypeDisplayName.includes("origin trait") ||
+    plugCategoryIdentifier.includes("origin")
+  );
+}
+
 export function isEnhancedWeaponPlug(definition: any): boolean {
   const plugText = getPlugText(definition);
 
@@ -147,6 +169,7 @@ export function isFunctionalWeaponPerk(definition: any): boolean {
   const plugText = getPlugText(definition);
 
   if (!definition?.displayProperties?.name) return false;
+  if (isWeaponModPlug(definition)) return false;
 
   const isCosmetic =
     plugText.includes("shader") ||
@@ -279,11 +302,19 @@ export function buildWeaponSocketGroups({
       categoryText.includes("tracker") ||
       categoryText.includes("skins");
     const isIntrinsic = socketIndex === 0 || categoryText.includes("intrinsic");
-    const isOriginColumn = categoryText.includes("origin");
+    const isOriginColumn =
+      categoryText.includes("origin") ||
+      options.some((option) => isOriginTraitPlug(option.definition));
+    const isWeaponModColumn =
+      categoryText.includes("weapon mod") ||
+      categoryText.includes("weapon.mod") ||
+      options.some((option) => isWeaponModPlug(option.definition));
     const isPerkColumn =
       !isIntrinsic &&
       !isMasterworkColumn &&
       !isCosmeticColumn &&
+      !isOriginColumn &&
+      !isWeaponModColumn &&
       options.some((option) => isFunctionalWeaponPerk(option.definition));
 
     if (options.length > 0) {

@@ -174,14 +174,14 @@ export const STAT_DESCRIPTIONS: Record<keyof ArmorStats, string> = {
     melee: 'Melee cooldown',
 };
 
-// Official D2 stat icons from Bungie (using correct hashes)
+// Local Edge of Fate stat icons
 export const STAT_ICON_URLS: Record<keyof ArmorStats, string> = {
-    weapons: 'https://www.bungie.net/common/destiny2_content/icons/e26e0e93a9daf4fdd21bf64eb9246340.png',   // Mobility/Weapons
-    health: 'https://www.bungie.net/common/destiny2_content/icons/202ecc1c6febeb6b97dafc856e863140.png',    // Resilience/Health
-    class: 'https://www.bungie.net/common/destiny2_content/icons/128eee4ee7fc127851ab32eac6ca617c.png',     // Recovery/Class
-    grenade: 'https://www.bungie.net/common/destiny2_content/icons/79be2d4adef6a19203f7385e5c63b45b.png',   // Discipline/Grenade
-    super: 'https://www.bungie.net/common/destiny2_content/icons/d1c154469670e9a592c9d4cbdcae5764.png',     // Intellect/Super
-    melee: 'https://www.bungie.net/common/destiny2_content/icons/ea5af04ccd6a3c7f7b35f56b7da70e16.png',     // Strength/Melee
+    weapons: '/Weapons.png',
+    health: '/Health.png',
+    class: '/Class.png',
+    grenade: '/Grenade.png',
+    super: '/Super.png',
+    melee: '/Melee.png',
 };
 
 // Unicode stat icons for text display

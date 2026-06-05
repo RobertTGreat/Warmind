@@ -27,12 +27,24 @@ function pickInventoryCardFields(table: Record<string, any>) {
         tierType: def.inventory?.tierType,
         tierTypeName: def.inventory?.tierTypeName,
         bucketTypeHash: def.inventory?.bucketTypeHash,
+        recipeItemHash: def.inventory?.recipeItemHash,
       },
+      collectibleHash: def.collectibleHash,
+      crafting: def.crafting
+        ? {
+            outputItemHash: def.crafting.outputItemHash,
+          }
+        : undefined,
       investmentStats: isPlugDefinition ? def.investmentStats : undefined,
       itemType: def.itemType,
       itemTypeDisplayName: def.itemTypeDisplayName,
       classType: def.classType,
       defaultDamageTypeHash: def.defaultDamageTypeHash,
+      sourceData: def.sourceData
+        ? {
+            sourceString: def.sourceData.sourceString,
+          }
+        : undefined,
       equippingBlock: def.equippingBlock
         ? {
             equipableItemSetHash: def.equippingBlock.equipableItemSetHash,
@@ -51,6 +63,32 @@ function pickInventoryCardFields(table: Record<string, any>) {
       itemCategoryHashes: isPlugDefinition ? def.itemCategoryHashes : undefined,
       isAdept: def.isAdept,
       isHolofoil: def.isHolofoil,
+    };
+  }
+
+  return out;
+}
+
+function pickPatternRecordFields(table: Record<string, any>) {
+  const out: Record<string, any> = {};
+
+  for (const [hash, def] of Object.entries(table)) {
+    const description = def.displayProperties?.description ?? "";
+    const isPatternRecord = description.includes("unlock its Pattern");
+
+    if (!isPatternRecord) continue;
+
+    out[hash] = {
+      hash: def.hash,
+      displayProperties: {
+        name: def.displayProperties?.name ?? "",
+        description,
+        icon: def.displayProperties?.icon ?? "",
+        hasIcon: Boolean(def.displayProperties?.hasIcon),
+      },
+      objectiveHashes: def.objectiveHashes ?? [],
+      recordTypeName: def.recordTypeName,
+      scope: def.scope,
     };
   }
 
@@ -132,6 +170,10 @@ function pickActivityReportCatalogFields(table: Record<string, any>) {
 function pickTableFields(definitionType: string, table: Record<string, any>, view: string | null) {
   if (definitionType === "DestinyInventoryItemDefinition" && view === "card") {
     return pickInventoryCardFields(table);
+  }
+
+  if (definitionType === "DestinyRecordDefinition" && view === "patterns") {
+    return pickPatternRecordFields(table);
   }
 
   if (definitionType === "DestinyActivityDefinition" && view === "activity-report-catalog") {

@@ -3,8 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useMemo,
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
+import { DestinyItemCard } from "@/components/DestinyItemCard";
 import { useItemDefinitions } from "@/hooks/useItemDefinitions";
 import { useClarityDescriptions } from "@/hooks/useClarityDescriptions";
 import { useManifestTable } from "@/hooks/useManifestTable";
@@ -31,7 +40,7 @@ import {
   type WeaponSocketGroup,
 } from "@/lib/weaponPlugAnalysis";
 import { cn } from "@/lib/utils";
-import { STAT_NAMES_BY_HASH } from "@/lib/dim-stats";
+import { STAT_NAMES_BY_HASH, StatHashes } from "@/lib/dim-stats";
 import { STAT_HASHES } from "@/lib/destinyUtils";
 import {
   getItemSourceInfo,
@@ -742,6 +751,15 @@ function PossiblePerkOption({
   );
 }
 
+function BlankEnhancedPerkIcon() {
+  return (
+    <div
+      className="h-11 w-11 rounded-full border border-dashed border-slate-600/70 bg-black/25"
+      aria-hidden="true"
+    />
+  );
+}
+
 function SocketColumn({
   socketGroup,
   clarityDescriptions,
@@ -774,12 +792,17 @@ function SocketColumn({
             WeaponPlugOption | undefined
           >).map((option, pairedOptionIndex) => {
             if (!option) {
+              const isMissingEnhancedOption =
+                pairedOptionIndex === 1 && Boolean(optionPair.standardOption);
+
               return (
-                <div
-                  key={`${optionPair.key}-empty-${pairedOptionIndex}`}
-                  className="h-11 w-11"
-                  aria-hidden="true"
-                />
+                <div key={`${optionPair.key}-empty-${pairedOptionIndex}`}>
+                  {isMissingEnhancedOption ? (
+                    <BlankEnhancedPerkIcon />
+                  ) : (
+                    <div className="h-11 w-11" aria-hidden="true" />
+                  )}
+                </div>
               );
             }
 
@@ -1104,6 +1127,16 @@ function ActivePlugStrip({
   );
 }
 
+function isRoundsPerMinuteStat(statHash: number, statName: string): boolean {
+  const normalizedStatName = statName.toLowerCase();
+
+  return (
+    statHash === StatHashes.RoundsPerMinute ||
+    normalizedStatName === "rpm" ||
+    normalizedStatName.includes("rounds per minute")
+  );
+}
+
 function DetailStatsPanel({ statRows }: { statRows: DetailStatRow[] }) {
   if (statRows.length === 0) return null;
 
@@ -1119,17 +1152,21 @@ function DetailStatsPanel({ statRows }: { statRows: DetailStatRow[] }) {
             className="grid grid-cols-[minmax(7rem,1fr)_minmax(6rem,1.5fr)_3rem] items-center gap-3 text-sm"
           >
             <span className="truncate text-slate-300">{statRow.name}</span>
-            <div className="h-2 bg-black/40">
-              <div
-                className="h-full bg-white"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    Math.max(0, (statRow.value / statRow.maximum) * 100)
-                  )}%`,
-                }}
-              />
-            </div>
+            {isRoundsPerMinuteStat(statRow.statHash, statRow.name) ? (
+              <div aria-hidden="true" />
+            ) : (
+              <div className="h-2 bg-black/40">
+                <div
+                  className="h-full bg-white"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.max(0, (statRow.value / statRow.maximum) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
             <span className="text-right font-semibold text-white">{statRow.value}</span>
           </div>
         ))}
@@ -1170,37 +1207,43 @@ function PowerSummary({
   enemiesDefeated: number | null;
 }) {
   if (!primaryStatValue && !gearTier && enemiesDefeated === null) return null;
+  const hasPrimaryStatValue =
+    primaryStatValue !== undefined && primaryStatValue !== null;
 
   return (
     <section className="border-b border-white/20 pb-5 text-white">
-      {primaryStatValue && (
-        <div className="flex items-end gap-3">
-          {damageTypeIcon && (
-            <div className="relative mb-1 h-10 w-10 shrink-0">
-              <Image
-                src={damageTypeIcon}
-                alt=""
-                fill
-                sizes="40px"
-                className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)]"
-              />
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+        {hasPrimaryStatValue && (
+          <div className="flex items-end gap-3">
+            {damageTypeIcon && (
+              <div className="relative mb-1 h-10 w-10 shrink-0">
+                <Image
+                  src={damageTypeIcon}
+                  alt=""
+                  fill
+                  sizes="40px"
+                  className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)]"
+                />
+              </div>
+            )}
+            <div>
+              <p className="text-sm text-slate-200">Power</p>
+              <p className="text-5xl font-bold leading-none text-white">
+                {primaryStatValue}
+              </p>
             </div>
-          )}
-          <div>
-            <p className="text-sm text-slate-200">Power</p>
-            <p className="text-5xl font-bold leading-none text-white">
-              {primaryStatValue}
-            </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {gearTier !== undefined && (
-        <div className="mt-4 pl-1">
-          <TierDiamonds tier={gearTier} />
-          <p className="mt-2 text-sm font-medium text-slate-200">{tierLabel}</p>
-        </div>
-      )}
+        {gearTier !== undefined && (
+          <div className="pb-1">
+            <p className="text-sm font-medium text-slate-200">{tierLabel}</p>
+            <div className="mt-2">
+              <TierDiamonds tier={gearTier} />
+            </div>
+          </div>
+        )}
+      </div>
 
       {enemiesDefeated !== null && (
         <p className="mt-4 text-sm font-semibold text-slate-200">
@@ -1215,19 +1258,19 @@ function DropSourcePanel({ sourceInfo }: { sourceInfo: ItemSourceInfo | null }) 
   if (!sourceInfo?.sourceText && !sourceInfo?.requirementText) return null;
 
   return (
-    <section className="max-w-xl border-l-2 border-destiny-gold/60 bg-black/20 px-4 py-3">
+    <section className="max-w-xl overflow-hidden border-y border-white/10 py-4">
       {sourceInfo.sourceText && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-destiny-gold">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-destiny-gold">
             Drop Source
           </p>
-          <p className="mt-1 text-sm leading-relaxed text-slate-200">
+          <p className="mt-1 break-words text-sm leading-relaxed text-slate-200">
             {sourceInfo.sourceText}
           </p>
         </div>
       )}
       {sourceInfo.requirementText && (
-        <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+        <p className="mt-1 break-words text-xs font-semibold uppercase tracking-wide text-slate-500">
           {sourceInfo.requirementText}
         </p>
       )}
@@ -1242,6 +1285,8 @@ function OwnedCopiesPanel({
   selectedInstanceId,
   icon,
   iconWatermark,
+  itemDefinition,
+  profile,
   onSelectCopy,
 }: {
   isLoggedIn: boolean;
@@ -1250,8 +1295,55 @@ function OwnedCopiesPanel({
   selectedInstanceId?: string;
   icon: string | null;
   iconWatermark: string | null;
+  itemDefinition: any;
+  profile: any;
   onSelectCopy?: (copy: OwnedWeaponCopy) => void;
 }) {
+  const [activeCopyTooltip, setActiveCopyTooltip] = useState<{
+    copy: OwnedWeaponCopy;
+    position: { x: number; y: number };
+  } | null>(null);
+  const activeCopy = activeCopyTooltip?.copy;
+  const activeCopyInstanceId = activeCopy?.itemInstanceId;
+  const activeCopyInstanceData = activeCopyInstanceId
+    ? profile?.itemComponents?.instances?.data?.[activeCopyInstanceId]
+    : undefined;
+  const activeCopySocketsData = activeCopyInstanceId
+    ? profile?.itemComponents?.sockets?.data?.[activeCopyInstanceId]
+    : undefined;
+  const activeCopyReusablePlugs = activeCopyInstanceId
+    ? profile?.itemComponents?.reusablePlugs?.data?.[activeCopyInstanceId]?.plugs
+    : undefined;
+  const activeCopyObjectives = activeCopyInstanceId
+    ? profile?.itemComponents?.objectives?.data?.[activeCopyInstanceId]?.objectives
+    : undefined;
+
+  function showCopyTooltip(copy: OwnedWeaponCopy, event: MouseEvent<HTMLElement>) {
+    setActiveCopyTooltip({
+      copy,
+      position: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+    });
+  }
+
+  function showFocusedCopyTooltip(copy: OwnedWeaponCopy, event: FocusEvent<HTMLElement>) {
+    const targetRect = event.currentTarget.getBoundingClientRect();
+
+    setActiveCopyTooltip({
+      copy,
+      position: {
+        x: targetRect.left + targetRect.width / 2,
+        y: targetRect.top + targetRect.height / 2,
+      },
+    });
+  }
+
+  function hideCopyTooltip() {
+    setActiveCopyTooltip(null);
+  }
+
   return (
     <section className="border-t border-white/20 pt-5">
       <h2 className="text-2xl font-semibold uppercase tracking-wide text-white">
@@ -1262,35 +1354,37 @@ function OwnedCopiesPanel({
           <div className="flex flex-wrap gap-2">
             {ownedCopies.map((copy) => {
               const copyLabel = `${copy.locationName} on ${copy.ownerName}`;
+              const isSelectedCopy = copy.itemInstanceId === selectedInstanceId;
               const copyClassName = cn(
-                "relative block h-14 w-14 overflow-hidden border border-white/20 bg-black/30 transition-colors hover:border-white/60",
-                copy.itemInstanceId === selectedInstanceId &&
-                  "border-destiny-gold ring-1 ring-destiny-gold/70"
+                "relative block h-14 w-14 border border-white/20 bg-black/30 outline-none transition-colors hover:border-white/60 focus-visible:border-white/80 focus-visible:ring-2 focus-visible:ring-white/25",
+                isSelectedCopy && "border-destiny-gold ring-1 ring-destiny-gold/70"
               );
               const copyContent = (
                 <>
-                  {icon ? (
-                    <Image
-                      src={icon}
-                      alt=""
-                      fill
-                      sizes="56px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-500">
-                      ?
-                    </span>
-                  )}
-                  {iconWatermark && (
-                    <Image
-                      src={iconWatermark}
-                      alt=""
-                      fill
-                      sizes="56px"
-                      className="object-cover opacity-90"
-                    />
-                  )}
+                  <span className="relative block h-full w-full overflow-hidden">
+                    {icon ? (
+                      <Image
+                        src={icon}
+                        alt=""
+                        fill
+                        sizes="56px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-500">
+                        ?
+                      </span>
+                    )}
+                    {iconWatermark && (
+                      <Image
+                        src={iconWatermark}
+                        alt=""
+                        fill
+                        sizes="56px"
+                        className="object-cover opacity-90"
+                      />
+                    )}
+                  </span>
                 </>
               );
 
@@ -1299,8 +1393,11 @@ function OwnedCopiesPanel({
                   key={copy.itemInstanceId}
                   type="button"
                   onClick={() => onSelectCopy(copy)}
+                  onMouseEnter={(event) => showCopyTooltip(copy, event)}
+                  onMouseLeave={hideCopyTooltip}
+                  onFocus={(event) => showFocusedCopyTooltip(copy, event)}
+                  onBlur={hideCopyTooltip}
                   aria-label={copyLabel}
-                  title={copyLabel}
                   className={copyClassName}
                 >
                   {copyContent}
@@ -1309,14 +1406,31 @@ function OwnedCopiesPanel({
                 <Link
                   key={copy.itemInstanceId}
                   href={`/item/${itemHash}?instanceId=${copy.itemInstanceId}&ownerId=${copy.ownerId}`}
+                  onMouseEnter={(event) => showCopyTooltip(copy, event)}
+                  onMouseLeave={hideCopyTooltip}
+                  onFocus={(event) => showFocusedCopyTooltip(copy, event)}
+                  onBlur={hideCopyTooltip}
                   aria-label={copyLabel}
-                  title={copyLabel}
                   className={copyClassName}
                 >
                   {copyContent}
                 </Link>
               );
             })}
+            {activeCopyTooltip && activeCopy && (
+              <DestinyItemCard
+                itemHash={itemHash}
+                itemInstanceId={activeCopy.itemInstanceId}
+                ownerId={activeCopy.ownerId}
+                instanceData={activeCopyInstanceData}
+                socketsData={activeCopySocketsData}
+                reusablePlugs={activeCopyReusablePlugs}
+                objectives={activeCopyObjectives}
+                definition={itemDefinition}
+                renderTile={false}
+                forcedTooltipPosition={activeCopyTooltip.position}
+              />
+            )}
           </div>
         ) : (
           <p className="text-sm text-slate-300">
@@ -1337,6 +1451,7 @@ export function WeaponDetailsPageClient({
   onSelectCopy,
 }: WeaponDetailsPageClientProps) {
   const searchParams = useSearchParams();
+  const [backgroundImageFailed, setBackgroundImageFailed] = useState(false);
   const requestedInstanceId = instanceId ?? searchParams.get("instanceId") ?? undefined;
   const { profile, isLoggedIn } = useDestinyProfileContext();
   const { definitions } = useItemDefinitions(Number.isFinite(itemHash) ? [itemHash] : []);
@@ -1466,6 +1581,10 @@ export function WeaponDetailsPageClient({
     ? getBungieImage(itemDefinition.displayProperties.icon)
     : null;
 
+  useEffect(() => {
+    setBackgroundImageFailed(false);
+  }, [itemHash, itemDefinition?.screenshot]);
+
   if (!Number.isFinite(itemHash)) {
     return <div className="text-red-300">Invalid item hash.</div>;
   }
@@ -1483,6 +1602,10 @@ export function WeaponDetailsPageClient({
   const iconWatermark = itemDefinition.iconWatermark
     ? getBungieImage(itemDefinition.iconWatermark)
     : null;
+  const screenshot = itemDefinition.screenshot
+    ? getBungieImage(itemDefinition.screenshot)
+    : null;
+  const backgroundImage = screenshot && !backgroundImageFailed ? screenshot : "/blank.jpg";
   const intrinsicOption = getIntrinsicPlugOption(socketGroups);
   const activeModOptions = getActivePlugOptions(
     socketGroups,
@@ -1504,7 +1627,7 @@ export function WeaponDetailsPageClient({
     ? getArmorStatRows(itemDefinition, instanceData, statsData)
     : getWeaponStatRows(itemDefinition, instanceData, statsData);
   const shellClassName = cn(
-    "relative isolate overflow-visible bg-slate-800/20 text-white",
+    "relative isolate overflow-visible bg-[#121212] text-white",
     isOverlay
       ? "min-h-full"
       : "-mx-4 -my-8 min-h-[calc(100vh-4rem)] sm:-mx-8 md:-ml-24 md:-mr-8"
@@ -1530,8 +1653,23 @@ export function WeaponDetailsPageClient({
             visibility: visible;
             opacity: 1 !important;
           }
+
         `}
       </style>
+
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-[#0f0f0f]">
+        <Image
+          src={backgroundImage}
+          alt=""
+          fill
+          sizes="100vw"
+          className="object-cover opacity-60"
+          onError={() => setBackgroundImageFailed(true)}
+        />
+        <div className="absolute inset-0 w-2/3 bg-linear-to-r from-[#121212] via-[#121212]/80 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-[#121212] via-transparent to-transparent" />
+        <div className="absolute inset-y-0 right-0 w-1/3 bg-linear-to-l from-[#121212]/90 to-transparent" />
+      </div>
 
       <div className={contentClassName}>
         <section className="mb-10 space-y-6">
@@ -1696,6 +1834,8 @@ export function WeaponDetailsPageClient({
             selectedInstanceId={selectedInstanceId}
             icon={icon}
             iconWatermark={iconWatermark}
+            itemDefinition={itemDefinition}
+            profile={profile}
             onSelectCopy={onSelectCopy}
           />
         </aside>

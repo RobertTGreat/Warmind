@@ -33,6 +33,7 @@ import {
     getStatTier,
     STAT_NAMES,
     STAT_DESCRIPTIONS,
+    STAT_ICON_URLS,
     STAT_COLORS,
     ALL_STAT_KEYS,
     MAX_STAT_VALUE,
@@ -459,6 +460,11 @@ const CLASS_ICONS: Record<number, string> = {
     2: '/class-warlock.svg',
 };
 
+const STAT_TARGET_VALUES = Array.from(
+    { length: MAX_TIER },
+    (_, index) => (index + 1) * STAT_PER_TIER
+);
+
 // ===== Stat Number Input Component =====
 
 interface StatInputProps {
@@ -484,45 +490,6 @@ function StatInput({ stat, value, fragmentBonus = 0, maxAchievable = MAX_STAT_VA
         const newValue = parseInt(e.target.value) || 0;
         // Limit to achievable max
         onChange(Math.max(0, Math.min(effectiveMax, newValue)));
-    };
-    
-    const handleBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
-        // Granular selection - round to nearest 5
-        let newValue = Math.round((pct / 100) * MAX_STAT_VALUE / 5) * 5;
-        // Cap at achievable max
-        newValue = Math.min(newValue, effectiveMax);
-        onChange(newValue);
-    };
-    
-    const handleBarMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        
-        const updateValue = (clientX: number) => {
-            const x = clientX - rect.left;
-            const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
-            // Granular selection - round to nearest 5
-            let newValue = Math.round((pct / 100) * MAX_STAT_VALUE / 5) * 5;
-            // Cap at achievable max
-            newValue = Math.min(newValue, effectiveMax);
-            onChange(newValue);
-        };
-        
-        updateValue(e.clientX);
-        
-        const moveHandler = (moveEvent: MouseEvent) => {
-            updateValue(moveEvent.clientX);
-        };
-        
-        const upHandler = () => {
-            document.removeEventListener('mousemove', moveHandler);
-            document.removeEventListener('mouseup', upHandler);
-        };
-        
-        document.addEventListener('mousemove', moveHandler);
-        document.addEventListener('mouseup', upHandler);
     };
     
     const handleMouseEnter = () => {
@@ -555,8 +522,8 @@ function StatInput({ stat, value, fragmentBonus = 0, maxAchievable = MAX_STAT_VA
             style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
             <div className="flex items-center gap-2 mb-2">
-                <div className={cn("w-6 h-6 rounded flex items-center justify-center text-sm", colors.bg)}>
-                    <span>{statIcons[stat]}</span>
+                <div className={cn("w-6 h-6 rounded flex items-center justify-center", colors.bg)}>
+                    <Image src={STAT_ICON_URLS[stat]} width={18} height={18} alt="" className="object-contain" />
                 </div>
                 <span className={cn("font-bold", colors.text)}>{STAT_NAMES[stat]}</span>
             </div>
@@ -596,8 +563,8 @@ function StatInput({ stat, value, fragmentBonus = 0, maxAchievable = MAX_STAT_VA
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={() => setShowTooltip(false)}
             >
-                <div className={cn("w-5 h-5 rounded flex items-center justify-center text-xs", colors.bg)}>
-                    <span>{statIcons[stat]}</span>
+                <div className={cn("w-5 h-5 rounded flex items-center justify-center", colors.bg)}>
+                    <Image src={STAT_ICON_URLS[stat]} width={15} height={15} alt="" className="object-contain" />
                 </div>
                 <div className="flex flex-col">
                     <span className={cn("text-xs font-bold", colors.text)}>{STAT_NAMES[stat]}</span>
@@ -620,9 +587,7 @@ function StatInput({ stat, value, fragmentBonus = 0, maxAchievable = MAX_STAT_VA
             {/* Stat Bar with Limit Indicator */}
             <div className="flex-1 relative group">
                 <div 
-                    className="relative h-5 bg-slate-900 border border-white/10 cursor-pointer overflow-hidden"
-                    onClick={handleBarClick}
-                    onMouseDown={handleBarMouseDown}
+                    className="relative h-5 bg-slate-900 border border-white/10 overflow-hidden"
                 >
                     {/* Unreachable zone (grayed out with stripes) */}
                     {maxPercentage < 100 && (
@@ -634,19 +599,6 @@ function StatInput({ stat, value, fragmentBonus = 0, maxAchievable = MAX_STAT_VA
                             }}
                         />
                     )}
-                    
-                    {/* Background grid showing tiers */}
-                    <div className="absolute inset-0 flex">
-                        {Array.from({ length: 10 }).map((_, i) => (
-                            <div 
-                                key={i} 
-                                className={cn(
-                                    "flex-1 border-r border-white/5",
-                                    i === 4 && "border-r-white/15" // T5 marker
-                                )}
-                            />
-                        ))}
-                    </div>
                     
                     {/* Fill bar */}
                     <div 
@@ -669,6 +621,40 @@ function StatInput({ stat, value, fragmentBonus = 0, maxAchievable = MAX_STAT_VA
                             style={{ left: `${percentage}%` }}
                         />
                     )}
+
+                    <div className="absolute inset-0 grid grid-cols-[repeat(20,minmax(0,1fr))]">
+                        {STAT_TARGET_VALUES.map((targetValue) => {
+                            const targetTier = getStatTier(targetValue);
+                            const isReachable = targetValue <= effectiveMax;
+                            const isSelected = tier === targetTier;
+
+                            return (
+                                <button
+                                    key={targetValue}
+                                    type="button"
+                                    disabled={!isReachable}
+                                    aria-pressed={isSelected}
+                                    aria-label={`${STAT_NAMES[stat]} target ${targetValue}`}
+                                    title={
+                                        isReachable
+                                            ? `${STAT_NAMES[stat]} ${targetValue}`
+                                            : `${STAT_NAMES[stat]} ${targetValue} is unreachable with current targets`
+                                    }
+                                    onClick={() => onChange(targetValue)}
+                                    className={cn(
+                                        "h-full min-w-0 border-r border-white/5 transition-colors",
+                                        targetTier === 5 && "border-r-white/15",
+                                        targetTier === 10 && "border-r-white/30",
+                                        targetTier === 15 && "border-r-white/15",
+                                        isReachable
+                                            ? "cursor-pointer hover:bg-white/15"
+                                            : "cursor-not-allowed opacity-30",
+                                        isSelected && "bg-white/20"
+                                    )}
+                                />
+                            );
+                        })}
+                    </div>
                 </div>
                 
                 {/* Tier labels */}
@@ -829,7 +815,7 @@ function ExoticSelector({ exotics, selectedExotic, onSelect, profile }: ExoticSe
                                 <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 px-1">
                                     {slot.name}
                                 </div>
-                                <div className="grid grid-cols-5 gap-1">
+                                <div className="grid grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-1 min-w-0">
                                     {slot.items.map(exotic => {
                                         // Merge instance data with stats for proper tooltip
                                         const baseInstance = profile?.itemComponents?.instances?.data?.[exotic.itemInstanceId];
@@ -847,7 +833,7 @@ function ExoticSelector({ exotics, selectedExotic, onSelect, profile }: ExoticSe
                                                     setIsOpen(false); 
                                                 }}
                                                 className={cn(
-                                                    "w-16 h-16 border-2 transition-all hover:scale-105",
+                                                    "aspect-square w-full max-w-16 min-w-0 justify-self-center border-2 transition-all hover:scale-105",
                                                     selectedExotic.itemHash === exotic.itemHash
                                                         ? "border-destiny-gold shadow-[0_0_8px_rgba(234,179,8,0.3)]"
                                                         : "border-transparent hover:border-white/20"
@@ -1396,7 +1382,10 @@ function ArmorSetCard({ set, profile, membershipInfo, activeCharacterId, selecte
                             return (
                                 <div key={stat} className="flex items-center gap-3 text-xs">
                                     {/* Stat Name */}
-                                    <span className={cn("w-16 text-right font-medium", colors.text)}>{STAT_NAMES[stat]}</span>
+                                    <span className={cn("w-16 text-right font-medium flex items-center justify-end gap-1", colors.text)}>
+                                        <Image src={STAT_ICON_URLS[stat]} width={12} height={12} alt="" className="object-contain" />
+                                        {STAT_NAMES[stat]}
+                                    </span>
                                     
                                     {/* Stat Bar (0-200) - simplified grid */}
                                     <div className="flex-1 h-3 bg-slate-800/60 relative overflow-hidden">
@@ -1459,8 +1448,8 @@ function ArmorSetCard({ set, profile, membershipInfo, activeCharacterId, selecte
                                             <th className="text-left py-2 px-2 text-slate-500 font-medium w-20">Armor</th>
                                             <th className="text-left py-2 px-2 text-slate-500 font-medium w-20">Mod</th>
                                             {ALL_STAT_KEYS.map(stat => (
-                                                <th key={stat} className={cn("text-center py-2 px-2 font-bold text-xs", STAT_COLORS[stat].text)}>
-                                                    {STAT_NAMES[stat]}
+                                                <th key={stat} className={cn("text-center py-2 px-2 font-bold text-xs", STAT_COLORS[stat].text)} title={STAT_NAMES[stat]}>
+                                                    <Image src={STAT_ICON_URLS[stat]} width={16} height={16} alt={STAT_NAMES[stat]} className="mx-auto object-contain" />
                                                 </th>
                                             ))}
                                             <th className="text-center py-2 px-2 text-slate-400 font-bold">Total</th>
@@ -2002,7 +1991,7 @@ export default function OptimizerPage() {
     }
     
     return (
-        <div className="space-y-6 pt-10">
+        <div className="space-y-6 pt-10 min-w-0">
             {/* Header Controls */}
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                 {/* Class Tabs */}
@@ -2044,14 +2033,14 @@ export default function OptimizerPage() {
             </div>
             
             {/* Main Content */}
-            <div className="border border-white/10 min-h-[80vh]">
-                <div className="flex h-[80vh]">
+            <div className="border border-white/10 min-h-[80vh] overflow-hidden">
+                <div className="flex h-[80vh] min-w-0">
                     {/* Left Sidebar: Configuration */}
-                    <div className="w-[550px] shrink-0 border-r border-white/10 flex flex-col overflow-y-auto">
+                    <div className="w-[550px] max-w-full shrink-0 border-r border-white/10 flex flex-col overflow-y-auto">
                         {/* Top Row: Exotic Grid | Fragment Grid side by side */}
-                        <div className="flex border-b border-white/5 min-h-[320px]">
+                        <div className="flex border-b border-white/5 min-h-[320px] min-w-0">
                             {/* Exotic Selection (Vertical Grid) */}
-                            <div className="w-1/2 p-3 border-r border-white/5 flex flex-col">
+                            <div className="w-1/2 min-w-0 p-3 border-r border-white/5 flex flex-col overflow-hidden">
                                 <div className="flex items-center justify-between mb-2">
                                     <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Exotic Armor</h3>
                                     <span className="text-[9px] text-slate-600">
@@ -2132,7 +2121,7 @@ export default function OptimizerPage() {
                                                     <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1 px-0.5">
                                                         {slot.charAt(0).toUpperCase() + slot.slice(1)} ({filteredExotics.length})
                                                     </div>
-                                                    <div className="grid grid-cols-4 gap-1">
+                                                    <div className="grid grid-cols-4 gap-1 min-w-0">
                                                         {filteredExotics.map((exotic) => {
                                                             // Merge instance data with stats for proper tooltip display
                                                             const baseInstance = profile?.itemComponents?.instances?.data?.[exotic.itemInstanceId || ''];
@@ -2150,7 +2139,7 @@ export default function OptimizerPage() {
                                                                         itemHash: exotic.itemHash 
                                                                     })}
                                                                     className={cn(
-                                                                        "w-16 h-16 relative border-2 transition-all",
+                                                                        "aspect-square w-full min-w-0 relative border-2 transition-all",
                                                                         settings.exoticFilter.itemHash === exotic.itemHash
                                                                             ? "border-yellow-500 scale-105 shadow-[0_0_8px_rgba(234,179,8,0.4)]"
                                                                             : "border-transparent hover:border-white/30"
@@ -2177,7 +2166,7 @@ export default function OptimizerPage() {
                             </div>
                             
                             {/* Fragment Selection (Icon Grid with Tooltips) */}
-                            <div className="w-1/2 p-3 flex flex-col">
+                            <div className="w-1/2 min-w-0 p-3 flex flex-col overflow-hidden">
                                 <div className="flex items-center justify-between mb-2">
                                     <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fragments</h3>
                                     <div className="flex items-center gap-2">
@@ -2397,7 +2386,7 @@ export default function OptimizerPage() {
                     </div>
                     
                     {/* Right: Results - 2 Columns */}
-                    <div className="flex-1 overflow-y-auto p-4 h-full">
+                    <div className="flex-1 min-w-0 overflow-y-auto p-4 h-full">
                         {results.length > 0 ? (
                             <div>
                                 <div className="py-2 border-b border-white/10 mb-4">

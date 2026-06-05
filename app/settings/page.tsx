@@ -26,7 +26,7 @@ import {
 import { useState, useEffect, useCallback, type ElementType, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useWishListStore, PRESET_WISH_LISTS, type PresetWishList } from "@/store/wishlistStore";
-import { DEFAULT_PAGE_OPTIONS, type DefaultPage } from "@/lib/defaultPages";
+import { DEFAULT_PAGE_OPTIONS, normalizeDefaultPage, type DefaultPage } from "@/lib/defaultPages";
 
 // Fallback in case the import fails (Turbopack issue)
 const PRESET_WISH_LISTS_FALLBACK: PresetWishList[] = [
@@ -615,7 +615,7 @@ export default function SettingsPage() {
                 <SettingSection title="General" icon={SlidersHorizontal}>
                     <SettingRow label="Default Page" description="Where Warmind opens from the home route">
                         <Dropdown
-                            value={settings.defaultPage}
+                            value={normalizeDefaultPage(settings.defaultPage)}
                             onChange={(v) => settings.setDefaultPage(v as DefaultPage)}
                             options={defaultPageOptions}
                         />

@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { 
-    Backpack, 
     ScrollText, 
     Book, 
     Medal,
@@ -16,10 +15,9 @@ import {
     Activity,
     Layers,
     Target,
-    Sparkles
+    Sparkles,
+    ShieldCheck
 } from "lucide-react";
-import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
-import { transferItem } from "@/lib/bungie";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 type SubNavItem = {
@@ -31,7 +29,6 @@ type SubNavItem = {
 const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
     '/character': [
         { name: 'Home', href: '/character', icon: Home },
-        { name: 'Inventory', href: '/character/inventory', icon: Backpack },
         { name: 'Loadouts', href: '/character/loadouts', icon: Layers },
         { name: 'Optimizer', href: '/character/optimizer', icon: Target },
     ],
@@ -41,6 +38,8 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
     ],
     '/collections': [
         { name: 'Collections', href: '/collections', icon: Book },
+        { name: 'Sets', href: '/collections/sets', icon: Layers },
+        { name: 'Armor Set Bonuses', href: '/collections/armor-set-bonuses', icon: ShieldCheck },
     ],
     '/triumphs': [
         { name: 'Triumphs', href: '/triumphs', icon: Medal },
@@ -59,40 +58,10 @@ const SUB_NAV_MAP: Record<string, SubNavItem[]> = {
 
 export function Sidebar() {
     const pathname = usePathname();
-    const { stats, membershipInfo } = useDestinyProfileContext();
     
     // Find the current section key that matches the pathname
     const currentSection = Object.keys(SUB_NAV_MAP).find(key => pathname.startsWith(key));
     const items = currentSection ? SUB_NAV_MAP[currentSection] : null;
-
-    const handleDrop = async (e: React.DragEvent, targetName: string) => {
-        e.preventDefault();
-        if (!membershipInfo || !stats) return;
-
-        try {
-            const dataStr = e.dataTransfer.getData('application/json');
-            if (!dataStr) return;
-            
-            const data = JSON.parse(dataStr);
-            const { itemInstanceId, itemHash } = data;
-            
-            if (!itemInstanceId) return;
-
-            const transferToVault = false;
-
-            await transferItem(
-                itemInstanceId, 
-                itemHash, 
-                stats.characterId, // Active Character
-                membershipInfo.membershipType,
-                transferToVault
-            );
-            
-            console.log(`Transferred item ${itemHash} to Inventory`);
-        } catch (err) {
-            console.error("Drop failed", err);
-        }
-    };
 
     if (!items) return null;
 
@@ -102,7 +71,6 @@ export function Sidebar() {
                 {items.map((item) => {
                     const isActive = pathname === item.href;
                     const Icon = item.icon;
-                    const isDropTarget = item.name === 'Inventory';
                     
                     return (
                         <Tooltip 
@@ -119,17 +87,6 @@ export function Sidebar() {
                                         ? "bg-destiny-gold text-slate-900 shadow-[0_0_15px_rgba(227,206,98,0.4)]"
                                         : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/5"
                                 )}
-                                onDragOver={(e) => {
-                                    if (isDropTarget) {
-                                        e.preventDefault();
-                                        e.dataTransfer.dropEffect = "move";
-                                    }
-                                }}
-                                onDrop={(e) => {
-                                    if (isDropTarget) {
-                                        handleDrop(e, item.name);
-                                    }
-                                }}
                             >
                                 <Icon className="w-5 h-5" />
                                 <span className="sr-only">{item.name}</span>

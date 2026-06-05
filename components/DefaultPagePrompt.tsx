@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
-  Backpack,
   Book,
   Home,
   Layers,
@@ -26,7 +25,6 @@ import { useSettingsStore } from "@/store/settingsStore";
 const pageIconMap: Record<DefaultPage, ElementType> = {
   "/": Home,
   "/character": User,
-  "/character/inventory": Backpack,
   "/character/loadouts": Layers,
   "/character/optimizer": Target,
   "/collections": Book,

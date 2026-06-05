@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { DestinyItemCard } from "@/components/DestinyItemCard";
 import { ItemTile, type ItemTileModel } from "@/components/ItemTile";
+import { ProfileInventoryPanel } from "@/components/ProfileInventoryPanel";
 import { useInventoryItemDefinitionsFromTable } from "@/hooks/useInventoryItemDefinitionsFromTable";
 import { useManifestTable } from "@/hooks/useManifestTable";
 import { BUCKETS, CURRENCIES, MATERIALS } from "@/lib/destinyUtils";
@@ -38,7 +39,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 const ItemDetailsOverlay = dynamic(
@@ -64,6 +64,7 @@ const CHARACTER_TOGGLE_COLUMN_WIDTH_PX = 44;
 const MATERIAL_ITEM_CATEGORY_HASH = 40;
 const INVENTORY_OVERSCAN_PX = 360;
 const SCROLL_METRIC_UPDATE_THRESHOLD_PX = 24;
+const POSTMASTER_POPOUT_ICON_SIZE: ItemIconSize = "small";
 
 function ignoreDragLeave() {}
 
@@ -863,58 +864,47 @@ function CharacterHeaderCard({
   isSelected,
   titleName,
   loadouts,
+  postmasterTiles,
   membershipInfo,
   profile,
+  isPopoutOpen,
   onClick,
 }: {
   character: any;
   isSelected: boolean;
   titleName: string;
   loadouts: any[];
+  postmasterTiles: TileRenderData[];
   membershipInfo: any;
   profile: any;
+  isPopoutOpen: boolean;
   onClick: () => void;
 }) {
   const className = CLASS_NAMES[character.classType] ?? "Guardian";
   const emblemBackground = character.emblemBackgroundPath
     ? getBungieImage(character.emblemBackgroundPath)
     : "";
-  const [loadoutMenuPosition, setLoadoutMenuPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-
-  const showLoadoutMenuBelowCard = (cardElement: HTMLButtonElement) => {
-    const cardBounds = cardElement.getBoundingClientRect();
-
-    setLoadoutMenuPosition({
-      x: cardBounds.left + 12,
-      y: cardBounds.bottom + 8,
-    });
-  };
-
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    onClick();
-    showLoadoutMenuBelowCard(event.currentTarget);
-  };
+  const postmasterItemCount = postmasterTiles.length;
 
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
-    setLoadoutMenuPosition({ x: event.clientX, y: event.clientY });
+    onClick();
   };
 
   return (
-    <>
+    <div className="relative h-16 overflow-visible">
       <button
         className={cn(
-          "relative h-16 w-full overflow-hidden border text-left transition-colors",
-          isSelected
+          "relative h-full w-full overflow-hidden border text-left transition-colors",
+          isSelected || isPopoutOpen
             ? "border-destiny-gold/70"
             : "border-white/10 hover:border-white/30",
         )}
-        onClick={handleClick}
+        onClick={onClick}
         onContextMenu={handleContextMenu}
-        title="Open loadouts"
+        title="Open class panel"
+        aria-haspopup="dialog"
+        aria-expanded={isPopoutOpen}
       >
         {emblemBackground && (
           <div
@@ -945,100 +935,58 @@ function CharacterHeaderCard({
             </div>
           </div>
         </div>
+
+        {postmasterItemCount > 0 && (
+          <div className="pointer-events-none absolute bottom-1.5 right-2 flex h-5 items-center gap-1 border border-destiny-gold/40 bg-black/65 px-1.5 text-[10px] font-bold leading-none text-destiny-gold shadow-lg">
+            <Archive className="h-3 w-3" />
+            <span>{postmasterItemCount}</span>
+          </div>
+        )}
       </button>
 
-      {loadoutMenuPosition && (
-        <CharacterLoadoutMenu
+      {isPopoutOpen && (
+        <CharacterClassPopout
           character={character}
           loadouts={loadouts}
+          postmasterTiles={postmasterTiles}
           membershipInfo={membershipInfo}
           profile={profile}
-          x={loadoutMenuPosition.x}
-          y={loadoutMenuPosition.y}
-          onClose={() => setLoadoutMenuPosition(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 
-function CharacterLoadoutMenu({
+function CharacterClassPopout({
   character,
   loadouts,
+  postmasterTiles,
   membershipInfo,
   profile,
-  x,
-  y,
-  onClose,
 }: {
   character: any;
   loadouts: any[];
+  postmasterTiles: TileRenderData[];
   membershipInfo: any;
   profile: any;
-  x: number;
-  y: number;
-  onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
   const className = CLASS_NAMES[character.classType] ?? "Guardian";
-  const menuPosition = useMemo(() => {
-    if (typeof window === "undefined") return { left: x, top: y };
+  const postmasterItemCount = postmasterTiles.length;
 
-    const menuWidth = 340;
-    const menuHeight = 250;
-    const padding = 8;
-
-    return {
-      left: Math.max(
-        padding,
-        Math.min(x, window.innerWidth - menuWidth - padding),
-      ),
-      top: Math.max(
-        padding,
-        Math.min(y, window.innerHeight - menuHeight - padding),
-      ),
-    };
-  }, [x, y]);
-
-  useEffect(() => {
-    const handleMouseDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("scroll", onClose, true);
-
-    return () => {
-      window.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("scroll", onClose, true);
-    };
-  }, [onClose]);
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
+  return (
     <div
-      ref={menuRef}
-      className="fixed z-[9999] w-[340px] border border-white/10 bg-[#101317]/95 p-3 text-slate-100 shadow-2xl backdrop-blur-xl"
-      style={{ left: menuPosition.left, top: menuPosition.top }}
+      className="absolute left-0 top-full z-50 mt-2 w-[380px] max-w-[calc(100vw-1rem)] border border-white/10 bg-[#101317]/95 p-3 text-slate-100 shadow-2xl backdrop-blur-xl"
+      role="dialog"
+      aria-label={`${className} class panel`}
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="mb-3 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-white">
-            {className} Loadouts
+            {className}
           </div>
           <div className="text-[10px] uppercase tracking-widest text-slate-500">
-            Click a loadout to equip
+            Class quick panel
           </div>
         </div>
         <span className="shrink-0 text-xs font-bold text-destiny-gold">
@@ -1046,26 +994,58 @@ function CharacterLoadoutMenu({
         </span>
       </div>
 
-      {loadouts.length > 0 ? (
-        <div className="grid grid-cols-5 gap-2">
-          {loadouts.map((loadout, index) => (
-            <LoadoutButton
-              key={`${character.characterId}-loadout-${index}`}
-              loadout={loadout}
-              index={index}
-              activeCharacterId={character.characterId}
-              membershipInfo={membershipInfo}
-              profile={profile}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="border border-white/10 bg-black/30 px-3 py-6 text-center text-sm text-slate-500">
-          No in-game loadouts found.
-        </div>
-      )}
-    </div>,
-    document.body,
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1 custom-scrollbar">
+        <section>
+          <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <span>Loadouts</span>
+            <span>{loadouts.length}</span>
+          </div>
+
+          {loadouts.length > 0 ? (
+            <div className="grid grid-cols-5 gap-2">
+              {loadouts.map((loadout, index) => (
+                <LoadoutButton
+                  key={`${character.characterId}-loadout-${index}`}
+                  loadout={loadout}
+                  index={index}
+                  activeCharacterId={character.characterId}
+                  membershipInfo={membershipInfo}
+                  profile={profile}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-white/10 bg-black/30 px-3 py-5 text-center text-sm text-slate-500">
+              No in-game loadouts found.
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <span>Postmaster</span>
+            <span>{postmasterItemCount}/21</span>
+          </div>
+
+          {postmasterItemCount > 0 ? (
+            <div className="grid grid-cols-6 gap-2">
+              {postmasterTiles.map((tile, index) => (
+                <InteractiveInventoryTile
+                  key={tile.key}
+                  tile={tile}
+                  iconSize={POSTMASTER_POPOUT_ICON_SIZE}
+                  fetchPriority={index < 6 ? "auto" : "low"}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-white/10 bg-black/30 px-3 py-5 text-center text-sm text-slate-500">
+              No postmaster items found.
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -1258,7 +1238,7 @@ function VaultHeaderCard({ vaultCount }: { vaultCount: number }) {
           <div className="min-w-0">
             <div className="text-base font-semibold text-white">Vault</div>
             <div className="text-[11px] uppercase tracking-wide text-slate-400">
-              {vaultCount}/1000 stored
+              {vaultCount}/1300 stored
             </div>
           </div>
         </div>
@@ -1491,9 +1471,10 @@ export default function CharacterPage() {
   const { iconSize, sortMethod, setIconSize, setSortMethod } =
     useSettingsStore();
   const {
-    characterSearchQuery: searchQuery,
-    setCharacterSearchQuery: setSearchQuery,
-    setCharacterSearchVisible,
+    headerSearchQuery: searchQuery,
+    setHeaderSearchQuery: setSearchQuery,
+    setHeaderSearchVisible,
+    setHeaderSearchPlaceholder,
   } = useUIStore();
   const getWishListInfo = useWishListStore((state) => state.getWishListInfo);
   const wishListLookup = useWishListStore((state) => state.wishListLookup);
@@ -1512,6 +1493,9 @@ export default function CharacterPage() {
     null,
   );
   const [showExtraCharacters, setShowExtraCharacters] = useState(false);
+  const [openClassPopoutCharacterId, setOpenClassPopoutCharacterId] = useState<
+    string | null
+  >(null);
   const [collapsedSections, setCollapsedSections] = useState<
     Record<string, boolean>
   >({});
@@ -1544,13 +1528,15 @@ export default function CharacterPage() {
   }, []);
 
   useEffect(() => {
-    setCharacterSearchVisible(true);
+    setHeaderSearchVisible(true);
+    setHeaderSearchPlaceholder("Search, or h: to hide non-matches");
 
     return () => {
-      setCharacterSearchVisible(false);
+      setHeaderSearchVisible(false);
+      setHeaderSearchPlaceholder("Search");
       setSearchQuery("");
     };
-  }, [setCharacterSearchVisible, setSearchQuery]);
+  }, [setHeaderSearchPlaceholder, setHeaderSearchVisible, setSearchQuery]);
 
   useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -1641,6 +1627,18 @@ export default function CharacterPage() {
 
     return activeCharacter ? [activeCharacter] : [];
   }, [activeCharacter, characters, showExtraCharacters]);
+
+  useEffect(() => {
+    if (!openClassPopoutCharacterId) return;
+
+    const openCharacterIsVisible = visibleCharacters.some((character: any) => {
+      return character.characterId === openClassPopoutCharacterId;
+    });
+
+    if (!openCharacterIsVisible) {
+      setOpenClassPopoutCharacterId(null);
+    }
+  }, [openClassPopoutCharacterId, visibleCharacters]);
 
   const boardLayout = useMemo(() => {
     const characterColumns = visibleCharacters.map(
@@ -1998,6 +1996,43 @@ export default function CharacterPage() {
     () => getMaterialCounts(fullInventoryList, definitions),
     [definitions, fullInventoryList],
   );
+  const postmasterTilesByCharacterId = useMemo(() => {
+    const tileMap = new Map<string, TileRenderData[]>();
+
+    for (const character of characters as any[]) {
+      const postmasterItems = getItemsForOwnerBucket(
+        character.characterId,
+        BUCKETS.LOST_ITEMS,
+      );
+      const postmasterTiles = postmasterItems.map((item, index) =>
+        createTileRenderData({
+          item,
+          ownerId: character.characterId,
+          fallbackIndex: index,
+          definitions,
+          dimDefinitions,
+          profile,
+          isDimmed: false,
+          getWishListInfo,
+          pendingOperationByItemId,
+        }),
+      );
+
+      tileMap.set(character.characterId, postmasterTiles);
+    }
+
+    return tileMap;
+  }, [
+    characters,
+    definitions,
+    dimDefinitions,
+    getItemsForOwnerBucket,
+    getWishListInfo,
+    pendingOperationByItemId,
+    profile,
+    trashListLookup,
+    wishListLookup,
+  ]);
 
   const handleDrop = useCallback(async (
     event: React.DragEvent,
@@ -2396,7 +2431,8 @@ export default function CharacterPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden bg-transparent text-slate-100">
+    <div className="text-slate-100">
+      <div className="flex h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden bg-transparent">
       <div
         className="fixed left-0 top-[calc(50vh-8rem)] z-50 flex w-16 justify-center"
         ref={settingsRef}
@@ -2488,9 +2524,22 @@ export default function CharacterPage() {
                 isSelected={character.characterId === activeCharacterId}
                 titleName={getCharacterTitleName(character, recordDefinitions)}
                 loadouts={getCharacterLoadouts(profile, character.characterId)}
+                postmasterTiles={
+                  postmasterTilesByCharacterId.get(character.characterId) ?? []
+                }
                 membershipInfo={membershipInfo}
                 profile={profile}
-                onClick={() => setSelectedCharacterId(character.characterId)}
+                isPopoutOpen={
+                  openClassPopoutCharacterId === character.characterId
+                }
+                onClick={() => {
+                  setSelectedCharacterId(character.characterId);
+                  setOpenClassPopoutCharacterId((currentCharacterId) =>
+                    currentCharacterId === character.characterId
+                      ? null
+                      : character.characterId,
+                  );
+                }}
               />
             ))}
 
@@ -2498,9 +2547,10 @@ export default function CharacterPage() {
               <CharacterExpansionCard
                 hasExtraCharacters={hasExtraCharacters}
                 showExtraCharacters={showExtraCharacters}
-                onToggleExtraCharacters={() =>
-                  setShowExtraCharacters((currentValue) => !currentValue)
-                }
+                onToggleExtraCharacters={() => {
+                  setOpenClassPopoutCharacterId(null);
+                  setShowExtraCharacters((currentValue) => !currentValue);
+                }}
               />
             )}
 
@@ -2545,10 +2595,18 @@ export default function CharacterPage() {
               </div>
             </div>
           </div>
+
+          <div className="p-2">
+            <ProfileInventoryPanel
+              iconSize={iconSize}
+              sortMethod={sortMethod}
+            />
+          </div>
         </div>
       </div>
 
       <ItemDetailsOverlay />
+      </div>
     </div>
   );
 }

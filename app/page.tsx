@@ -17,6 +17,7 @@ import {
   Heart
 } from "lucide-react";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
+import { normalizeDefaultPage } from "@/lib/defaultPages";
 import { useSettingsStore } from "@/store/settingsStore";
 
 // Lazy load heavy components to reduce initial JS bundle
@@ -81,10 +82,11 @@ export default function Home() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoggedIn } = useDestinyProfileContext();
-  const defaultPage = useSettingsStore((state) => state.defaultPage);
+  const savedDefaultPage = useSettingsStore((state) => state.defaultPage);
   const hasChosenDefaultPage = useSettingsStore((state) => state.hasChosenDefaultPage);
   const [mounted, setMounted] = useState(false);
   const shouldShowHomePage = searchParams.get("home") === "1";
+  const defaultPage = normalizeDefaultPage(savedDefaultPage);
 
   // Always call useEffect unconditionally to prevent hook order issues
   useEffect(() => {

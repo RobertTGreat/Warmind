@@ -12,6 +12,7 @@ interface TooltipProps {
   delay?: number;
   className?: string;
   contentClassName?: string;
+  arrowClassName?: string;
   disabled?: boolean;
 }
 
@@ -23,6 +24,7 @@ export function Tooltip({
   delay = 200,
   className,
   contentClassName,
+  arrowClassName,
   disabled = false,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -33,6 +35,10 @@ export function Tooltip({
 
   const showTooltip = () => {
     if (disabled) return;
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
     
     timeoutRef.current = setTimeout(() => {
       setIsVisible(true);
@@ -135,6 +141,8 @@ export function Tooltip({
         className={cn('inline-flex', className)}
         onMouseEnter={showTooltip}
         onMouseLeave={hideTooltip}
+        onPointerEnter={showTooltip}
+        onPointerLeave={hideTooltip}
         onFocus={showTooltip}
         onBlur={hideTooltip}
       >
@@ -173,6 +181,7 @@ export function Tooltip({
                 side === 'left' && 'right-0 top-1/2 translate-x-1/2 -translate-y-1/2 border-r border-t',
                 side === 'top' && 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 border-r border-b',
                 side === 'bottom' && 'top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 border-l border-t',
+                arrowClassName,
               )}
             />
             {content}

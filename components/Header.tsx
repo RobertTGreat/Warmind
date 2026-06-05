@@ -16,7 +16,6 @@ import {
     Menu, 
     X, 
     Settings,
-    Backpack,
     Home,
     Medal,
     Users,
@@ -24,7 +23,9 @@ import {
     ChevronDown,
     Check,
     Heart,
-    Search
+    Search,
+    ShieldCheck,
+    Layers
 } from 'lucide-react';
 import { CLASS_NAMES } from '@/hooks/useDestinyProfile';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
@@ -44,7 +45,17 @@ const navItems: {
   disabled?: boolean;
 }[] = [
   { name: 'Home', href: '/?home=1', icon: Shield, description: 'Dashboard & Overview' },
-  { name: 'Collections', href: '/collections', icon: Book, description: 'Weapons, Armor & More' },
+  {
+    name: 'Collections',
+    href: '/collections',
+    icon: Book,
+    description: 'Weapons, Armor & More',
+    subNav: [
+      { name: 'Collections', href: '/collections', icon: Book },
+      { name: 'Sets', href: '/collections/sets', icon: Layers },
+      { name: 'Armor Set Bonuses', href: '/collections/armor-set-bonuses', icon: ShieldCheck },
+    ],
+  },
   { name: 'Triumphs', href: '/triumphs', icon: Trophy, description: 'Achievements & Seals' },
   { 
     name: 'Character', 
@@ -53,7 +64,6 @@ const navItems: {
     description: 'Inventory & Loadouts',
     subNav: [
       { name: 'Overview', href: '/character', icon: Home },
-      { name: 'Inventory', href: '/character/inventory', icon: Backpack },
     ]
   },
   { name: 'Quests', href: '/quests', icon: Scroll, description: 'Active Quests' },
@@ -73,9 +83,10 @@ export function Header() {
   const pathname = usePathname();
   const { stats, displayName, isLoggedIn, allCharacters, selectCharacter } = useDestinyProfileContext();
   const {
-    characterSearchQuery,
-    characterSearchVisible,
-    setCharacterSearchQuery,
+    headerSearchQuery,
+    headerSearchVisible,
+    headerSearchPlaceholder,
+    setHeaderSearchQuery,
   } = useUIStore();
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -252,7 +263,11 @@ export function Header() {
                   {isLoggedIn && (
                     <ul className="flex items-center gap-1 sm:gap-4 flex-nowrap">
                       {navItems.map((item) => {
-                        const isActive = pathname === item.href;
+                        const isActive =
+                          pathname === item.href ||
+                          (item.href !== '/' &&
+                            item.href !== '/?home=1' &&
+                            pathname.startsWith(item.href));
                         const Icon = item.icon;
                         
                         if (item.disabled) {
@@ -326,15 +341,15 @@ export function Header() {
 
             {/* Right: Hamburger Menu Button */}
             <div className="flex items-center justify-end min-w-[48px] gap-2">
-              {!menuOpen && characterSearchVisible && (
+              {!menuOpen && headerSearchVisible && (
                 <div className="relative hidden w-80 max-w-[26vw] lg:block">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
-                    placeholder="Search, or h: to hide non-matches"
+                    placeholder={headerSearchPlaceholder}
                     className="w-full border border-white/10 bg-black/45 py-2 pl-9 pr-4 text-sm text-white outline-none transition-colors focus:border-destiny-gold/60"
-                    value={characterSearchQuery}
-                    onChange={(event) => setCharacterSearchQuery(event.target.value)}
+                    value={headerSearchQuery}
+                    onChange={(event) => setHeaderSearchQuery(event.target.value)}
                   />
                 </div>
               )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { VirtuosoGrid, type GridComponents } from 'react-virtuoso';
 import { usePresentationNode } from '@/hooks/useDefinitions';
-import { ChevronRight, Search, Lock, Eye, EyeOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Lock, Eye, EyeOff } from 'lucide-react';
 import { getBungieImage } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,9 @@ import { useManifestTable } from '@/hooks/useManifestTable';
 import { ItemTile, type ItemTileModel } from '@/components/ItemTile';
 import { DestinyItemCard } from '@/components/DestinyItemCard';
 import { buildBungieIconUrl, getClientManifestVersionCacheKey, normalizeBungieAssetPath } from '@/lib/bungieImageProxy';
+import { getCollectionIconSizePx, getIconWidthClassName } from "@/lib/collectionIconSizing";
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
+import { useSettingsStore } from "@/store/settingsStore";
 
 interface CollectionsBrowserProps {
     rootHash: number;
@@ -22,8 +24,20 @@ type CollectionTileModel = ItemTileModel & {
     definition: any;
 };
 
-const COLLECTION_TILE_SIZE_PX = 80;
-const COLLECTION_TILE_DECODE_WIDTH = 160;
+type CollectionGroupModel = {
+    presentationNodeHash: number;
+    name: string;
+    icon?: string;
+    items: CollectionTileModel[];
+};
+
+const ARMOR_SET_GROUP_NAME_MIN_WIDTH_PX = 112;
+const ARMOR_SET_GROUP_ITEM_COUNT = 5;
+const ARMOR_SET_GROUP_GRID_COLUMN_GAP_PX = 16;
+const ARMOR_SET_GROUP_GRID_ROW_GAP_PX = 6;
+const ARMOR_SET_GROUP_TILE_GAP_PX = 4;
+const ARMOR_SET_GROUP_BOTTOM_PADDING_PX = 18;
+const ARMOR_SET_GROUP_MAX_COLUMNS = 4;
 
 function getCollectibleState(profile: any, collectibleHash: number) {
     let state = profile?.profileCollectibles?.data?.collectibles?.[collectibleHash]?.state;
@@ -55,7 +69,8 @@ function buildCollectionTileModels(
     collectibleTable: Record<string, any> | undefined,
     itemTable: Record<string, any> | undefined,
     profile: any,
-    showAll: boolean
+    showAll: boolean,
+    iconDecodeWidth: number
 ): CollectionTileModel[] {
     if (!collectibleTable || !itemTable) return [];
 
@@ -85,10 +100,10 @@ function buildCollectionTileModels(
             itemHash: collectible.itemHash,
             name: itemDefinition.displayProperties?.name ?? String(collectible.itemHash),
             iconSrc: iconPath
-                ? buildBungieIconUrl(iconPath, COLLECTION_TILE_DECODE_WIDTH, manifestVersion)
+                ? buildBungieIconUrl(iconPath, iconDecodeWidth, manifestVersion)
                 : null,
             watermarkSrc: watermarkPath
-                ? buildBungieIconUrl(watermarkPath, COLLECTION_TILE_DECODE_WIDTH, manifestVersion)
+                ? buildBungieIconUrl(watermarkPath, iconDecodeWidth, manifestVersion)
                 : null,
             rarityClassName: isAcquired ? "border-white/20" : "border-white/10",
             isDimmed: !isAcquired,
@@ -98,8 +113,153 @@ function buildCollectionTileModels(
     });
 }
 
+function buildCollectionGroupModels(
+    groupChildren: any[],
+    presentationNodeTable: Record<string, any> | undefined,
+    collectibleTable: Record<string, any> | undefined,
+    itemTable: Record<string, any> | undefined,
+    profile: any,
+    showAll: boolean,
+    iconDecodeWidth: number
+): CollectionGroupModel[] {
+    if (!presentationNodeTable || !collectibleTable || !itemTable) return [];
+
+    return groupChildren.flatMap((child: any) => {
+        const presentationNodeHash = child.presentationNodeHash;
+        const groupNode = presentationNodeTable[String(presentationNodeHash)] ?? child;
+        const items = buildCollectionTileModels(
+            groupNode.children?.collectibles ?? [],
+            collectibleTable,
+            itemTable,
+            profile,
+            showAll,
+            iconDecodeWidth
+        );
+
+        if (items.length === 0) return [];
+
+        return [{
+            presentationNodeHash,
+            name: groupNode.displayProperties?.name ?? String(presentationNodeHash),
+            icon: groupNode.displayProperties?.hasIcon
+                ? groupNode.displayProperties.icon
+                : undefined,
+            items,
+        }];
+    });
+}
+
+function getArmorSetGroupMinWidth(tileSizePx: number) {
+    return (
+        ARMOR_SET_GROUP_NAME_MIN_WIDTH_PX +
+        ARMOR_SET_GROUP_ITEM_COUNT * tileSizePx +
+        (ARMOR_SET_GROUP_ITEM_COUNT - 1) * ARMOR_SET_GROUP_TILE_GAP_PX +
+        8
+    );
+}
+
+function getArmorSetGroupRowHeight(tileSizePx: number) {
+    return tileSizePx + 8;
+}
+
+function getArmorSetGroupColumnCount(containerWidth: number, tileSizePx: number) {
+    if (containerWidth <= 0) return 1;
+
+    const minWidth = getArmorSetGroupMinWidth(tileSizePx);
+    const columnCount = Math.floor(
+        (containerWidth + ARMOR_SET_GROUP_GRID_COLUMN_GAP_PX) /
+        (minWidth + ARMOR_SET_GROUP_GRID_COLUMN_GAP_PX)
+    );
+
+    return Math.max(1, Math.min(ARMOR_SET_GROUP_MAX_COLUMNS, columnCount));
+}
+
+function getArmorSetGroupRowCount(containerTop: number, rowHeightPx: number) {
+    if (typeof window === "undefined") return 1;
+
+    const availableHeight = window.innerHeight - containerTop - ARMOR_SET_GROUP_BOTTOM_PADDING_PX;
+    const rowCount = Math.floor(
+        (availableHeight + ARMOR_SET_GROUP_GRID_ROW_GAP_PX) /
+        (rowHeightPx + ARMOR_SET_GROUP_GRID_ROW_GAP_PX)
+    );
+
+    return Math.max(1, rowCount);
+}
+
+function getVisiblePageNumbers(currentPage: number, totalPages: number) {
+    const maxVisiblePageNumbers = 5;
+    const firstPage = Math.max(
+        1,
+        Math.min(currentPage - 2, totalPages - maxVisiblePageNumbers + 1)
+    );
+    const lastPage = Math.min(totalPages, firstPage + maxVisiblePageNumbers - 1);
+    const pageNumbers: number[] = [];
+
+    for (let pageNumber = firstPage; pageNumber <= lastPage; pageNumber++) {
+        pageNumbers.push(pageNumber);
+    }
+
+    return pageNumbers;
+}
+
+function useArmorSetGroupLayout(tileSizePx: number) {
+    const containerRef = React.useRef<HTMLDivElement | null>(null);
+    const [layout, setLayout] = useState({ columnCount: 1, rowCount: 1 });
+    const rowHeightPx = getArmorSetGroupRowHeight(tileSizePx);
+
+    useEffect(() => {
+        const containerElement = containerRef.current;
+
+        if (!containerElement) return;
+
+        const updateLayout = () => {
+            const containerRect = containerElement.getBoundingClientRect();
+            const nextLayout = {
+                columnCount: getArmorSetGroupColumnCount(containerElement.clientWidth, tileSizePx),
+                rowCount: getArmorSetGroupRowCount(containerRect.top, rowHeightPx),
+            };
+
+            setLayout((currentLayout) => {
+                if (
+                    currentLayout.columnCount === nextLayout.columnCount &&
+                    currentLayout.rowCount === nextLayout.rowCount
+                ) {
+                    return currentLayout;
+                }
+
+                return nextLayout;
+            });
+        };
+
+        updateLayout();
+        const animationFrame = window.requestAnimationFrame(updateLayout);
+        window.addEventListener("resize", updateLayout);
+
+        if (typeof ResizeObserver === "undefined") {
+            return () => {
+                window.cancelAnimationFrame(animationFrame);
+                window.removeEventListener("resize", updateLayout);
+            };
+        }
+
+        const resizeObserver = new ResizeObserver(updateLayout);
+        resizeObserver.observe(containerElement);
+
+        return () => {
+            window.cancelAnimationFrame(animationFrame);
+            window.removeEventListener("resize", updateLayout);
+            resizeObserver.disconnect();
+        };
+    }, [rowHeightPx, tileSizePx]);
+
+    return { containerRef, ...layout };
+}
+
 export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
     const { node: rootNode, isLoading: isRootLoading } = usePresentationNode(rootHash);
+    const characterIconSize = useSettingsStore((state) => state.iconSize);
+    const collectionTileSizePx = getCollectionIconSizePx(characterIconSize);
+    const collectionTileDecodeWidth = collectionTileSizePx * 2;
     const [selectedTopHash, setSelectedTopHash] = useState<number | null>(null);
     const [selectedTier2Hash, setSelectedTier2Hash] = useState<number | null>(null);
     const [selectedTier3Hash, setSelectedTier3Hash] = useState<number | null>(null);
@@ -167,6 +327,9 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
         setSelectedTier3Hash(null);
     };
 
+    const isPagedArmorSetView =
+        selectedTopHash === PRESENTATION_NODES.LEGENDARY_ARMOR && selectedTier3Hash !== null;
+
     return (
         <div className="flex flex-col h-[85vh] gap-4">
             {/* Header Controls */}
@@ -223,17 +386,30 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                 </div>
 
                 {/* Main Content (Tier 4 Groups / Items) */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar pb-20">
+                <div
+                    className={cn(
+                        "flex-1 min-h-0",
+                        isPagedArmorSetView
+                            ? "overflow-hidden pb-0"
+                            : "overflow-y-auto custom-scrollbar pb-20"
+                    )}
+                >
                     {selectedTier3Hash ? (
                         <MainContentArea 
                             hash={selectedTier3Hash} 
                             showAll={showAll}
+                            usePagedArmorSetLayout={isPagedArmorSetView}
+                            collectionTileSizePx={collectionTileSizePx}
+                            collectionTileDecodeWidth={collectionTileDecodeWidth}
                         />
                     ) : selectedTier2Hash ? (
                         // Fallback: If Tier 2 is selected but no Tier 3 selected (or Tier 2 is leaf)
                          <MainContentArea 
                             hash={selectedTier2Hash} 
                             showAll={showAll}
+                            usePagedArmorSetLayout={false}
+                            collectionTileSizePx={collectionTileSizePx}
+                            collectionTileDecodeWidth={collectionTileDecodeWidth}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4 opacity-50">
@@ -426,9 +602,25 @@ function Tier3Button({ hash, isSelected, onClick }: { hash: number, isSelected: 
     );
 }
 
-function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) {
+function MainContentArea({
+    hash,
+    showAll,
+    usePagedArmorSetLayout,
+    collectionTileSizePx,
+    collectionTileDecodeWidth,
+}: {
+    hash: number;
+    showAll: boolean;
+    usePagedArmorSetLayout: boolean;
+    collectionTileSizePx: number;
+    collectionTileDecodeWidth: number;
+}) {
     const { node, isLoading } = usePresentationNode(hash);
     const { profile } = useDestinyProfileContext();
+    const {
+        table: presentationNodeTable,
+        isLoading: presentationNodeTableLoading,
+    } = useManifestTable<any>("DestinyPresentationNodeDefinition");
     const {
         table: collectibleTable,
         isLoading: collectibleTableLoading,
@@ -444,12 +636,30 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
             collectibleTable,
             itemTable,
             profile,
-            showAll
+            showAll,
+            collectionTileDecodeWidth
         ),
-        [node, collectibleTable, itemTable, profile, showAll]
+        [node, collectibleTable, itemTable, profile, showAll, collectionTileDecodeWidth]
     );
 
-    const isContentLoading = isLoading || collectibleTableLoading || itemTableLoading;
+    const collectionGroups = useMemo(
+        () => buildCollectionGroupModels(
+            node?.children?.presentationNodes ?? [],
+            presentationNodeTable,
+            collectibleTable,
+            itemTable,
+            profile,
+            showAll,
+            collectionTileDecodeWidth
+        ),
+        [node, presentationNodeTable, collectibleTable, itemTable, profile, showAll, collectionTileDecodeWidth]
+    );
+
+    const isContentLoading =
+        isLoading ||
+        collectibleTableLoading ||
+        itemTableLoading ||
+        (usePagedArmorSetLayout && presentationNodeTableLoading);
 
     if (isContentLoading) return <div className="p-8 text-slate-500">Loading content...</div>;
     if (!node) return null;
@@ -457,6 +667,12 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
     // Check if node has Presentation Nodes (Tier 4 Groups)
     const hasGroups = node.children?.presentationNodes?.length > 0;
     const hasItems = node.children?.collectibles?.length > 0;
+    const shouldUsePagedArmorSetLayout =
+        usePagedArmorSetLayout && hasGroups && collectionGroups.length > 0;
+    const shouldShowNoItems =
+        (!hasGroups && !hasItems) ||
+        (hasItems && directItems.length === 0) ||
+        (usePagedArmorSetLayout && hasGroups && collectionGroups.length === 0);
 
     return (
         <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -469,7 +685,9 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
              </div>
 
             {/* Case 1: Tier 4 Groups */}
-            {hasGroups && node.children.presentationNodes.map((child: any) => (
+            {shouldUsePagedArmorSetLayout ? (
+                <PaginatedCollectionGroups groups={collectionGroups} tileSizePx={collectionTileSizePx} />
+            ) : hasGroups && node.children.presentationNodes.map((child: any) => (
                 <CollectionGroup 
                     key={child.presentationNodeHash} 
                     hash={child.presentationNodeHash} 
@@ -477,6 +695,8 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
                     showAll={showAll}
                     collectibleTable={collectibleTable}
                     itemTable={itemTable}
+                    tileSizePx={collectionTileSizePx}
+                    iconDecodeWidth={collectionTileDecodeWidth}
                 />
             ))}
 
@@ -485,12 +705,246 @@ function MainContentArea({ hash, showAll }: { hash: number, showAll: boolean }) 
                 <CollectionTileGrid
                     items={directItems}
                     height="calc(85vh - 220px)"
+                    tileSizePx={collectionTileSizePx}
                 />
             )}
             
-            {(!hasGroups && !hasItems) || (hasItems && directItems.length === 0) ? (
+            {shouldShowNoItems ? (
                  <div className="text-slate-500 italic p-4">No items found.</div>
             ) : null}
+        </div>
+    );
+}
+
+function PaginatedCollectionGroups({
+    groups,
+    tileSizePx,
+}: {
+    groups: CollectionGroupModel[];
+    tileSizePx: number;
+}) {
+    const { containerRef, columnCount, rowCount } = useArmorSetGroupLayout(tileSizePx);
+    const [currentPage, setCurrentPage] = useState(1);
+    const groupsPerPage = Math.max(1, columnCount * rowCount);
+    const totalPages = Math.max(1, Math.ceil(groups.length / groupsPerPage));
+    const pageStartIndex = (currentPage - 1) * groupsPerPage;
+    const visibleGroups = groups.slice(pageStartIndex, pageStartIndex + groupsPerPage);
+    let visibleItemCount = 0;
+    const groupRows = visibleGroups.map((group) => {
+        const firstVisibleItemIndex = visibleItemCount;
+        visibleItemCount += group.items.length;
+
+        return (
+            <CollectionGroupRow
+                key={group.presentationNodeHash}
+                group={group}
+                firstVisibleItemIndex={firstVisibleItemIndex}
+                tileSizePx={tileSizePx}
+            />
+        );
+    });
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [groups, groupsPerPage]);
+
+    useEffect(() => {
+        setCurrentPage((pageNumber) => Math.min(pageNumber, totalPages));
+    }, [totalPages]);
+
+    return (
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    {groups.length} {groups.length === 1 ? "set" : "sets"}
+                </div>
+                <CollectionPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                />
+            </div>
+
+            <div
+                ref={containerRef}
+                className="grid"
+                style={{
+                    columnGap: ARMOR_SET_GROUP_GRID_COLUMN_GAP_PX,
+                    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                    rowGap: ARMOR_SET_GROUP_GRID_ROW_GAP_PX,
+                }}
+            >
+                {groupRows}
+            </div>
+        </div>
+    );
+}
+
+function CollectionPagination({
+    currentPage,
+    totalPages,
+    onPageChange,
+}: {
+    currentPage: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+}) {
+    const pageNumbers = getVisiblePageNumbers(currentPage, totalPages);
+    const previousPage = Math.max(1, currentPage - 1);
+    const nextPage = Math.min(totalPages, currentPage + 1);
+
+    if (totalPages <= 1) {
+        return (
+            <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                Page 1 of 1
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-1">
+            <button
+                type="button"
+                onClick={() => onPageChange(previousPage)}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center border border-white/10 text-slate-400 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="Previous page"
+            >
+                <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            {pageNumbers[0] > 1 && (
+                <>
+                    <PageNumberButton pageNumber={1} currentPage={currentPage} onPageChange={onPageChange} />
+                    <span className="px-1 text-xs text-slate-600">...</span>
+                </>
+            )}
+
+            {pageNumbers.map((pageNumber) => (
+                <PageNumberButton
+                    key={pageNumber}
+                    pageNumber={pageNumber}
+                    currentPage={currentPage}
+                    onPageChange={onPageChange}
+                />
+            ))}
+
+            {pageNumbers[pageNumbers.length - 1] < totalPages && (
+                <>
+                    <span className="px-1 text-xs text-slate-600">...</span>
+                    <PageNumberButton
+                        pageNumber={totalPages}
+                        currentPage={currentPage}
+                        onPageChange={onPageChange}
+                    />
+                </>
+            )}
+
+            <button
+                type="button"
+                onClick={() => onPageChange(nextPage)}
+                disabled={currentPage === totalPages}
+                className="flex h-8 w-8 items-center justify-center border border-white/10 text-slate-400 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="Next page"
+            >
+                <ChevronRight className="h-4 w-4" />
+            </button>
+        </div>
+    );
+}
+
+function PageNumberButton({
+    pageNumber,
+    currentPage,
+    onPageChange,
+}: {
+    pageNumber: number;
+    currentPage: number;
+    onPageChange: (page: number) => void;
+}) {
+    const isSelected = pageNumber === currentPage;
+
+    return (
+        <button
+            type="button"
+            onClick={() => onPageChange(pageNumber)}
+            aria-current={isSelected ? "page" : undefined}
+            className={cn(
+                "h-8 min-w-8 border px-2 text-xs font-bold transition-colors",
+                isSelected
+                    ? "border-destiny-gold bg-destiny-gold text-slate-950"
+                    : "border-white/10 text-slate-400 hover:border-white/40 hover:text-white"
+            )}
+        >
+            {pageNumber}
+        </button>
+    );
+}
+
+function CollectionGroupRow({
+    group,
+    firstVisibleItemIndex,
+    tileSizePx,
+}: {
+    group: CollectionGroupModel;
+    firstVisibleItemIndex: number;
+    tileSizePx: number;
+}) {
+    const rowHeightPx = getArmorSetGroupRowHeight(tileSizePx);
+
+    return (
+        <section
+            className="grid min-w-0 items-center gap-2 overflow-hidden border-b border-white/5"
+            style={{
+                gridTemplateColumns: "minmax(112px, 1fr) max-content",
+                minHeight: rowHeightPx,
+            }}
+        >
+            <h3 className="flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-destiny-gold">
+                {group.icon && (
+                    <Image src={getBungieImage(group.icon)} width={16} height={16} alt="" className="shrink-0 opacity-70" />
+                )}
+                <span className="truncate">{group.name}</span>
+            </h3>
+            <CollectionTileWrap
+                items={group.items}
+                firstVisibleItemIndex={firstVisibleItemIndex}
+                tileSizePx={tileSizePx}
+            />
+        </section>
+    );
+}
+
+function CollectionTileWrap({
+    items,
+    firstVisibleItemIndex,
+    tileSizePx,
+}: {
+    items: CollectionTileModel[];
+    firstVisibleItemIndex: number;
+    tileSizePx: number;
+}) {
+    return (
+        <div className="flex shrink-0 gap-1">
+            {items.map((item, index) => {
+                const visibleItemIndex = firstVisibleItemIndex + index;
+
+                return (
+                    <div
+                        key={item.collectibleHash}
+                        style={{
+                            width: tileSizePx,
+                            height: tileSizePx + 8,
+                        }}
+                    >
+                        <InteractiveCollectionTile
+                            item={item}
+                            fetchPriority={visibleItemIndex < 18 ? "auto" : "low"}
+                            tileSizePx={tileSizePx}
+                        />
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -501,12 +955,16 @@ function CollectionGroup({
     showAll,
     collectibleTable,
     itemTable,
+    tileSizePx,
+    iconDecodeWidth,
 }: {
     hash: number;
     profile: any;
     showAll: boolean;
     collectibleTable: Record<string, any> | undefined;
     itemTable: Record<string, any> | undefined;
+    tileSizePx: number;
+    iconDecodeWidth: number;
 }) {
     const { node } = usePresentationNode(hash);
     const items = useMemo(
@@ -515,9 +973,10 @@ function CollectionGroup({
             collectibleTable,
             itemTable,
             profile,
-            showAll
+            showAll,
+            iconDecodeWidth
         ),
-        [node, collectibleTable, itemTable, profile, showAll]
+        [node, collectibleTable, itemTable, profile, showAll, iconDecodeWidth]
     );
     
     if (!node) return null;
@@ -527,7 +986,7 @@ function CollectionGroup({
     if (items.length === 0) return null;
 
     const estimatedItemsPerRow = 8;
-    const tileRowHeight = COLLECTION_TILE_SIZE_PX + 16;
+    const tileRowHeight = tileSizePx + 16;
     const rowCount = Math.ceil(items.length / estimatedItemsPerRow);
     const groupHeight = Math.min(460, rowCount * tileRowHeight);
 
@@ -539,7 +998,12 @@ function CollectionGroup({
                 )}
                 {node.displayProperties?.name}
             </h3>
-            <CollectionTileGrid items={items} height={groupHeight} addBottomPadding={false} />
+            <CollectionTileGrid
+                items={items}
+                height={groupHeight}
+                addBottomPadding={false}
+                tileSizePx={tileSizePx}
+            />
         </div>
     );
 }
@@ -548,10 +1012,12 @@ function CollectionTileGrid({
     items,
     height,
     addBottomPadding = true,
+    tileSizePx,
 }: {
     items: CollectionTileModel[];
     height: number | string;
     addBottomPadding?: boolean;
+    tileSizePx: number;
 }) {
     const components: GridComponents<CollectionTileModel> = useMemo(() => {
         const List = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
@@ -574,15 +1040,15 @@ function CollectionTileGrid({
                 {...props}
                 style={{
                     ...props.style,
-                    width: COLLECTION_TILE_SIZE_PX,
-                    height: COLLECTION_TILE_SIZE_PX + 8,
+                    width: tileSizePx,
+                    height: tileSizePx + 8,
                 }}
             />
         ));
         Item.displayName = 'CollectionGridItem';
 
         return { List, Item };
-    }, []);
+    }, [tileSizePx]);
 
     if (items.length === 0) {
         return <div className="text-slate-500 italic p-4">No items found.</div>;
@@ -598,6 +1064,7 @@ function CollectionTileGrid({
                 <InteractiveCollectionTile
                     item={item}
                     fetchPriority={index < 18 ? "auto" : "low"}
+                    tileSizePx={tileSizePx}
                 />
             )}
             className={cn("custom-scrollbar", addBottomPadding && "pb-20")}
@@ -608,9 +1075,11 @@ function CollectionTileGrid({
 function InteractiveCollectionTile({
     item,
     fetchPriority,
+    tileSizePx,
 }: {
     item: CollectionTileModel;
     fetchPriority: "auto" | "low";
+    tileSizePx: number;
 }) {
     const [tooltipPosition, setTooltipPosition] = useState<{
         x: number;
@@ -647,8 +1116,8 @@ function InteractiveCollectionTile({
         >
             <ItemTile
                 item={item}
-                sizePx={COLLECTION_TILE_SIZE_PX}
-                className="w-20"
+                sizePx={tileSizePx}
+                className={getIconWidthClassName(tileSizePx)}
                 fetchPriority={fetchPriority}
                 title=""
             >

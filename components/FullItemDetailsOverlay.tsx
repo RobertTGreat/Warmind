@@ -22,6 +22,7 @@ const WeaponDetailsPageClient = dynamic(
 
 export function FullItemDetailsOverlay() {
   const fullDetailsItem = useUIStore((state) => state.fullDetailsItem);
+  const setDetailsItem = useUIStore((state) => state.setDetailsItem);
   const setFullDetailsItem = useUIStore((state) => state.setFullDetailsItem);
 
   useEffect(() => {
@@ -47,6 +48,14 @@ export function FullItemDetailsOverlay() {
   if (!fullDetailsItem) return null;
 
   const closeOverlay = () => setFullDetailsItem(null);
+  const showLessDetails = () => {
+    setDetailsItem({
+      itemHash: fullDetailsItem.itemHash,
+      itemInstanceId: fullDetailsItem.itemInstanceId,
+      ownerId: fullDetailsItem.ownerId,
+    });
+    setFullDetailsItem(null);
+  };
   const selectOwnedCopy = (copy: any) => {
     setFullDetailsItem({
       itemHash: copy.itemHash ?? fullDetailsItem.itemHash,
@@ -61,19 +70,29 @@ export function FullItemDetailsOverlay() {
       onClick={closeOverlay}
     >
       <div
-        className="relative h-full w-full overflow-hidden rounded-sm border border-white/15 bg-[#07090d] shadow-2xl shadow-black"
+        className="relative h-full w-full overflow-hidden rounded-sm border border-white/15 bg-[#121212] shadow-2xl shadow-black"
         onClick={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={closeOverlay}
-          className="absolute right-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-slate-300 transition-colors hover:border-white/30 hover:text-white"
-          aria-label="Close full item details"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="absolute right-4 top-4 z-50 flex max-w-[calc(100%-2rem)] items-center gap-2 md:right-6 md:top-6 md:gap-4">
+          <button
+            type="button"
+            onClick={showLessDetails}
+            className="whitespace-nowrap border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-bold uppercase text-slate-300 transition-colors hover:border-destiny-gold/50 hover:text-destiny-gold"
+          >
+            Less Details
+          </button>
 
-        <div className="h-full overflow-y-auto custom-scrollbar">
+          <button
+            type="button"
+            onClick={closeOverlay}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-slate-300 transition-colors hover:border-white/30 hover:text-white"
+            aria-label="Close full item details"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="h-full overflow-hidden">
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-sm text-slate-400">

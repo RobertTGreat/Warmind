@@ -3,7 +3,7 @@ import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useWishListStore } from './wishlistStore';
-import { DEFAULT_PAGE_FALLBACK, type DefaultPage } from '@/lib/defaultPages';
+import { DEFAULT_PAGE_FALLBACK, normalizeDefaultPage, type DefaultPage } from '@/lib/defaultPages';
 
 // ===== Type Definitions =====
 
@@ -313,7 +313,7 @@ export const useSettingsStore = create<SettingsStore>()(
                 get().syncToCloud();
             },
             setDefaultPage: (defaultPage) => {
-                set({ defaultPage, hasChosenDefaultPage: true });
+                set({ defaultPage: normalizeDefaultPage(defaultPage), hasChosenDefaultPage: true });
                 get().syncToCloud();
             },
             setCompactMode: (compactMode) => {
@@ -490,7 +490,7 @@ export const useSettingsStore = create<SettingsStore>()(
                 return {
                     theme: state.theme,
                     accentColor: state.accentColor,
-                    defaultPage: state.defaultPage,
+                    defaultPage: normalizeDefaultPage(state.defaultPage),
                     compactMode: state.compactMode,
                     reducedMotion: state.reducedMotion,
                     iconSize: state.iconSize,
@@ -521,6 +521,9 @@ export const useSettingsStore = create<SettingsStore>()(
                 set((state) => ({
                     ...state,
                     ...settings,
+                    defaultPage: settings.defaultPage
+                        ? normalizeDefaultPage(settings.defaultPage)
+                        : state.defaultPage,
                     hasChosenDefaultPage: settings.defaultPage
                         ? true
                         : state.hasChosenDefaultPage,
