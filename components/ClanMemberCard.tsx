@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Star } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ScrollingText } from "@/components/ScrollingText";
+import { getClanMemberTags } from "@/lib/clanMemberTags";
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -15,23 +16,13 @@ export interface MemberStats {
     emblemPath: string;
 }
 
-const SPECIAL_TAGS: Record<string, { label: string, className: string }[]> = {
-    "RobertTheGreat#437": [
-        { label: "Murder Cave", className: "bg-red-900/40 text-red-200 border-red-500/50" },
-        { label: "Dev", className: "bg-destiny-gold/20 text-destiny-gold border-destiny-gold/50" }],
-    "Cavez#4930": [
-        { label: "Murder Cave", className: "bg-red-900/40 text-red-200 border-red-500/50" },
-        { label: "Saltagreppo Glazer", className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/50" }
-    ]
-};
-
 export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: any, isOnline: boolean, preloadedStats?: MemberStats }) {
     const user = member.destinyUserInfo;
     const favoriteMembers = useSettingsStore((state) => state.favoriteMembers);
     const toggleFavoriteMember = useSettingsStore((state) => state.toggleFavoriteMember);
     
     const fullBungieName = `${user.bungieGlobalDisplayName}#${user.bungieGlobalDisplayNameCode}`;
-    const specialTags = SPECIAL_TAGS[fullBungieName];
+    const specialTags = getClanMemberTags(fullBungieName);
 
     const isFavorite = favoriteMembers.includes(user.membershipId);
     
@@ -114,7 +105,7 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
                         )}
                     </div>
                     
-                    {specialTags && (
+                    {specialTags.length > 0 && (
                          <div className="flex flex-wrap gap-1">
                              {specialTags.map((tag) => (
                                 <span key={tag.label} className={cn("text-[10px] px-1.5 py-0.5 border font-bold tracking-wide uppercase whitespace-nowrap", tag.className)}>

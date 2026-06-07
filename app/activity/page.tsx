@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import ActivityPageClient from './ActivityPageClient';
+import { getClanMemberTagsDescription } from '@/lib/clanMemberTags';
 
 interface ActivityPageProps {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -12,8 +13,9 @@ export async function generateMetadata({ searchParams }: ActivityPageProps): Pro
     const params = await searchParams;
     const sharedUser = getSharedUserFromSearchParams(params);
     const title = sharedUser ? `${sharedUser}'s Activity Report` : DEFAULT_TITLE;
+    const clanMemberTagsDescription = getClanMemberTagsDescription(sharedUser);
     const description = sharedUser
-        ? `Report Info for ${sharedUser}: clears, special runs, total time, kills, assists, deaths, and activity history.`
+        ? clanMemberTagsDescription ?? `Report Info for ${sharedUser}: clears, special runs, total time, kills, assists, deaths, and activity history.`
         : DEFAULT_DESCRIPTION;
     const url = sharedUser
         ? `/activity?user=${encodeURIComponent(sharedUser)}`

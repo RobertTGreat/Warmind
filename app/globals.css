@@ -322,6 +322,48 @@ body {
   box-shadow: 0 0 16px rgba(255, 255, 255, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
+.activity-clan-member-tag {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(
+      color-mix(in srgb, currentColor 12%, rgba(2, 6, 23, 0.92)),
+      color-mix(in srgb, currentColor 12%, rgba(2, 6, 23, 0.92))
+    ) padding-box,
+    linear-gradient(
+      var(--activity-clan-tag-angle),
+      color-mix(in srgb, currentColor 18%, transparent) 0%,
+      currentColor 18%,
+      rgba(255, 255, 255, 0.95) 26%,
+      currentColor 34%,
+      color-mix(in srgb, currentColor 18%, transparent) 52%,
+      color-mix(in srgb, currentColor 18%, transparent) 100%
+    ) border-box !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, currentColor 42%, transparent),
+    0 0 16px color-mix(in srgb, currentColor 24%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: activity-clan-tag-border-angle 2.8s linear infinite;
+}
+
+@property --activity-clan-tag-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes activity-clan-tag-border-angle {
+  from {
+    --activity-clan-tag-angle: 0deg;
+  }
+  to {
+    --activity-clan-tag-angle: 360deg;
+  }
+}
+
 .activity-card-flex-border {
   --activity-card-flex-surface: rgba(21, 25, 34, 0.92);
   --activity-card-flex-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(227, 206, 98, 0.85));

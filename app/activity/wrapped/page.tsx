@@ -17,7 +17,7 @@ const LIFETIME_EXPANSION: Expansion = {
   shortName: 'All Time',
   releaseDate: '2017-09-06', // D2 launch
   endDate: '2099-12-31',
-  image: '/og-image.jpg',
+  image: '/destiny-og.webp',
   color: '#e3ce62',
   tagline: 'Your complete Destiny 2 journey',
 };
@@ -127,32 +127,22 @@ export default function WrappedPage() {
             onClick={() => openWrappedView(LIFETIME_EXPANSION)}
             className="relative overflow-hidden border border-white/10 bg-slate-900 aspect-[16/9] text-left group transition-all hover:border-destiny-gold/30"
           >
-            {/* Destiny Tricorn Pattern Background */}
-            <div className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity">
-              <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice">
-                <defs>
-                  <linearGradient id="tricornGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#e3ce62" />
-                    <stop offset="100%" stopColor="#ffd700" />
-                  </linearGradient>
-                </defs>
-                {/* Simplified Tricorn shape */}
-                <path 
-                  d="M50 5 L65 40 L95 50 L65 60 L50 95 L35 60 L5 50 L35 40 Z" 
-                  fill="url(#tricornGrad)" 
-                  transform="translate(25, 10) scale(0.5)"
-                />
-              </svg>
-            </div>
+            {/* Background image */}
+            <div
+              className="absolute inset-0 bg-cover bg-center opacity-45 transition-opacity group-hover:opacity-60"
+              style={{
+                backgroundImage: `url(${LIFETIME_EXPANSION.image})`,
+              }}
+            />
             
             {/* Animated gradient background */}
             <div 
-              className="absolute inset-0 opacity-40 group-hover:opacity-50 transition-opacity"
+              className="absolute inset-0 opacity-70 group-hover:opacity-75 transition-opacity"
               style={{
                 background: `
                   radial-gradient(ellipse at 30% 20%, #e3ce6230 0%, transparent 50%),
                   radial-gradient(ellipse at 70% 80%, #ffd70020 0%, transparent 50%),
-                  linear-gradient(135deg, #0f1115 0%, #1a1d24 50%, #0f1115 100%)
+                  linear-gradient(135deg, rgba(15,17,21,0.55) 0%, rgba(26,29,36,0.72) 50%, rgba(15,17,21,0.92) 100%)
                 `,
               }}
             />

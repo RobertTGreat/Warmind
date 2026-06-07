@@ -46,11 +46,17 @@ export interface SearchClause {
 export interface SearchFilter {
   type:
     | "is"
+    | "has"
     | "power"
+    | "weaponlevel"
+    | "kills"
     | "slot"
     | "tier"
     | "masterwork"
     | "perk"
+    | "exactperk"
+    | "mod"
+    | "catalyst"
     | "set"
     | "stat"
     | "basestat"
@@ -113,6 +119,14 @@ const ITEM_CATEGORY_FILTERS: Record<string, number[]> = {
   engrams: [ItemCategoryHashes.Engrams],
   shader: [ItemCategoryHashes.Shaders],
   shaders: [ItemCategoryHashes.Shaders],
+  emote: [ItemCategoryHashes.Emotes],
+  emotes: [ItemCategoryHashes.Emotes],
+  finisher: [ItemCategoryHashes.Finishers],
+  finishers: [ItemCategoryHashes.Finishers],
+  artifact: [ItemCategoryHashes.SeasonalArtifacts],
+  artifacts: [ItemCategoryHashes.SeasonalArtifacts],
+  subclass: [ItemCategoryHashes.Subclasses],
+  subclasses: [ItemCategoryHashes.Subclasses],
   mod: [
     ItemCategoryHashes.Mods_Mod,
     ItemCategoryHashes.WeaponMods,
@@ -176,6 +190,13 @@ const WEAPON_TYPE_FILTERS: Record<string, number> = {
   sword: ItemCategoryHashes.Sword,
   machinegun: ItemCategoryHashes.MachineGun,
   glaive: ItemCategoryHashes.Glaives,
+  glaives: ItemCategoryHashes.Glaives,
+};
+
+const CLASS_TYPE_BY_KEYWORD: Record<string, number> = {
+  titan: 0,
+  hunter: 1,
+  warlock: 2,
 };
 
 const STAT_HASH_BY_KEYWORD: Record<string, number> = {
@@ -217,11 +238,15 @@ const TEXT_PROPERTY_FIELDS = new Set([
   "source",
   "season",
   "foundry",
+  "year",
   "tag",
   "note",
   "memento",
   "breaker",
   "tunedstat",
+  "archetype",
+  "frame",
+  "rpm",
 ]);
 
 export function parseSearchQuery(query: string): ParsedSearch {
@@ -286,10 +311,22 @@ function tokenizeSearchQuery(query: string): string[] {
 function parseSearchClause(parts: string[]): SearchClause {
   const terms: string[] = [];
   const filters: SearchFilter[] = [];
+  let negateNext = false;
 
   for (const part of parts) {
     let token = cleanSearchToken(part);
     let negate = false;
+    let notColonAlias = false;
+    const lowerToken = token.toLowerCase();
+
+    if (lowerToken === "and") {
+      continue;
+    }
+
+    if (lowerToken === "not") {
+      negateNext = true;
+      continue;
+    }
 
     if (token.startsWith("-")) {
       negate = true;
@@ -298,10 +335,18 @@ function parseSearchClause(parts: string[]): SearchClause {
 
     if (token.toLowerCase().startsWith("not:")) {
       negate = true;
+      notColonAlias = true;
       token = token.substring(4);
     }
 
-    const filter = parseSearchFilter(token, negate);
+    if (negateNext) {
+      negate = true;
+      negateNext = false;
+    }
+
+    const filter =
+      parseSearchFilter(token, negate) ??
+      (notColonAlias && token ? { type: "is", value: token.toLowerCase(), negate } : null);
 
     if (filter) {
       filters.push(filter);
@@ -329,6 +374,8 @@ function cleanSearchToken(token: string): string {
 function parseSearchFilter(token: string, negate: boolean): SearchFilter | null {
   const lower = token.toLowerCase();
   const powerMatch = lower.match(/^(?:power|light):?([><]=?|=)(.+)$/);
+  const weaponLevelMatch = lower.match(/^(?:weaponlevel|level):?([><]=?|=)(.+)$/);
+  const killsMatch = lower.match(/^(?:kills|killtracker):?([><]=?|=)(.+)$/);
   const numberFilter = lower.match(/^(tier|masterwork)(>=|<=|>|<|=|:)(.+)$/);
 
   if (powerMatch) {
@@ -342,6 +389,40 @@ function parseSearchFilter(token: string, negate: boolean): SearchFilter | null 
 
   if (lower.startsWith("is:")) {
     return { type: "is", value: lower.substring(3), negate };
+  }
+
+  if (lower === "powerfloor" || lower === "softcap" || lower === "powerfulcap" || lower === "pinnaclecap") {
+    return { type: "is", value: lower, negate };
+  }
+
+  if (lower.startsWith("has:")) {
+    return {
+      type: "has",
+      value: cleanSearchToken(token.split(":").slice(1).join(":")),
+      negate,
+    };
+  }
+
+  if (!lower.includes(":") && (ITEM_CATEGORY_FILTERS[lower] || SLOT_BUCKETS[lower])) {
+    return { type: "is", value: lower, negate };
+  }
+
+  if (weaponLevelMatch) {
+    return {
+      type: "weaponlevel",
+      op: weaponLevelMatch[1] as SearchFilter["op"],
+      value: weaponLevelMatch[2],
+      negate,
+    };
+  }
+
+  if (killsMatch) {
+    return {
+      type: "kills",
+      op: killsMatch[1] as SearchFilter["op"],
+      value: killsMatch[2],
+      negate,
+    };
   }
 
   if (numberFilter) {
@@ -365,12 +446,47 @@ function parseSearchFilter(token: string, negate: boolean): SearchFilter | null 
 
   if (
     lower.startsWith("perk:") ||
-    lower.startsWith("perkname:") ||
-    lower.startsWith("exactperk:")
+    lower.startsWith("perkname:")
   ) {
     return {
       type: "perk",
       value: cleanSearchToken(token.split(":").slice(1).join(":")),
+      negate,
+    };
+  }
+
+  if (lower.startsWith("exactperk:")) {
+    return {
+      type: "exactperk",
+      value: cleanSearchToken(token.split(":").slice(1).join(":")),
+      negate,
+    };
+  }
+
+  if (lower.startsWith("mod:")) {
+    return {
+      type: "mod",
+      value: cleanSearchToken(token.split(":").slice(1).join(":")),
+      negate,
+    };
+  }
+
+  if (lower.startsWith("catalyst:")) {
+    return {
+      type: "catalyst",
+      value: cleanSearchToken(token.split(":").slice(1).join(":")),
+      negate,
+    };
+  }
+
+  if (lower.startsWith("deepsight:")) {
+    return { type: "is", value: "deepsight", negate };
+  }
+
+  if (lower.startsWith("memento:")) {
+    return {
+      type: "has",
+      value: "memento",
       negate,
     };
   }
@@ -479,14 +595,26 @@ function checkSearchFilter(
         allInventory,
         normalizedItem
       );
+    case "has":
+      return checkHasFilter(filter.value, def, normalizedItem);
     case "power":
       return checkPowerFilter(filter.value, filter.op, instance);
+    case "weaponlevel":
+      return checkWeaponLevelFilter(filter.value, filter.op, instance);
+    case "kills":
+      return checkKillsFilter(filter.value, filter.op, item, instance);
     case "tier":
       return checkTierFilter(filter.value, filter.op, item, instance, normalizedItem);
     case "masterwork":
       return checkMasterworkFilter(filter.value, filter.op, normalizedItem);
     case "perk":
       return Boolean(normalizedItem && dimItemFilters.perk(filter.value)(normalizedItem));
+    case "exactperk":
+      return checkExactPerkFilter(filter.value, normalizedItem);
+    case "mod":
+      return checkSocketTextFilter(filter.value, normalizedItem, "mod");
+    case "catalyst":
+      return checkSocketTextFilter(filter.value, normalizedItem, "catalyst");
     case "set":
       return checkSetFilter(filter.value, normalizedItem);
     case "slot":
@@ -500,13 +628,35 @@ function checkSearchFilter(
 }
 
 function checkTextMatch(text: string, def: any, normalizedItem?: DimItemMini): boolean {
-  const name = String(def.displayProperties?.name ?? "").toLowerCase();
-  const type = String(def.itemTypeDisplayName ?? "").toLowerCase();
-  const setName = String(
-    normalizedItem?.setBonus?.displayProperties?.name ?? ""
-  ).toLowerCase();
+  const terms = text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
 
-  return name.includes(text) || type.includes(text) || setName.includes(text);
+  if (terms.length === 0) {
+    return true;
+  }
+
+  const searchableText = [
+    def.displayProperties?.name,
+    def.displayProperties?.description,
+    def.itemTypeDisplayName,
+    def.itemTypeAndTierDisplayName,
+    def.inventory?.tierTypeName,
+    normalizedItem?.setBonus?.displayProperties?.name,
+    normalizedItem?.setBonus?.displayProperties?.description,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return terms.every((term) => {
+    return (
+      searchableText.includes(term) ||
+      Boolean(normalizedItem && dimItemFilters.perk(term)(normalizedItem))
+    );
+  });
 }
 
 function compareNumber(value: number, target: number, op: SearchFilter["op"]): boolean {
@@ -601,6 +751,10 @@ function checkIsFilter(
     return checkItemCategoryHashes(def, [WEAPON_TYPE_FILTERS[value]]);
   }
 
+  if (CLASS_TYPE_BY_KEYWORD[value] !== undefined) {
+    return checkClassFilter(value, def);
+  }
+
   if (normalizedItem) {
     switch (value) {
       case "exotic":
@@ -625,6 +779,8 @@ function checkIsFilter(
         return Boolean(normalizedItem.crafted);
       case "patternunlocked":
         return Boolean(def?.crafting?.recipeItemHash || def?.crafting?.outputItemHash);
+      case "craftable":
+        return Boolean(def?.crafting?.outputItemHash || def?.crafting?.recipeItemHash);
       case "deepsight":
         return Boolean(getItemState(item, instance) & ITEM_STATE_DEEPSIGHT);
       case "masterwork":
@@ -641,6 +797,10 @@ function checkIsFilter(
       case "statlower":
       case "infusionfodder":
         return false;
+      case "haspower":
+        return Number.isFinite(Number(instance?.primaryStat?.value));
+      case "infusable":
+        return Boolean(def?.equippingBlock?.uniqueLabelHash || def?.inventory?.tierType >= 5);
       case "equipped":
         return Boolean(item.__isEquipped);
       case "artifice":
@@ -686,6 +846,8 @@ function checkIsFilter(
       return Boolean(getItemState(item, instance) & ITEM_STATE_CRAFTED);
     case "patternunlocked":
       return Boolean(def?.crafting?.recipeItemHash || def?.crafting?.outputItemHash);
+    case "craftable":
+      return Boolean(def?.crafting?.outputItemHash || def?.crafting?.recipeItemHash);
     case "deepsight":
       return Boolean(getItemState(item, instance) & ITEM_STATE_DEEPSIGHT);
     case "masterwork":
@@ -694,6 +856,10 @@ function checkIsFilter(
       return Boolean(getItemState(item, instance) & ITEM_STATE_LOCKED);
     case "new":
       return Boolean(getItemState(item, instance) & ITEM_STATE_NEW);
+    case "haspower":
+      return Number.isFinite(Number(instance?.primaryStat?.value));
+    case "infusable":
+      return Boolean(def?.equippingBlock?.uniqueLabelHash || def?.inventory?.tierType >= 5);
     case "equipped":
       return Boolean(item.__isEquipped);
     case "dupe":
@@ -725,6 +891,47 @@ function checkPowerFilter(value: string, op: SearchFilter["op"], instance: any):
   }
 
   return compareNumber(itemPower, targetPower, op);
+}
+
+function checkWeaponLevelFilter(
+  value: string,
+  op: SearchFilter["op"],
+  instance: any,
+): boolean {
+  const weaponLevel = Number(
+    instance?.crafting?.level ??
+      instance?.craftedLevel ??
+      instance?.weaponLevel ??
+      instance?.level,
+  );
+  const targetLevel = Number(value);
+
+  if (!Number.isFinite(weaponLevel) || !Number.isFinite(targetLevel)) {
+    return false;
+  }
+
+  return compareNumber(weaponLevel, targetLevel, op);
+}
+
+function checkKillsFilter(
+  value: string,
+  op: SearchFilter["op"],
+  item: any,
+  instance: any,
+): boolean {
+  const killCount = Number(
+    instance?.killTrackerValue ??
+      instance?.kills ??
+      item?.killTrackerValue ??
+      item?.kills,
+  );
+  const targetKills = Number(value);
+
+  if (!Number.isFinite(killCount) || !Number.isFinite(targetKills)) {
+    return false;
+  }
+
+  return compareNumber(killCount, targetKills, op);
 }
 
 function checkElementFilter(value: string, def: any, instance: any): boolean {
@@ -767,6 +974,22 @@ function checkItemCategoryHashes(def: any, categoryHashes: number[]): boolean {
   return categoryHashes.some((categoryHash) => itemCategoryHashes.includes(categoryHash));
 }
 
+function checkClassFilter(value: string, def: any): boolean {
+  const classType = CLASS_TYPE_BY_KEYWORD[value];
+  if (classType === undefined) return false;
+
+  return (
+    def.classType === classType ||
+    checkItemCategoryHashes(def, [
+      value === "titan"
+        ? ItemCategoryHashes.Titan
+        : value === "hunter"
+          ? ItemCategoryHashes.Hunter
+          : ItemCategoryHashes.Warlock,
+    ])
+  );
+}
+
 function checkStatFilter(filter: SearchFilter, normalizedItem?: DimItemMini): boolean {
   if (!normalizedItem?.stats?.length) {
     return false;
@@ -794,6 +1017,23 @@ function checkStatFilter(filter: SearchFilter, normalizedItem?: DimItemMini): bo
       (first, second) => second - first
     );
     itemValue = Math.min(highest, secondHighest);
+  } else if (field.includes("+") || field.includes("&")) {
+    const separator = field.includes("+") ? "+" : "&";
+    const fields = field.split(separator).map((part) => part.trim()).filter(Boolean);
+    const values = fields.flatMap((fieldName) => {
+      const statHash = STAT_HASH_BY_KEYWORD[fieldName] ?? Number(fieldName);
+      const statValue = normalizedItem.stats?.find((stat) => stat.statHash === statHash)?.[
+        filter.type === "basestat" ? "base" : "value"
+      ];
+      return Number.isFinite(statValue) ? [Number(statValue)] : [];
+    });
+
+    if (values.length !== fields.length) {
+      return false;
+    }
+
+    const total = values.reduce((sum, value) => sum + value, 0);
+    itemValue = separator === "&" ? total / values.length : total;
   } else {
     const statHash = STAT_HASH_BY_KEYWORD[field] ?? Number(field);
     itemValue = normalizedItem.stats.find((stat) => stat.statHash === statHash)?.[
@@ -806,6 +1046,84 @@ function checkStatFilter(filter: SearchFilter, normalizedItem?: DimItemMini): bo
   }
 
   return compareNumber(Number(itemValue), targetValue, filter.op);
+}
+
+function plugTextMatches(plugDef: any, query: string, exactName: boolean): boolean {
+  const normalizedQuery = query.toLowerCase();
+  const name = String(plugDef?.displayProperties?.name ?? "").toLowerCase();
+  const description = String(
+    plugDef?.displayProperties?.description ?? "",
+  ).toLowerCase();
+
+  return exactName
+    ? name === normalizedQuery
+    : name.includes(normalizedQuery) || description.includes(normalizedQuery);
+}
+
+function checkExactPerkFilter(value: string, normalizedItem?: DimItemMini): boolean {
+  if (!normalizedItem?.sockets) return false;
+
+  return normalizedItem.sockets.allSockets.some((socket) => {
+    if (!socket.isPerk) return false;
+    return Boolean(socket.plugged && plugTextMatches(socket.plugged.plugDef, value, true));
+  });
+}
+
+function checkSocketTextFilter(
+  value: string,
+  normalizedItem: DimItemMini | undefined,
+  socketType: "mod" | "catalyst",
+): boolean {
+  if (!normalizedItem?.sockets) return false;
+
+  const normalizedValue = value.toLowerCase();
+  return normalizedItem.sockets.allSockets.some((socket) => {
+    const socketMatchesType =
+      socketType === "mod"
+        ? socket.isMod
+        : socket.plugOptions.some((plug) =>
+            String(plug.plugDef?.plug?.plugCategoryIdentifier ?? "")
+              .toLowerCase()
+              .includes("catalyst"),
+          );
+
+    if (!socketMatchesType) return false;
+
+    return socket.plugOptions.some((plug) => {
+      return plugTextMatches(plug.plugDef, normalizedValue, false);
+    });
+  });
+}
+
+function checkHasFilter(
+  value: string,
+  def: any,
+  normalizedItem?: DimItemMini,
+): boolean {
+  const normalizedValue = value.toLowerCase();
+
+  switch (normalizedValue) {
+    case "memento":
+      return Boolean(normalizedItem && hasMemento(normalizedItem));
+    case "origintrait":
+    case "origin":
+      return Boolean(normalizedItem && hasOriginTrait(normalizedItem));
+    case "artifice":
+      return Boolean(normalizedItem && isArtifice(normalizedItem));
+    case "catalyst":
+      return checkSocketTextFilter("", normalizedItem, "catalyst");
+    case "mod":
+      return checkSocketTextFilter("", normalizedItem, "mod");
+    case "power":
+      return Boolean(def.equippable);
+    default:
+      return Boolean(
+        normalizedItem &&
+          (dimItemFilters.perk(value)(normalizedItem) ||
+            checkSocketTextFilter(value, normalizedItem, "mod") ||
+            checkSocketTextFilter(value, normalizedItem, "catalyst")),
+      );
+  }
 }
 
 function checkTextPropertyFilter(

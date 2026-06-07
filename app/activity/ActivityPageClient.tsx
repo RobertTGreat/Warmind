@@ -54,6 +54,10 @@ import {
     sortActivityReports,
 } from '@/lib/activityReport';
 import { getInvalidInstanceIds } from '@/lib/activityCache';
+import {
+    getClanMemberTags,
+    getClanMemberTagsDescription,
+} from '@/lib/clanMemberTags';
 import { cn } from '@/lib/utils';
 
 const ActivityReportCard = dynamic(
@@ -376,6 +380,10 @@ export default function ActivityPage() {
     const isLoadingRelevantHistory = includeAllActivities ? isLoadingFullHistory : isLoadingBaseHistory;
     const showHistoryLoading = isLoadingRelevantHistory && activityHistory.length === 0;
     const activeReportOwner = selectedUser?.displayName || displayName;
+    const activeReportOwnerTags = getClanMemberTags(activeReportOwner);
+    const activityReportDescription =
+        getClanMemberTagsDescription(activeReportOwner) ??
+        'Review raid and dungeon clears, special runs, speed trends, and PGCR details.';
     const currentUserDisplayName = getProfileShareDisplayName(profile, displayName);
 
     const handleSelectUser = (membershipType: number, membershipId: string, userDisplayName: string) => {
@@ -425,7 +433,27 @@ export default function ActivityPage() {
         <div className="min-h-screen pb-24 ml-12 md:ml-0">
             <PageHeader
                 title={activeReportOwner ? `${activeReportOwner}'s Activity Report` : 'Activity Report'}
-                description="Review raid and dungeon clears, special runs, speed trends, and PGCR details."
+                description={
+                    activeReportOwnerTags.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {activeReportOwnerTags.map((tag) => (
+                                <span
+                                    key={tag.label}
+                                    className={cn(
+                                        'activity-clan-member-tag px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-lg',
+                                        tag.className
+                                    )}
+                                >
+                                    <span className="relative z-10">
+                                        {tag.label}
+                                    </span>
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <p>{activityReportDescription}</p>
+                    )
+                }
             >
                 <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:items-end">
                     <div className="flex items-start gap-2">
