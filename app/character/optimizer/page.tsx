@@ -4,7 +4,11 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
+import { ItemTile, type ItemTileModel } from '@/components/ItemTile';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
+import { useClarityDescriptions } from '@/hooks/useClarityDescriptions';
+import { useManifestTable } from '@/hooks/useManifestTable';
+import { useArmorOptimizerWorker } from '@/hooks/useArmorOptimizerWorker';
 import { getBungieImage, moveItem, equipItem } from '@/lib/bungie';
 
 // Lazy load heavy item card component
@@ -23,7 +27,6 @@ import {
     OptimizerSettings,
     ExoticFilter,
     extractArmorPiece,
-    findOptimalArmorSets,
     createEmptyStats,
     getTiers,
     getWastedStats,
@@ -31,6 +34,11 @@ import {
     getExoticsBySlot,
     calculateSubclassBonus,
     getStatTier,
+    getArmorPieceExoticSelection,
+    getExoticSelectionKey,
+    getSelectedExoticFilters,
+    isSelectedExoticArmorPiece,
+    filterArmorPiecesForExoticSelection,
     STAT_NAMES,
     STAT_DESCRIPTIONS,
     STAT_ICON_URLS,
@@ -68,10 +76,15 @@ import {
     Search,
     Save,
     Bookmark,
-    Filter
+    Filter,
+    PackageCheck
 } from 'lucide-react';
 import { loginWithBungie } from '@/lib/bungie';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { ClarityDescription } from '@/lib/clarityDescriptions';
+import { formatArmorSetBonusRequirement } from '@/lib/armorSetBonus';
+import { ITEM_ICON_CSS_PX } from '@/lib/itemIconImage';
+import { LoadoutIconBadge } from '@/components/loadouts/loadoutIcons';
 
 // ===== Fragment Data with Hashes and Icons =====
 const FRAGMENT_ICONS: Record<string, { hash: number; icon: string }> = {
@@ -460,6 +473,57 @@ const CLASS_ICONS: Record<number, string> = {
     2: '/class-warlock.svg',
 };
 
+const EXOTIC_SLOT_FILTERS = ['all', 'helmet', 'gauntlets', 'chest', 'legs', 'classItem'] as const;
+const EXOTIC_SLOT_LABELS: Record<string, string> = {
+    all: 'All',
+    helmet: 'Helmet',
+    gauntlets: 'Gauntlets',
+    chest: 'Chest',
+    legs: 'Legs',
+    classItem: 'Class Item',
+};
+
+type ArmorSetBonusTargetOption = {
+    setHash: number;
+    name: string;
+    icon?: string;
+    bonuses: {
+        requiredSetCount: 2 | 4;
+        name: string;
+        description: string;
+        icon?: string;
+    }[];
+    availablePieceCount: number;
+};
+
+function getNumber(value: unknown): number | undefined {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+function normalizeDisplayText(value: unknown): string {
+    return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function isLegendaryArmorSetPiece(itemDefinition: any): boolean {
+    const bucketHash = getNumber(itemDefinition?.inventory?.bucketTypeHash);
+    const setHash = getNumber(itemDefinition?.equippingBlock?.equipableItemSetHash);
+    const tierType = getNumber(itemDefinition?.inventory?.tierType);
+
+    return Boolean(
+        bucketHash &&
+        setHash &&
+        tierType !== 6 &&
+        [
+            BUCKETS.HELMET,
+            BUCKETS.GAUNTLETS,
+            BUCKETS.CHEST_ARMOR,
+            BUCKETS.LEG_ARMOR,
+            BUCKETS.CLASS_ARMOR,
+        ].includes(bucketHash)
+    );
+}
+
 const STAT_TARGET_VALUES = Array.from(
     { length: MAX_TIER },
     (_, index) => (index + 1) * STAT_PER_TIER
@@ -711,6 +775,7 @@ function ExoticSelector({ exotics, selectedExotic, onSelect, profile }: ExoticSe
         ...exotics.gauntlets,
         ...exotics.chest,
         ...exotics.legs,
+        ...exotics.classItem,
     ];
     
     const selectedItem = selectedExotic.itemHash 
@@ -722,6 +787,7 @@ function ExoticSelector({ exotics, selectedExotic, onSelect, profile }: ExoticSe
         { key: 'gauntlets', name: 'Gauntlets', items: exotics.gauntlets },
         { key: 'chest', name: 'Chest', items: exotics.chest },
         { key: 'legs', name: 'Legs', items: exotics.legs },
+        { key: 'classItem', name: 'Class Item', items: exotics.classItem },
     ];
     
     return (
@@ -866,12 +932,18 @@ function ExoticSelector({ exotics, selectedExotic, onSelect, profile }: ExoticSe
 interface FragmentIconProps {
     name: string;
     isSelected: boolean;
+    clarityDescription?: ClarityDescription;
     onClick: () => void;
 }
 
-function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
+function FragmentIcon({ name, isSelected, clarityDescription, onClick }: FragmentIconProps) {
     const [showTooltip, setShowTooltip] = useState(false);
-    const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+    const [tooltipPos, setTooltipPos] = useState<{
+        x: number;
+        y: number;
+        placement: 'top' | 'bottom';
+        maxHeight: number;
+    }>({ x: 0, y: 0, placement: 'top', maxHeight: 480 });
     const buttonRef = useRef<HTMLButtonElement>(null);
     
     const iconData = FRAGMENT_ICONS[name];
@@ -912,9 +984,37 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
     const handleMouseEnter = () => {
         if (buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
+            const viewportMargin = 12;
+            const tooltipWidth = 288;
+            const tooltipHalfWidth = tooltipWidth / 2;
+            const descriptionHeight = fragmentDescription ? 56 : 0;
+            const clarityHeight = clarityDescription
+                ? 34 + clarityDescription.lines.reduce((height, line) => height + (line ? 28 : 8), 0)
+                : 0;
+            const statHeight = bonuses.length > 0 ? 40 + bonuses.length * 22 : 0;
+            const estimatedTooltipHeight = Math.min(
+                window.innerHeight - viewportMargin * 2,
+                76 + descriptionHeight + clarityHeight + statHeight + 18
+            );
+            const clampedX = Math.min(
+                Math.max(rect.left + rect.width / 2, viewportMargin + tooltipHalfWidth),
+                window.innerWidth - viewportMargin - tooltipHalfWidth
+            );
+            const hasRoomAbove = rect.top >= estimatedTooltipHeight + viewportMargin + 8;
+            const placement = hasRoomAbove ? 'top' : 'bottom';
+            const preferredY = placement === 'top'
+                ? rect.top - 8 - estimatedTooltipHeight
+                : rect.bottom + 8;
+            const clampedY = Math.min(
+                Math.max(preferredY, viewportMargin),
+                window.innerHeight - viewportMargin - estimatedTooltipHeight
+            );
+
             setTooltipPos({
-                x: rect.left + rect.width / 2,
-                y: rect.top - 8
+                x: clampedX,
+                y: clampedY,
+                placement,
+                maxHeight: window.innerHeight - viewportMargin * 2,
             });
         }
         setShowTooltip(true);
@@ -923,11 +1023,12 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
     // Render tooltip via portal to escape overflow:hidden containers
     const tooltipContent = showTooltip && typeof document !== 'undefined' ? createPortal(
         <div 
-            className="fixed w-72 pointer-events-none bg-gray-800/20 border border-white/20 shadow-2xl backdrop-blur-xl"
+            className="fixed w-72 pointer-events-none overflow-y-auto bg-gray-800/20 border border-white/20 shadow-2xl backdrop-blur-xl"
             style={{ 
                 left: tooltipPos.x,
                 top: tooltipPos.y,
-                transform: 'translate(-50%, -100%)',
+                transform: 'translateX(-50%)',
+                maxHeight: tooltipPos.maxHeight,
                 zIndex: 99999
             }}
         >
@@ -956,6 +1057,29 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
                     <p className="text-[11px] text-slate-200 leading-relaxed">{fragmentDescription}</p>
                 </div>
             )}
+
+            {clarityDescription && (
+                <div className="px-3 py-2.5 border-t border-white/10">
+                    <div className="text-[9px] font-semibold uppercase tracking-wide text-cyan-200">
+                        Clarity
+                    </div>
+                    <div className="mt-1.5 space-y-1.5 text-[10px] leading-relaxed text-slate-200">
+                        {clarityDescription.lines.map((line, index) =>
+                            line ? (
+                                <p key={`${clarityDescription.hash}-${index}`} className="break-words">
+                                    {line}
+                                </p>
+                            ) : (
+                                <div
+                                    key={`${clarityDescription.hash}-${index}`}
+                                    className="h-1"
+                                    aria-hidden="true"
+                                />
+                            )
+                        )}
+                    </div>
+                </div>
+            )}
             
             {/* Stats */}
             {bonuses.length > 0 && (
@@ -977,9 +1101,14 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
                 </div>
             )}
             
-            {/* Arrow pointing down */}
+            {/* Arrow pointing at the hovered icon */}
             <div 
-                className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-slate-900/98"
+                className={cn(
+                    "absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent",
+                    tooltipPos.placement === 'top'
+                        ? "top-full border-t-[8px] border-t-slate-900/98"
+                        : "bottom-full border-b-[8px] border-b-slate-900/98"
+                )}
             />
         </div>,
         document.body
@@ -991,7 +1120,7 @@ function FragmentIcon({ name, isSelected, onClick }: FragmentIconProps) {
                 ref={buttonRef}
                 onClick={onClick}
                 className={cn(
-                    "w-11 h-11 relative border-2 transition-all hover:scale-110",
+                    "w-16 h-16 relative border-2 transition-all hover:scale-105",
                     isSelected 
                         ? cn(subclassColors[subclass], "shadow-md scale-105")
                         : "border-transparent opacity-60 hover:opacity-100 hover:border-white/30"
@@ -1137,7 +1266,7 @@ function LoadoutPicker({ classType, onImportFragments, profile }: LoadoutPickerP
                                                 : "hover:bg-white/5 text-slate-500"
                                         )}
                                     >
-                                        <span className="text-lg">{loadout.icon}</span>
+                                        <LoadoutIconBadge icon={loadout.icon} color={loadout.color} className="h-8 w-8" />
                                         <div className="flex-1 min-w-0">
                                             <div className="text-xs font-bold truncate">{loadout.name}</div>
                                             <div className="text-[10px] text-slate-500">
@@ -1166,15 +1295,97 @@ function LoadoutPicker({ classType, onImportFragments, profile }: LoadoutPickerP
 
 // ===== Armor Set Result Card =====
 
+function getOptimizerArmorRarityClassName(piece: ArmorPiece) {
+    if (piece.isMasterworked) {
+        return "border-destiny-gold shadow-[0_0_4px_rgba(227,206,98,0.5)]";
+    }
+
+    if (piece.isExotic || piece.tierType === 6) {
+        return "border-yellow-500";
+    }
+
+    return "border-purple-500";
+}
+
+function OptimizerArmorPieceTile({
+    piece,
+    definition,
+    instanceData,
+    socketsData,
+}: {
+    piece: ArmorPiece;
+    definition?: any;
+    instanceData?: any;
+    socketsData?: any;
+}) {
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+    const tileModel: ItemTileModel = {
+        itemHash: piece.itemHash,
+        itemInstanceId: piece.itemInstanceId,
+        name: piece.name,
+        iconSrc: piece.icon ? getBungieImage(piece.icon) : null,
+        watermarkSrc: definition?.iconWatermark || definition?.iconWatermarkShelved
+            ? getBungieImage(definition.iconWatermark || definition.iconWatermarkShelved)
+            : null,
+        primaryStat: undefined,
+        rarityClassName: getOptimizerArmorRarityClassName(piece),
+        isLocked: instanceData ? (instanceData.state & 1) === 1 : false,
+        tierNumber: instanceData?.gearTier ?? 0,
+    };
+
+    return (
+        <div
+            className="relative min-w-0"
+            onMouseEnter={(event) => {
+                if (!contextMenuPosition) {
+                    setTooltipPosition({ x: event.clientX, y: event.clientY });
+                }
+            }}
+            onMouseLeave={() => setTooltipPosition(null)}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                setTooltipPosition(null);
+                setContextMenuPosition({ x: event.clientX, y: event.clientY });
+            }}
+        >
+            <ItemTile
+                item={tileModel}
+                sizePx={ITEM_ICON_CSS_PX.small}
+                className="w-12"
+                fetchPriority="low"
+            />
+
+            {(tooltipPosition || contextMenuPosition) && (
+                <DestinyItemCard
+                    itemHash={piece.itemHash}
+                    itemInstanceId={piece.itemInstanceId}
+                    instanceData={instanceData}
+                    socketsData={socketsData}
+                    ownerId={undefined}
+                    renderTile={false}
+                    deferDetails
+                    forcedTooltipPosition={tooltipPosition ?? undefined}
+                    forcedContextMenuPosition={contextMenuPosition ?? undefined}
+                    onCloseForcedContextMenu={() => setContextMenuPosition(null)}
+                    size="small"
+                    hidePower
+                />
+            )}
+        </div>
+    );
+}
+
 interface ArmorSetCardProps {
     set: ArmorSet;
     profile: any;
+    definitions: Record<number, any>;
     membershipInfo: any;
     activeCharacterId: string;
     selectedFragments: string[];
 }
 
-function ArmorSetCard({ set, profile, membershipInfo, activeCharacterId, selectedFragments }: ArmorSetCardProps) {
+function ArmorSetCard({ set, profile, definitions, membershipInfo, activeCharacterId, selectedFragments }: ArmorSetCardProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isEquipping, setIsEquipping] = useState(false);
     const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -1275,11 +1486,57 @@ function ArmorSetCard({ set, profile, membershipInfo, activeCharacterId, selecte
     };
     
     return (
-        <div className="border border-white/10 transition-all hover:border-white/20 break-inside-avoid mb-3">
+        <div className="border border-white/10 bg-white/[0.02] transition-all hover:border-white/20 hover:bg-white/[0.04] break-inside-avoid mb-3">
             {/* Header */}
-            <div className="flex items-center gap-3 p-3">
+            <div className="p-3">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+                            <span className="flex items-center gap-1" title="Waste">
+                                <span className="h-2 w-2 bg-red-500" />
+                                <span className="font-bold text-white">{set.wastedStats}</span>
+                            </span>
+                            <span className="flex items-center gap-1" title="Mods">
+                                <span className="h-2 w-2 bg-green-500" />
+                                <span className="font-bold text-white">{set.modsNeeded.length}</span>
+                            </span>
+                            <span>
+                                Artifice <span className="font-bold text-white">{set.artificeSlots}</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={handleOpenSaveDialog}
+                            className="p-2 border border-white/10 text-slate-400 hover:border-destiny-gold/60 hover:text-destiny-gold transition-colors"
+                            title="Save as loadout"
+                            aria-label="Save as loadout"
+                        >
+                            <Bookmark className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={handleEquip}
+                            disabled={isEquipping}
+                            className="p-2 border border-destiny-gold bg-destiny-gold text-black hover:bg-white hover:border-white transition-colors disabled:opacity-50"
+                            title="Equip armor set"
+                            aria-label="Equip armor set"
+                        >
+                            {isEquipping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                        </button>
+                        <button
+                            onClick={() => setIsExpanded(!isExpanded)}
+                            className="p-2 border border-white/10 text-slate-400 hover:border-white/30 hover:text-white transition-colors"
+                            title={isExpanded ? "Hide details" : "Show details"}
+                            aria-label={isExpanded ? "Hide details" : "Show details"}
+                        >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                    </div>
+                </div>
+
                 {/* Armor Pieces */}
-                <div className="flex gap-1 flex-1">
+                <div className="flex gap-1.5">
                     {pieces.map((piece, idx) => {
                         // Merge instance data with stats for proper tooltip display
                         const baseInstance = profile?.itemComponents?.instances?.data?.[piece.itemInstanceId];
@@ -1290,82 +1547,43 @@ function ArmorSetCard({ set, profile, membershipInfo, activeCharacterId, selecte
                         } : undefined;
                         
                         return (
-                            <div key={idx} className="w-16 h-16 relative">
+                            <div key={idx} className="relative h-12 w-12 shrink-0">
                                 {piece.itemInstanceId ? (
-                                    <DestinyItemCard
-                                        itemHash={piece.itemHash}
-                                        itemInstanceId={piece.itemInstanceId}
+                                    <OptimizerArmorPieceTile
+                                        piece={piece}
+                                        definition={definitions[piece.itemHash]}
                                         instanceData={instanceWithStats}
                                         socketsData={profile?.itemComponents?.sockets?.data?.[piece.itemInstanceId]}
-                                        className="w-full h-full"
-                                        size="small"
-                                        hidePower
                                     />
                                 ) : (
                                     <div className="w-full h-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs text-slate-500">?</div>
-                                )}
-                                {piece.isExotic && (
-                                    <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-yellow-500 rounded-full" />
                                 )}
                             </div>
                         );
                     })}
                 </div>
                 
-                {/* Stats Summary - Compact stat tiers */}
-                <div className="flex items-center gap-2">
-                    {/* Individual stat tiers */}
-                    <div className="flex gap-0.5">
-                        {breakdown.slice(0, 6).map(({ stat, tier }) => {
+                {/* Stats Summary - icon-first raw stats */}
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/5 pt-3">
+                    <div className="grid grid-cols-6 gap-1 flex-1">
+                        {breakdown.slice(0, 6).map(({ stat, value, tier }) => {
                             const colors = STAT_COLORS[stat];
                             return (
                                 <div 
                                     key={stat} 
                                     className={cn(
-                                        "w-6 h-6 flex items-center justify-center text-[10px] font-bold",
-                                        tier >= 10 ? colors.bg : "bg-slate-800",
+                                        "min-w-0 border px-1.5 py-1 text-center",
+                                        tier >= 10 ? `${colors.bg} ${colors.border}` : "bg-slate-900/80 border-white/10",
                                         tier >= 10 ? colors.text : "text-slate-400"
                                     )}
-                                    title={`${STAT_NAMES[stat]}: T${tier}`}
+                                    title={`${STAT_NAMES[stat]}: ${value} (T${tier})`}
                                 >
-                                    {tier}
+                                    <Image src={STAT_ICON_URLS[stat]} width={16} height={16} alt="" className="mx-auto object-contain" />
+                                    <div className="mt-0.5 text-[10px] font-bold">{value}</div>
                                 </div>
                             );
                         })}
                     </div>
-                    
-                    <div className="w-px h-6 bg-white/10" />
-                    
-                    {/* Total Tiers */}
-                    <div className="text-center px-2">
-                        <div className="text-lg font-bold text-destiny-gold">{set.tiers}</div>
-                        <div className="text-[8px] text-slate-500 uppercase tracking-wider">Tiers</div>
-                    </div>
-                </div>
-                
-                {/* Actions */}
-                <div className="flex items-center gap-1">
-                    <button
-                        onClick={handleOpenSaveDialog}
-                        className="p-1.5 hover:bg-white/10 transition-colors"
-                        title="Save as Loadout"
-                    >
-                        <Bookmark className="w-4 h-4 text-slate-400 hover:text-destiny-gold" />
-                    </button>
-                    <button
-                        onClick={handleEquip}
-                        disabled={isEquipping}
-                        className="px-3 py-1.5 bg-destiny-gold text-black font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                        {isEquipping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                        Equip
-                    </button>
-                    <button
-                        onClick={() => setIsExpanded(!isExpanded)}
-                        className="p-1.5 hover:bg-white/10 transition-colors"
-                    >
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                    </button>
                 </div>
             </div>
             
@@ -1723,12 +1941,17 @@ export default function OptimizerPage() {
     const [selectedClass, setSelectedClass] = useState<number>(0);
     const [results, setResults] = useState<ArmorSet[]>([]);
     const [isOptimizing, setIsOptimizing] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
+    const optimizeArmorSets = useArmorOptimizerWorker();
+    const [equipmentTab, setEquipmentTab] = useState<'exotics' | 'aspects'>('exotics');
+    const [targetTab, setTargetTab] = useState<'stats' | 'targeter' | 'settings'>('stats');
     const [mounted, setMounted] = useState(false);
     const [exoticSearch, setExoticSearch] = useState('');
     const [fragmentSearch, setFragmentSearch] = useState('');
     const [fragmentSubclassFilter, setFragmentSubclassFilter] = useState('prismatic');
     const [exoticSlotFilter, setExoticSlotFilter] = useState<string>('all');
+    const [isExoticFilterOpen, setIsExoticFilterOpen] = useState(false);
+    const [isArmorSetDropdownOpen, setIsArmorSetDropdownOpen] = useState(false);
+    const [armorSetSearch, setArmorSetSearch] = useState('');
     
     const {
         constraints,
@@ -1763,6 +1986,12 @@ export default function OptimizerPage() {
     
     const itemHashes = useMemo(() => allItems.map((i: any) => i.itemHash), [allItems]);
     const { definitions, isLoading: defsLoading } = useItemDefinitions(itemHashes);
+    const { table: armorSetItemTable, isLoading: armorSetItemsLoading } =
+        useManifestTable<any>("DestinyInventoryItemDefinition", { view: "card" });
+    const { table: equipableItemSetTable, isLoading: equipableItemSetsLoading } =
+        useManifestTable<any>("DestinyEquipableItemSetDefinition");
+    const { table: sandboxPerkTable, isLoading: sandboxPerksLoading } =
+        useManifestTable<any>("DestinySandboxPerkDefinition");
     
     const plugHashes = useMemo(() => {
         const hashes = new Set<number>();
@@ -1777,6 +2006,12 @@ export default function OptimizerPage() {
     }, [profile]);
     
     const { definitions: plugDefs, isLoading: plugsLoading } = useItemDefinitions(plugHashes);
+
+    const fragmentClarityHashes = useMemo(
+        () => Object.values(FRAGMENT_ICONS).map((fragmentIcon) => fragmentIcon.hash),
+        []
+    );
+    const { descriptions: fragmentClarityDescriptions } = useClarityDescriptions(fragmentClarityHashes);
     
     const armorPieces = useMemo(() => {
         const pieces: ArmorPiece[] = [];
@@ -1803,6 +2038,145 @@ export default function OptimizerPage() {
         
         return pieces;
     }, [allItems, definitions, profile, plugDefs, selectedClass]);
+
+    const armorSetBonusOptions = useMemo<ArmorSetBonusTargetOption[]>(() => {
+        if (!armorSetItemTable || !equipableItemSetTable || !sandboxPerkTable) {
+            return [];
+        }
+
+        const availablePieceCountBySetHash = new Map<number, number>();
+        armorPieces.forEach((piece) => {
+            if (piece.equipableItemSetHash && !piece.isExotic) {
+                availablePieceCountBySetHash.set(
+                    piece.equipableItemSetHash,
+                    (availablePieceCountBySetHash.get(piece.equipableItemSetHash) ?? 0) + 1
+                );
+            }
+        });
+
+        const setHashesForClass = new Set<number>();
+        Object.values(armorSetItemTable).forEach((itemDefinition: any) => {
+            if (!isLegendaryArmorSetPiece(itemDefinition)) {
+                return;
+            }
+
+            const classType = getNumber(itemDefinition.classType);
+            const setHash = getNumber(itemDefinition.equippingBlock?.equipableItemSetHash);
+
+            if (setHash && (classType === selectedClass || classType === 3)) {
+                setHashesForClass.add(setHash);
+            }
+        });
+
+        return Array.from(setHashesForClass)
+            .map((setHash): ArmorSetBonusTargetOption | null => {
+                const setDefinition = equipableItemSetTable[String(setHash)];
+                const setPerks = Array.isArray(setDefinition?.setPerks) ? setDefinition.setPerks : [];
+                const bonuses = setPerks
+                    .map((setPerk: any): ArmorSetBonusTargetOption["bonuses"][number] | null => {
+                        const requiredSetCount = getNumber(setPerk?.requiredSetCount);
+                        if (requiredSetCount !== 2 && requiredSetCount !== 4) {
+                            return null;
+                        }
+
+                        const sandboxPerkHash = getNumber(setPerk?.sandboxPerkHash);
+                        const perkDefinition = sandboxPerkHash
+                            ? sandboxPerkTable[String(sandboxPerkHash)]
+                            : undefined;
+                        const name = normalizeDisplayText(perkDefinition?.displayProperties?.name);
+                        const description = normalizeDisplayText(perkDefinition?.displayProperties?.description);
+
+                        if (!name && !description) {
+                            return null;
+                        }
+
+                        return {
+                            requiredSetCount,
+                            name,
+                            description,
+                            icon: perkDefinition?.displayProperties?.icon,
+                        };
+                    })
+                    .filter((bonus: ArmorSetBonusTargetOption["bonuses"][number] | null): bonus is ArmorSetBonusTargetOption["bonuses"][number] => Boolean(bonus))
+                    .sort((
+                        firstBonus: ArmorSetBonusTargetOption["bonuses"][number],
+                        secondBonus: ArmorSetBonusTargetOption["bonuses"][number]
+                    ) => firstBonus.requiredSetCount - secondBonus.requiredSetCount);
+
+                if (bonuses.length === 0) {
+                    return null;
+                }
+
+                return {
+                    setHash,
+                    name: normalizeDisplayText(setDefinition?.displayProperties?.name) || `Set ${setHash}`,
+                    icon:
+                        bonuses.find((bonus: ArmorSetBonusTargetOption["bonuses"][number]) => bonus.icon)?.icon ||
+                        setDefinition?.displayProperties?.icon,
+                    bonuses,
+                    availablePieceCount: availablePieceCountBySetHash.get(setHash) ?? 0,
+                };
+            })
+            .filter((option: ArmorSetBonusTargetOption | null): option is ArmorSetBonusTargetOption => Boolean(option))
+            .sort((firstOption, secondOption) => {
+                return (
+                    secondOption.availablePieceCount - firstOption.availablePieceCount ||
+                    firstOption.name.localeCompare(secondOption.name)
+                );
+            });
+    }, [armorPieces, armorSetItemTable, equipableItemSetTable, sandboxPerkTable, selectedClass]);
+
+    const selectedArmorSetBonusOption = useMemo(() => {
+        const selectedSetHash = settings.armorSetBonusTarget?.setHash;
+        if (!selectedSetHash) {
+            return null;
+        }
+
+        return armorSetBonusOptions.find((option) => option.setHash === selectedSetHash) ?? null;
+    }, [armorSetBonusOptions, settings.armorSetBonusTarget?.setHash]);
+
+    const filteredArmorSetBonusOptions = useMemo(() => {
+        const normalizedSearchText = armorSetSearch.trim().toLowerCase();
+
+        if (!normalizedSearchText) {
+            return armorSetBonusOptions;
+        }
+
+        return armorSetBonusOptions.filter((option) => {
+            const searchableText = [
+                option.name,
+                ...option.bonuses.flatMap((bonus) => [bonus.name, bonus.description]),
+            ].join(" ").toLowerCase();
+
+            return searchableText.includes(normalizedSearchText);
+        });
+    }, [armorSetBonusOptions, armorSetSearch]);
+
+    const selectedExoticFilters = useMemo(() => {
+        return getSelectedExoticFilters(settings.exoticFilter);
+    }, [settings.exoticFilter]);
+
+    const toggleSelectedExotic = useCallback((exotic: ArmorPiece, slot: string) => {
+        const exoticSelection = getArmorPieceExoticSelection(exotic, slot as any);
+        const exoticSelectionKey = getExoticSelectionKey(exoticSelection);
+        const currentSelections = getSelectedExoticFilters(settings.exoticFilter);
+        const nextSelections = currentSelections.some((selection) => {
+            return getExoticSelectionKey(selection) === exoticSelectionKey;
+        })
+            ? currentSelections.filter((selection) => getExoticSelectionKey(selection) !== exoticSelectionKey)
+            : [...currentSelections, exoticSelection];
+
+        setExoticFilter({
+            itemHash: nextSelections.length === 1 ? nextSelections[0].itemHash : null,
+            itemInstanceId: nextSelections.length === 1 ? nextSelections[0].itemInstanceId ?? null : null,
+            slot: nextSelections.length === 0 ? 'any' : 'any',
+            selectedExotics: nextSelections,
+        });
+    }, [settings.exoticFilter, setExoticFilter]);
+
+    const selectableArmorPieces = useMemo(() => {
+        return filterArmorPiecesForExoticSelection(armorPieces, settings);
+    }, [armorPieces, settings]);
     
     const exoticsBySlot = useMemo(() => {
         return getExoticsBySlot(armorPieces, selectedClass);
@@ -1816,18 +2190,18 @@ export default function OptimizerPage() {
     const physicalMaxStats = useMemo(() => {
         const maxStats: ArmorStats = createEmptyStats();
         
-        if (armorPieces.length === 0) {
+        if (selectableArmorPieces.length === 0) {
             // Default max if no armor (reasonable estimate)
             return { weapons: 100, health: 100, class: 100, grenade: 100, super: 100, melee: 100 };
         }
         
         // Group pieces by slot
         const slots = {
-            helmet: armorPieces.filter(p => p.bucketHash === BUCKETS.HELMET),
-            gauntlets: armorPieces.filter(p => p.bucketHash === BUCKETS.GAUNTLETS),
-            chest: armorPieces.filter(p => p.bucketHash === BUCKETS.CHEST_ARMOR),
-            legs: armorPieces.filter(p => p.bucketHash === BUCKETS.LEG_ARMOR),
-            classItem: armorPieces.filter(p => p.bucketHash === BUCKETS.CLASS_ARMOR),
+            helmet: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.HELMET),
+            gauntlets: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.GAUNTLETS),
+            chest: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.CHEST_ARMOR),
+            legs: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.LEG_ARMOR),
+            classItem: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.CLASS_ARMOR),
         };
         
         // For each stat, find the maximum possible by taking the best piece from each slot
@@ -1857,19 +2231,19 @@ export default function OptimizerPage() {
         });
         
         return maxStats;
-    }, [armorPieces, settings.assumeMasterwork, fragmentBonus]);
+    }, [selectableArmorPieces, settings.assumeMasterwork, fragmentBonus]);
     
     // Calculate total stat budget available
     const totalStatBudget = useMemo(() => {
-        if (armorPieces.length === 0) return 350; // Default estimate
+        if (selectableArmorPieces.length === 0) return 350; // Default estimate
         
         // Group pieces by slot
         const slots = {
-            helmet: armorPieces.filter(p => p.bucketHash === BUCKETS.HELMET),
-            gauntlets: armorPieces.filter(p => p.bucketHash === BUCKETS.GAUNTLETS),
-            chest: armorPieces.filter(p => p.bucketHash === BUCKETS.CHEST_ARMOR),
-            legs: armorPieces.filter(p => p.bucketHash === BUCKETS.LEG_ARMOR),
-            classItem: armorPieces.filter(p => p.bucketHash === BUCKETS.CLASS_ARMOR),
+            helmet: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.HELMET),
+            gauntlets: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.GAUNTLETS),
+            chest: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.CHEST_ARMOR),
+            legs: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.LEG_ARMOR),
+            classItem: selectableArmorPieces.filter(p => p.bucketHash === BUCKETS.CLASS_ARMOR),
         };
         
         // Calculate max total stats from best pieces (taking highest total per slot)
@@ -1896,7 +2270,7 @@ export default function OptimizerPage() {
         maxTotal += netFragmentBonus;
         
         return maxTotal;
-    }, [armorPieces, settings.assumeMasterwork, fragmentBonus]);
+    }, [selectableArmorPieces, settings.assumeMasterwork, fragmentBonus]);
     
     // Calculate dynamic max achievable stats based on other stat selections
     // When you set one stat high, it reduces the budget available for others
@@ -1930,42 +2304,40 @@ export default function OptimizerPage() {
         return dynamicMax;
     }, [physicalMaxStats, totalStatBudget, constraints]);
     
-    const handleOptimize = useCallback(() => {
+    const handleOptimize = useCallback(async () => {
         setIsOptimizing(true);
-        
-        setTimeout(() => {
-            try {
-                const currentSettings: OptimizerSettings = {
-                    ...settings,
-                    subclassConfig: selectedFragments.length > 0 ? {
-                        name: 'Custom',
-                        fragments: [],
-                        totalBonus: fragmentBonus,
-                    } : null,
-                };
-                
-                const optimalSets = findOptimalArmorSets(
-                    armorPieces,
-                    selectedClass,
-                    constraints,
-                    currentSettings,
-                    50
-                );
-                setResults(optimalSets);
-                
-                if (optimalSets.length === 0) {
-                    toast.error('No armor sets found matching your criteria');
-                } else {
-                    toast.success(`Found ${optimalSets.length} armor combinations`);
-                }
-            } catch (err) {
-                console.error('Optimization error:', err);
-                toast.error('Failed to optimize armor');
-            } finally {
-                setIsOptimizing(false);
+
+        try {
+            const currentSettings: OptimizerSettings = {
+                ...settings,
+                subclassConfig: selectedFragments.length > 0 ? {
+                    name: 'Custom',
+                    fragments: [],
+                    totalBonus: fragmentBonus,
+                } : null,
+            };
+
+            const optimalSets = await optimizeArmorSets({
+                armorPieces,
+                classType: selectedClass,
+                constraints,
+                settings: currentSettings,
+                maxResults: 50,
+            });
+            setResults(optimalSets);
+
+            if (optimalSets.length === 0) {
+                toast.error('No armor sets found matching your criteria');
+            } else {
+                toast.success(`Found ${optimalSets.length} armor combinations`);
             }
-        }, 100);
-    }, [armorPieces, selectedClass, constraints, settings, selectedFragments, fragmentBonus]);
+        } catch (err) {
+            console.error('Optimization error:', err);
+            toast.error('Failed to optimize armor');
+        } finally {
+            setIsOptimizing(false);
+        }
+    }, [armorPieces, selectedClass, constraints, settings, selectedFragments, fragmentBonus, optimizeArmorSets]);
     
     const activeCharacterId = stats?.characterId || '';
     const isDataLoading = profileLoading || defsLoading || plugsLoading;
@@ -1991,9 +2363,9 @@ export default function OptimizerPage() {
     }
     
     return (
-        <div className="space-y-6 pt-10 min-w-0">
+        <div className="space-y-1 pt-10 min-w-0">
             {/* Header Controls */}
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex flex-col md:flex-row gap-2 items-start md:items-center justify-between">
                 {/* Class Tabs */}
                 <div className="flex items-center gap-2">
                     <div className="flex p-1 border border-white/10">
@@ -2017,256 +2389,264 @@ export default function OptimizerPage() {
                         ))}
                     </div>
                 </div>
-                
-                {/* Stats Summary */}
-                <div className="flex items-center gap-6">
-                    <div className="flex flex-col items-end">
-                        <span className="text-xs text-slate-400 uppercase tracking-widest">Target Tiers</span>
-                        <span className="text-2xl font-bold text-destiny-gold">{totalTargetTiers}</span>
-                    </div>
-                    <div className="w-px h-8 bg-white/10" />
-                    <div className="flex flex-col items-end">
-                        <span className="text-xs text-slate-400 uppercase tracking-widest">Armor Pieces</span>
-                        <span className="text-lg font-bold text-white">{armorPieces.length}</span>
-                    </div>
-                </div>
             </div>
             
             {/* Main Content */}
             <div className="border border-white/10 min-h-[80vh] overflow-hidden">
                 <div className="flex h-[80vh] min-w-0">
                     {/* Left Sidebar: Configuration */}
-                    <div className="w-[550px] max-w-full shrink-0 border-r border-white/10 flex flex-col overflow-y-auto">
-                        {/* Top Row: Exotic Grid | Fragment Grid side by side */}
-                        <div className="flex border-b border-white/5 min-h-[320px] min-w-0">
-                            {/* Exotic Selection (Vertical Grid) */}
-                            <div className="w-1/2 min-w-0 p-3 border-r border-white/5 flex flex-col overflow-hidden">
-                                <div className="flex items-center justify-between mb-2">
-                                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Exotic Armor</h3>
-                                    <span className="text-[9px] text-slate-600">
-                                        {Object.values(exoticsBySlot).flat().length} available
-                                    </span>
-                                </div>
-                                
-                                {/* Search */}
-                                <div className="relative mb-2">
-                                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search exotics..."
-                                        value={exoticSearch}
-                                        onChange={(e) => setExoticSearch(e.target.value)}
-                                        className="w-full pl-7 pr-2 py-1.5 text-[10px] bg-slate-900 border border-white/10 focus:border-destiny-gold/50 focus:outline-none text-white placeholder:text-slate-600"
-                                    />
-                                </div>
-                                
-                                {/* Slot Filter Tabs */}
-                                <div className="flex gap-1 mb-2 flex-wrap">
-                                    {['all', 'helmet', 'gauntlets', 'chest', 'legs'].map(slot => (
-                                        <button
-                                            key={slot}
-                                            onClick={() => setExoticSlotFilter(slot)}
-                                            className={cn(
-                                                "px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors",
-                                                exoticSlotFilter === slot
-                                                    ? "bg-destiny-gold/20 text-destiny-gold"
-                                                    : "text-slate-500 hover:text-white"
-                                            )}
-                                        >
-                                            {slot === 'all' ? 'All' : slot.charAt(0).toUpperCase() + slot.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
-                                
-                                {/* Any/None buttons */}
-                                <div className="flex gap-1 mb-2">
+                    <div className="w-[520px] max-w-[58vw] shrink-0 border-r border-white/10 flex flex-col overflow-hidden">
+                        {/* Build Selection */}
+                        <div className="border-b border-white/5 flex-[1_1_0] min-h-0 min-w-0 flex flex-col overflow-hidden">
+                            <div className="grid grid-cols-2 border-b border-white/5">
+                                {[
+                                    { key: 'exotics', label: 'Exotic Armor', icon: Gem },
+                                    { key: 'aspects', label: 'Aspects', icon: Sparkles },
+                                ].map(({ key, label, icon: TabIcon }) => (
                                     <button
-                                        onClick={() => setExoticFilter({ slot: 'any', itemHash: null })}
+                                        key={key}
+                                        onClick={() => setEquipmentTab(key as 'exotics' | 'aspects')}
                                         className={cn(
-                                            "flex-1 py-1.5 text-[9px] font-bold uppercase transition-colors",
-                                            settings.exoticFilter.slot === 'any' && !settings.exoticFilter.itemHash
-                                                ? "bg-destiny-gold text-black"
-                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                            "flex items-center justify-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors border-r border-white/5 last:border-r-0",
+                                            equipmentTab === key
+                                                ? "bg-white/10 text-white"
+                                                : "text-slate-500 hover:bg-white/5 hover:text-white"
                                         )}
                                     >
-                                        Any
+                                        <TabIcon className="w-3.5 h-3.5" />
+                                        <span>{label}</span>
                                     </button>
-                                    <button
-                                        onClick={() => setExoticFilter({ slot: 'none', itemHash: null })}
-                                        className={cn(
-                                            "flex-1 py-1.5 text-[9px] font-bold uppercase transition-colors",
-                                            settings.exoticFilter.slot === 'none'
-                                                ? "bg-slate-600 text-white"
-                                                : "bg-slate-800 text-slate-400 hover:text-white"
-                                        )}
-                                    >
-                                        None
-                                    </button>
-                                </div>
-                                
-                                {/* Exotic items grid - ALL exotics grouped by slot */}
-                                <div className="flex-1 overflow-y-auto">
-                                    {Object.entries(exoticsBySlot)
-                                        .filter(([slot]) => exoticSlotFilter === 'all' || slot === exoticSlotFilter)
-                                        .map(([slot, exotics]) => {
-                                            const filteredExotics = exotics.filter(exotic => {
-                                                if (!exoticSearch) return true;
-                                                return exotic.name?.toLowerCase().includes(exoticSearch.toLowerCase());
-                                            });
-                                            
-                                            if (filteredExotics.length === 0) return null;
-                                            
-                                            return (
-                                                <div key={slot} className="mb-2">
-                                                    <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1 px-0.5">
-                                                        {slot.charAt(0).toUpperCase() + slot.slice(1)} ({filteredExotics.length})
-                                                    </div>
-                                                    <div className="grid grid-cols-4 gap-1 min-w-0">
-                                                        {filteredExotics.map((exotic) => {
-                                                            // Merge instance data with stats for proper tooltip display
-                                                            const baseInstance = profile?.itemComponents?.instances?.data?.[exotic.itemInstanceId || ''];
-                                                            const statsData = profile?.itemComponents?.stats?.data?.[exotic.itemInstanceId || '']?.stats;
-                                                            const instanceWithStats = baseInstance ? {
-                                                                ...baseInstance,
-                                                                stats: statsData
-                                                            } : undefined;
-                                                            
-                                                            return (
-                                                                <button
-                                                                    key={exotic.itemInstanceId || exotic.itemHash}
-                                                                    onClick={() => setExoticFilter({ 
-                                                                        slot: slot as any, 
-                                                                        itemHash: exotic.itemHash 
-                                                                    })}
-                                                                    className={cn(
-                                                                        "aspect-square w-full min-w-0 relative border-2 transition-all",
-                                                                        settings.exoticFilter.itemHash === exotic.itemHash
-                                                                            ? "border-yellow-500 scale-105 shadow-[0_0_8px_rgba(234,179,8,0.4)]"
-                                                                            : "border-transparent hover:border-white/30"
-                                                                    )}
-                                                                >
-                                                                    <DestinyItemCard
-                                                                        itemHash={exotic.itemHash}
-                                                                        itemInstanceId={exotic.itemInstanceId}
-                                                                        instanceData={instanceWithStats}
-                                                                        socketsData={profile?.itemComponents?.sockets?.data?.[exotic.itemInstanceId || '']}
-                                                                        className="w-full h-full"
-                                                                        size="medium"
-                                                                        hidePower
-                                                                    />
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    }
-                                </div>
+                                ))}
                             </div>
-                            
-                            {/* Fragment Selection (Icon Grid with Tooltips) */}
-                            <div className="w-1/2 min-w-0 p-3 flex flex-col overflow-hidden">
-                                <div className="flex items-center justify-between mb-2">
-                                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fragments</h3>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[9px] text-slate-600">{selectedFragments.length} selected</span>
+
+                            {equipmentTab === 'exotics' ? (
+                                <div className="p-3 flex-1 min-h-0 flex flex-col overflow-hidden">
+                                    <div className="relative mb-2">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search exotics..."
+                                            value={exoticSearch}
+                                            onChange={(e) => setExoticSearch(e.target.value)}
+                                            className="w-full pl-7 pr-8 py-1.5 text-[10px] bg-slate-900 border border-white/10 focus:border-destiny-gold/50 focus:outline-none text-white placeholder:text-slate-600"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsExoticFilterOpen((currentValue) => !currentValue)}
+                                            className={cn(
+                                                "absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center border border-white/10 transition-colors",
+                                                isExoticFilterOpen
+                                                    ? "bg-destiny-gold text-black"
+                                                    : "bg-slate-800 text-slate-400 hover:border-destiny-gold/40 hover:text-white"
+                                            )}
+                                            title="Filter exotics"
+                                        >
+                                            <Filter className="h-3 w-3" />
+                                        </button>
+                                        {isExoticFilterOpen && (
+                                            <div className="absolute right-0 top-full z-40 mt-1 w-48 border border-white/10 bg-slate-950/95 p-2 shadow-2xl backdrop-blur">
+                                                <div className="mb-2 grid grid-cols-2 gap-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            setExoticFilter({ slot: 'any', itemHash: null, itemInstanceId: null, selectedExotics: [] });
+                                                            setIsExoticFilterOpen(false);
+                                                        }}
+                                                        className={cn(
+                                                            "py-1.5 text-[9px] font-bold uppercase transition-colors",
+                                                            settings.exoticFilter.slot === 'any' && selectedExoticFilters.length === 0
+                                                                ? "bg-destiny-gold text-black"
+                                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                                        )}
+                                                    >
+                                                        Any
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setExoticFilter({ slot: 'none', itemHash: null, itemInstanceId: null, selectedExotics: [] });
+                                                            setIsExoticFilterOpen(false);
+                                                        }}
+                                                        className={cn(
+                                                            "py-1.5 text-[9px] font-bold uppercase transition-colors",
+                                                            settings.exoticFilter.slot === 'none'
+                                                                ? "bg-slate-600 text-white"
+                                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                                        )}
+                                                    >
+                                                        None
+                                                    </button>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    {EXOTIC_SLOT_FILTERS.map(slot => (
+                                                        <button
+                                                            key={slot}
+                                                            onClick={() => {
+                                                                setExoticSlotFilter(slot);
+                                                                setIsExoticFilterOpen(false);
+                                                            }}
+                                                            className={cn(
+                                                                "px-2 py-1.5 text-left text-[9px] font-bold uppercase tracking-wider transition-colors",
+                                                                exoticSlotFilter === slot
+                                                                    ? "bg-destiny-gold/20 text-destiny-gold"
+                                                                    : "text-slate-500 hover:bg-white/5 hover:text-white"
+                                                            )}
+                                                        >
+                                                            {EXOTIC_SLOT_LABELS[slot]}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="flex-1 overflow-y-auto">
+                                        {Object.entries(exoticsBySlot)
+                                            .filter(([slot]) => exoticSlotFilter === 'all' || slot === exoticSlotFilter)
+                                            .map(([slot, exotics]) => {
+                                                const filteredExotics = exotics.filter(exotic => {
+                                                    if (!exoticSearch) return true;
+                                                    return exotic.name?.toLowerCase().includes(exoticSearch.toLowerCase());
+                                                });
+                                                
+                                                if (filteredExotics.length === 0) return null;
+                                                
+                                                return (
+                                                    <div key={slot} className="mb-2">
+                                                        <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1 px-0.5">
+                                                            {EXOTIC_SLOT_LABELS[slot] ?? slot} ({filteredExotics.length})
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2 min-w-0">
+                                                            {filteredExotics.map((exotic) => {
+                                                                const baseInstance = profile?.itemComponents?.instances?.data?.[exotic.itemInstanceId || ''];
+                                                                const statsData = profile?.itemComponents?.stats?.data?.[exotic.itemInstanceId || '']?.stats;
+                                                                const instanceWithStats = baseInstance ? {
+                                                                    ...baseInstance,
+                                                                    stats: statsData
+                                                                } : undefined;
+                                                                const isSelectedExotic = isSelectedExoticArmorPiece(exotic, selectedExoticFilters);
+                                                                
+                                                                return (
+                                                                    <button
+                                                                        key={exotic.itemInstanceId || exotic.itemHash}
+                                                                        onClick={() => toggleSelectedExotic(exotic, slot)}
+                                                                        title={exotic.name}
+                                                                        className={cn(
+                                                                            "w-16 h-16 shrink-0 relative border-2 transition-all",
+                                                                            isSelectedExotic
+                                                                                ? "border-yellow-500 scale-105 shadow-[0_0_8px_rgba(234,179,8,0.4)]"
+                                                                                : "border-transparent hover:border-white/30"
+                                                                        )}
+                                                                    >
+                                                                        <DestinyItemCard
+                                                                            itemHash={exotic.itemHash}
+                                                                            itemInstanceId={exotic.itemInstanceId}
+                                                                            instanceData={instanceWithStats}
+                                                                            socketsData={profile?.itemComponents?.sockets?.data?.[exotic.itemInstanceId || '']}
+                                                                            className="w-full h-full"
+                                                                            size="large"
+                                                                            hidePower
+                                                                        />
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        }
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-3 flex-1 min-h-0 flex flex-col overflow-hidden">
+                                    <div className="relative mb-2">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search aspects..."
+                                            value={fragmentSearch}
+                                            onChange={(e) => setFragmentSearch(e.target.value)}
+                                            className="w-full pl-7 pr-10 py-1.5 text-[10px] bg-slate-900 border border-white/10 focus:border-purple-500/50 focus:outline-none text-white placeholder:text-slate-600"
+                                        />
                                         {selectedFragments.length > 0 && (
                                             <button
                                                 onClick={clearFragments}
-                                                className="text-[9px] text-red-400 hover:text-red-300"
+                                                className="absolute right-1 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[9px] text-red-400 hover:text-red-300"
+                                                title="Clear selected aspects"
                                             >
                                                 Clear
                                             </button>
                                         )}
                                     </div>
-                                </div>
-                                
-                                {/* Search */}
-                                <div className="relative mb-2">
-                                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search fragments..."
-                                        value={fragmentSearch}
-                                        onChange={(e) => setFragmentSearch(e.target.value)}
-                                        className="w-full pl-7 pr-2 py-1.5 text-[10px] bg-slate-900 border border-white/10 focus:border-purple-500/50 focus:outline-none text-white placeholder:text-slate-600"
-                                    />
-                                </div>
-                                
-                                {/* Subclass Filter Tabs - Icons Only */}
-                                <div className="flex gap-1 mb-2">
-                                    {SUBCLASS_OPTIONS.map(sub => (
-                                        <button
-                                            key={sub.key}
-                                            onClick={() => setFragmentSubclassFilter(sub.key)}
-                                            className={cn(
-                                                "p-1.5 transition-all rounded-sm flex items-center justify-center",
-                                                fragmentSubclassFilter === sub.key
-                                                    ? "bg-white/15 ring-1 ring-white/30"
-                                                    : "opacity-50 hover:opacity-100 hover:bg-white/5"
-                                            )}
-                                            title={sub.name}
-                                        >
-                                            {sub.icon ? (
-                                                <img 
-                                                    src={sub.icon} 
-                                                    alt={sub.name}
-                                                    className="w-5 h-5"
-                                                />
-                                            ) : (
-                                                <span className={cn(
-                                                    "w-5 h-5 flex items-center justify-center font-black text-sm",
-                                                    sub.color
-                                                )}>
-                                                    {sub.letter}
-                                                </span>
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                                
-                                {/* Fragment bonus summary */}
-                                {selectedFragments.length > 0 && (
-                                    <div className="mb-2 p-1.5 bg-purple-500/10 border border-purple-500/30 text-[9px] flex flex-wrap gap-1">
-                                        {ALL_STAT_KEYS.map(stat => fragmentBonus[stat] !== 0 && (
-                                            <span key={stat} className={cn(
-                                                fragmentBonus[stat] > 0 ? "text-green-400" : "text-red-400"
-                                            )}>
-                                                {STAT_NAMES[stat].slice(0,3)}: {fragmentBonus[stat] > 0 ? '+' : ''}{fragmentBonus[stat]}
-                                            </span>
+                                    
+                                    <div className="flex gap-1 mb-2">
+                                        {SUBCLASS_OPTIONS.map(sub => (
+                                            <button
+                                                key={sub.key}
+                                                onClick={() => setFragmentSubclassFilter(sub.key)}
+                                                className={cn(
+                                                    "p-1.5 transition-all rounded-sm flex items-center justify-center",
+                                                    fragmentSubclassFilter === sub.key
+                                                        ? "bg-white/15 ring-1 ring-white/30"
+                                                        : "opacity-50 hover:opacity-100 hover:bg-white/5"
+                                                )}
+                                                title={sub.name}
+                                            >
+                                                {sub.icon ? (
+                                                    <img 
+                                                        src={sub.icon} 
+                                                        alt={sub.name}
+                                                        className="w-5 h-5"
+                                                    />
+                                                ) : (
+                                                    <span className={cn(
+                                                        "w-5 h-5 flex items-center justify-center font-black text-sm",
+                                                        sub.color
+                                                    )}>
+                                                        {sub.letter}
+                                                    </span>
+                                                )}
+                                            </button>
                                         ))}
                                     </div>
-                                )}
-                                
-                                {/* Fragment Icon Grid */}
-                                <div className="grid grid-cols-5 gap-1.5 flex-1 overflow-y-auto content-start py-1">
-                                    {Object.keys(FRAGMENT_ICONS)
-                                        .filter(name => {
-                                            // Subclass filter - filter by selected subclass
-                                            const statData = FRAGMENT_STAT_DATA[name];
-                                            if (statData?.subclass !== fragmentSubclassFilter) return false;
-                                            // Search filter
-                                            if (fragmentSearch) {
-                                                return name.toLowerCase().includes(fragmentSearch.toLowerCase());
-                                            }
-                                            return true;
-                                        })
-                                        .map(name => (
-                                            <FragmentIcon
-                                                key={name}
-                                                name={name}
-                                                isSelected={selectedFragments.includes(name)}
-                                                onClick={() => toggleFragment(name)}
-                                            />
-                                        ))
-                                    }
+                                    
+                                    {selectedFragments.length > 0 && (
+                                        <div className="mb-2 p-1.5 bg-purple-500/10 border border-purple-500/30 text-[9px] flex flex-wrap gap-1">
+                                            {ALL_STAT_KEYS.map(stat => fragmentBonus[stat] !== 0 && (
+                                                <span key={stat} className={cn(
+                                                    fragmentBonus[stat] > 0 ? "text-green-400" : "text-red-400"
+                                                )}>
+                                                    {STAT_NAMES[stat].slice(0,3)}: {fragmentBonus[stat] > 0 ? '+' : ''}{fragmentBonus[stat]}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    <div className="flex flex-wrap gap-2 flex-1 overflow-y-auto content-start py-1">
+                                        {Object.keys(FRAGMENT_ICONS)
+                                            .filter(name => {
+                                                const statData = FRAGMENT_STAT_DATA[name];
+                                                if (statData?.subclass !== fragmentSubclassFilter) return false;
+                                                if (fragmentSearch) {
+                                                    return name.toLowerCase().includes(fragmentSearch.toLowerCase());
+                                                }
+                                                return true;
+                                            })
+                                            .map(name => (
+                                                <FragmentIcon
+                                                    key={name}
+                                                    name={name}
+                                                    isSelected={selectedFragments.includes(name)}
+                                                    clarityDescription={fragmentClarityDescriptions[FRAGMENT_ICONS[name]?.hash ?? 0]}
+                                                    onClick={() => toggleFragment(name)}
+                                                />
+                                            ))
+                                        }
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                         
                         {/* Loadout Import */}
-                        <div className="p-3 border-b border-white/5">
+                        <div className="shrink-0 p-3 border-b border-white/5">
                             <LoadoutPicker
                                 classType={selectedClass}
                                 onImportFragments={(names) => {
@@ -2277,89 +2657,349 @@ export default function OptimizerPage() {
                             />
                         </div>
                         
-                        {/* Stats Section - Full Width Rows */}
-                        <div className="p-3 border-b border-white/5 flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                                <div>
-                                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">Target Stats</h3>
-                                    <span className="text-[9px] text-slate-500">Limited by your armor</span>
-                                </div>
-                                <button
-                                    onClick={resetConstraints}
-                                    className="text-[9px] text-slate-500 hover:text-white uppercase tracking-wider flex items-center gap-1"
-                                >
-                                    <RotateCcw className="w-3 h-3" />
-                                    Reset
-                                </button>
-                            </div>
-                            
-                            {/* Legend */}
-                            <div className="flex items-center gap-3 mb-2 text-[8px] text-slate-500">
-                                <div className="flex items-center gap-1">
-                                    <div className="w-2 h-2 bg-amber-500" />
-                                    <span>Max achievable</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <div className="w-4 h-2 bg-slate-800/80" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(239,68,68,0.2) 2px, rgba(239,68,68,0.2) 4px)' }} />
-                                    <span>Unreachable</span>
-                                </div>
-                            </div>
-                            
-                            <div className="space-y-0">
-                                {ALL_STAT_KEYS.map((stat) => (
-                                    <StatInput
-                                        key={stat}
-                                        stat={stat}
-                                        value={constraints[stat]?.min ?? 0}
-                                        fragmentBonus={fragmentBonus[stat] ?? 0}
-                                        maxAchievable={maxAchievableStats[stat]}
-                                        onChange={(value) => setConstraint(stat, { min: value, max: MAX_STAT_VALUE })}
-                                    />
+                        {/* Target Tabs */}
+                        <div className="border-b border-white/5 flex-[1_1_0] min-h-0 flex flex-col">
+                            <div className="grid grid-cols-3 border-b border-white/5">
+                                {[
+                                    { key: 'stats', label: 'Target Stats', icon: Target },
+                                    { key: 'targeter', label: 'Set Targeter', icon: Layers },
+                                    { key: 'settings', label: 'Settings', icon: Settings },
+                                ].map(({ key, label, icon: TabIcon }) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => setTargetTab(key as 'stats' | 'targeter' | 'settings')}
+                                        className={cn(
+                                            "flex items-center justify-center gap-1.5 px-2 py-2 text-[9px] font-bold uppercase tracking-wider transition-colors border-r border-white/5 last:border-r-0",
+                                            targetTab === key
+                                                ? "bg-white/10 text-white"
+                                                : "text-slate-500 hover:bg-white/5 hover:text-white"
+                                        )}
+                                        title={label}
+                                    >
+                                        <TabIcon className="w-3.5 h-3.5" />
+                                        <span>{label}</span>
+                                    </button>
                                 ))}
                             </div>
-                        </div>
-                        
-                        {/* Settings */}
-                        <div className="p-3 border-b border-white/5">
-                            <button
-                                onClick={() => setShowSettings(!showSettings)}
-                                className="w-full flex items-center justify-between text-xs font-bold text-white uppercase tracking-wider"
-                            >
-                                <span>Settings</span>
-                                <ChevronRight className={cn("w-4 h-4 transition-transform", showSettings && "rotate-90")} />
-                            </button>
-                            
-                            <AnimatePresence>
-                                {showSettings && (
-                                    <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        className="mt-2 grid grid-cols-2 gap-2"
-                                    >
-                                        {[
-                                            { key: 'assumeMasterwork', label: 'Assume MW' },
-                                            { key: 'artificeBonus', label: 'Artifice' },
-                                            { key: 'minimizeWaste', label: 'Min Waste' },
-                                            { key: 'onlyMasterworked', label: 'MW Only' },
-                                        ].map(({ key, label }) => (
-                                            <label key={key} className="flex items-center gap-1.5 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={(settings as any)[key]}
-                                                    onChange={(e) => updateSettings({ [key]: e.target.checked })}
-                                                    className="w-3 h-3 accent-destiny-gold"
+
+                            <div className="p-3 flex-1 overflow-y-auto">
+                                {targetTab === 'stats' && (
+                                    <>
+                                        <div className="mb-2 flex items-center justify-between gap-2 text-[9px] text-slate-500">
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <div className="flex items-center gap-1">
+                                                    <div className="h-1.5 w-1.5 bg-amber-500" />
+                                                    <span>Max achievable</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <div className="h-1.5 w-3 bg-slate-800/80" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(239,68,68,0.2) 2px, rgba(239,68,68,0.2) 4px)' }} />
+                                                    <span>Unreachable</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={resetConstraints}
+                                                className="flex shrink-0 items-center gap-1 uppercase tracking-wider text-slate-500 hover:text-white"
+                                            >
+                                                <RotateCcw className="w-3 h-3" />
+                                                Reset
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="space-y-0">
+                                            {ALL_STAT_KEYS.map((stat) => (
+                                                <StatInput
+                                                    key={stat}
+                                                    stat={stat}
+                                                    value={constraints[stat]?.min ?? 0}
+                                                    fragmentBonus={fragmentBonus[stat] ?? 0}
+                                                    maxAchievable={maxAchievableStats[stat]}
+                                                    onChange={(value) => setConstraint(stat, { min: value, max: MAX_STAT_VALUE })}
                                                 />
-                                                <span className="text-[10px] text-slate-400">{label}</span>
-                                            </label>
-                                        ))}
-                                    </motion.div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
-                            </AnimatePresence>
+
+                                {targetTab === 'targeter' && (
+                                    <div className="space-y-3">
+                                        <div className="relative space-y-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsArmorSetDropdownOpen((isOpen) => !isOpen)}
+                                                disabled={armorSetItemsLoading || equipableItemSetsLoading || sandboxPerksLoading}
+                                                className={cn(
+                                                    "w-full border bg-white/[0.03] p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                                                    isArmorSetDropdownOpen
+                                                        ? "border-destiny-gold/70 bg-destiny-gold/10"
+                                                        : "border-white/10 hover:border-white/30 hover:bg-white/5"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    {selectedArmorSetBonusOption?.icon ? (
+                                                        <Image
+                                                            src={getBungieImage(selectedArmorSetBonusOption.icon)}
+                                                            width={34}
+                                                            height={34}
+                                                            alt=""
+                                                            className="h-8 w-8 shrink-0 object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-white/10 bg-slate-950">
+                                                            <PackageCheck className="h-4 w-4 text-destiny-gold" />
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate text-xs font-bold text-white">
+                                                            {selectedArmorSetBonusOption?.name ?? "No armor set bonus target"}
+                                                        </div>
+                                                        <div className="mt-0.5 text-[10px] text-slate-500">
+                                                            {selectedArmorSetBonusOption
+                                                                ? `${selectedArmorSetBonusOption.availablePieceCount} matching pieces`
+                                                                : "Optimizer will not force a set bonus"}
+                                                        </div>
+                                                    </div>
+                                                    <ChevronDown className={cn(
+                                                        "h-4 w-4 shrink-0 text-slate-500 transition-transform",
+                                                        isArmorSetDropdownOpen && "rotate-180 text-destiny-gold"
+                                                    )} />
+                                                </div>
+                                            </button>
+
+                                            <AnimatePresence>
+                                                {isArmorSetDropdownOpen && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: -6 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        exit={{ opacity: 0, y: -6 }}
+                                                        className="absolute left-0 right-0 top-full z-50 mt-1 border border-white/10 bg-slate-950 shadow-2xl shadow-black/60"
+                                                    >
+                                                        <div className="border-b border-white/10 p-2">
+                                                            <div className="relative">
+                                                                <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500" />
+                                                                <input
+                                                                    type="text"
+                                                                    value={armorSetSearch}
+                                                                    onChange={(event) => setArmorSetSearch(event.target.value)}
+                                                                    placeholder="Search set bonuses..."
+                                                                    className="w-full border border-white/10 bg-black/40 py-1.5 pl-7 pr-2 text-[10px] text-white placeholder:text-slate-600 focus:border-destiny-gold/60 focus:outline-none"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="max-h-64 overflow-y-auto p-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    updateSettings({
+                                                                        armorSetBonusTarget: {
+                                                                            requiredSetCount: settings.armorSetBonusTarget?.requiredSetCount ?? 2,
+                                                                            setHash: null,
+                                                                        },
+                                                                    });
+                                                                    setArmorSetSearch('');
+                                                                    setIsArmorSetDropdownOpen(false);
+                                                                }}
+                                                                className={cn(
+                                                                    "w-full border px-2 py-2 text-left transition-colors",
+                                                                    !settings.armorSetBonusTarget?.setHash
+                                                                        ? "border-destiny-gold/70 bg-destiny-gold/10"
+                                                                        : "border-transparent hover:border-white/10 hover:bg-white/5"
+                                                                )}
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-white/10 bg-slate-900">
+                                                                        <X className="h-4 w-4 text-slate-500" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="text-xs font-bold text-white">No armor set bonus target</div>
+                                                                        <div className="text-[10px] text-slate-500">Allow any matching armor set.</div>
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+
+                                                            {filteredArmorSetBonusOptions.length > 0 ? (
+                                                                filteredArmorSetBonusOptions.map((option) => {
+                                                                    const isSelected = settings.armorSetBonusTarget?.setHash === option.setHash;
+                                                                    const selectedBonus = option.bonuses.find((bonus) => {
+                                                                        return bonus.requiredSetCount === (settings.armorSetBonusTarget?.requiredSetCount ?? 2);
+                                                                    });
+
+                                                                    return (
+                                                                        <button
+                                                                            key={option.setHash}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                updateSettings({
+                                                                                    armorSetBonusTarget: {
+                                                                                        requiredSetCount: settings.armorSetBonusTarget?.requiredSetCount ?? 2,
+                                                                                        setHash: option.setHash,
+                                                                                    },
+                                                                                });
+                                                                                setArmorSetSearch('');
+                                                                                setIsArmorSetDropdownOpen(false);
+                                                                            }}
+                                                                            className={cn(
+                                                                                "mt-1 w-full border px-2 py-2 text-left transition-colors",
+                                                                                isSelected
+                                                                                    ? "border-destiny-gold/70 bg-destiny-gold/10"
+                                                                                    : "border-transparent hover:border-white/10 hover:bg-white/5"
+                                                                            )}
+                                                                        >
+                                                                            <div className="flex items-center gap-2">
+                                                                                {option.icon ? (
+                                                                                    <Image
+                                                                                        src={getBungieImage(option.icon)}
+                                                                                        width={34}
+                                                                                        height={34}
+                                                                                        alt=""
+                                                                                        className="h-8 w-8 shrink-0 object-cover"
+                                                                                    />
+                                                                                ) : (
+                                                                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-white/10 bg-slate-900">
+                                                                                        <PackageCheck className="h-4 w-4 text-destiny-gold" />
+                                                                                    </div>
+                                                                                )}
+                                                                                <div className="min-w-0 flex-1">
+                                                                                    <div className="truncate text-xs font-bold text-white">{option.name}</div>
+                                                                                    <div className="mt-0.5 truncate text-[10px] text-slate-500">
+                                                                                        {option.availablePieceCount} matching pieces
+                                                                                        {selectedBonus?.name ? ` • ${selectedBonus.name}` : ""}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </button>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <div className="px-3 py-4 text-center text-[10px] text-slate-500">
+                                                                    No armor set bonuses match your search.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[2, 4].map((requiredSetCount) => {
+                                                const isSelected = (settings.armorSetBonusTarget?.requiredSetCount ?? 2) === requiredSetCount;
+                                                const bonus = selectedArmorSetBonusOption?.bonuses.find((setBonus) => {
+                                                    return setBonus.requiredSetCount === requiredSetCount;
+                                                });
+
+                                                return (
+                                                    <button
+                                                        key={requiredSetCount}
+                                                        type="button"
+                                                        onClick={() => updateSettings({
+                                                            armorSetBonusTarget: {
+                                                                setHash: settings.armorSetBonusTarget?.setHash ?? null,
+                                                                requiredSetCount: requiredSetCount as 2 | 4,
+                                                            },
+                                                        })}
+                                                        className={cn(
+                                                            "border p-3 text-left transition-colors",
+                                                            isSelected
+                                                                ? "border-destiny-gold bg-destiny-gold/10"
+                                                                : "border-white/10 bg-white/[0.03] hover:border-white/30 hover:bg-white/5"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            {bonus?.icon ? (
+                                                                <Image
+                                                                    src={getBungieImage(bonus.icon)}
+                                                                    width={24}
+                                                                    height={24}
+                                                                    alt=""
+                                                                    className="shrink-0 object-cover"
+                                                                />
+                                                            ) : (
+                                                                <PackageCheck className="h-5 w-5 shrink-0 text-destiny-gold" />
+                                                            )}
+                                                            <div>
+                                                                <div className="text-[10px] font-bold uppercase tracking-wider text-destiny-gold">
+                                                                    {formatArmorSetBonusRequirement(requiredSetCount)}
+                                                                </div>
+                                                                <div className="text-xs font-semibold text-white">
+                                                                    {bonus?.name || `${requiredSetCount}-Piece Bonus`}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {bonus?.description && (
+                                                            <p className="mt-2 line-clamp-3 text-[10px] leading-relaxed text-slate-400">
+                                                                {bonus.description}
+                                                            </p>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {selectedArmorSetBonusOption ? (
+                                            <div className="border border-white/10 bg-white/[0.03] p-3">
+                                                <div className="flex items-center gap-3">
+                                                    {selectedArmorSetBonusOption.icon ? (
+                                                        <Image
+                                                            src={getBungieImage(selectedArmorSetBonusOption.icon)}
+                                                            width={40}
+                                                            height={40}
+                                                            alt=""
+                                                            className="shrink-0 object-cover"
+                                                        />
+                                                    ) : (
+                                                        <PackageCheck className="h-8 w-8 shrink-0 text-destiny-gold" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-sm font-bold text-white">
+                                                            {selectedArmorSetBonusOption.name}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500">
+                                                            {selectedArmorSetBonusOption.availablePieceCount} matching pieces in optimizer pool
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {selectedArmorSetBonusOption.availablePieceCount < (settings.armorSetBonusTarget?.requiredSetCount ?? 2) && (
+                                                    <div className="mt-3 border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-amber-200">
+                                                        You do not have enough matching pieces for this target, so the optimizer may return no results.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="border border-white/10 bg-white/[0.03] p-3 text-[10px] leading-relaxed text-slate-500">
+                                                Select an armor set bonus to force optimizer results to include enough matching pieces for that bonus.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {targetTab === 'settings' && (
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { key: 'assumeMasterwork', label: 'Assume MW' },
+                                                { key: 'artificeBonus', label: 'Artifice' },
+                                                { key: 'minimizeWaste', label: 'Min Waste' },
+                                                { key: 'onlyMasterworked', label: 'MW Only' },
+                                            ].map(({ key, label }) => (
+                                                <label key={key} className="flex items-center gap-2 cursor-pointer border border-white/10 bg-white/[0.03] p-2 hover:bg-white/5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={(settings as any)[key]}
+                                                        onChange={(e) => updateSettings({ [key]: e.target.checked })}
+                                                        className="w-3 h-3 accent-destiny-gold"
+                                                    />
+                                                    <span className="text-[10px] text-slate-300">{label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         
                         {/* Optimize Button */}
-                        <div className="p-3 mt-auto">
+                        <div className="shrink-0 p-3">
                             <button
                                 onClick={handleOptimize}
                                 disabled={isOptimizing || isDataLoading}
@@ -2385,24 +3025,37 @@ export default function OptimizerPage() {
                         </div>
                     </div>
                     
-                    {/* Right: Results - 2 Columns */}
-                    <div className="flex-1 min-w-0 overflow-y-auto p-4 h-full">
+                    {/* Right: Results */}
+                    <div className="flex-1 min-w-0 overflow-y-auto p-3 h-full">
                         {results.length > 0 ? (
                             <div>
-                                <div className="py-2 border-b border-white/10 mb-4">
-                                    <h2 className="text-lg font-light text-white flex items-center gap-2">
-                                        <Award className="w-5 h-5 text-destiny-gold" />
-                                        Results ({results.length})
-                                    </h2>
+                                <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/10 pb-2 text-[10px] uppercase tracking-wider text-slate-500">
+                                    <span className="flex items-center gap-1.5 text-slate-300">
+                                        <Award className="h-3.5 w-3.5 text-destiny-gold" />
+                                        {results.length} results
+                                    </span>
+                                    <span>
+                                        Best <span className="font-bold text-destiny-gold">
+                                            {results[0]
+                                                ? ALL_STAT_KEYS.reduce((sum, stat) => sum + results[0].totalStats[stat], 0)
+                                                : 0}
+                                        </span>
+                                    </span>
+                                    <span>
+                                        Waste <span className="font-bold text-white">{Math.min(...results.map((set) => set.wastedStats))}</span>
+                                    </span>
+                                    <span>
+                                        Target <span className="font-bold text-white">{totalTargetTiers}</span>
+                                    </span>
                                 </div>
                                 
-                                {/* Masonry Layout - cards fill gaps when others expand */}
-                                <div className="columns-1 xl:columns-2 gap-3">
+                                <div className="grid grid-cols-1 min-[1500px]:grid-cols-2 gap-3">
                                     {results.map((set, idx) => (
                                         <ArmorSetCard
                                             key={idx}
                                             set={set}
                                             profile={profile}
+                                            definitions={definitions}
                                             membershipInfo={membershipInfo}
                                             activeCharacterId={activeCharacterId}
                                             selectedFragments={selectedFragments}
@@ -2411,11 +3064,13 @@ export default function OptimizerPage() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4">
-                                <Target className="w-12 h-12 opacity-20" />
-                                <div className="text-center">
-                                    <p className="font-medium">No results yet</p>
-                                    <p className="text-sm text-slate-600 mt-1">Set your target stats and click &quot;Find Optimal Armor&quot;</p>
+                            <div className="flex h-full items-center justify-center">
+                                <div className="max-w-sm border border-white/10 bg-white/[0.03] p-5 text-center">
+                                    <Target className="mx-auto w-8 h-8 text-destiny-gold/30" />
+                                    <p className="mt-3 text-sm font-medium text-white">No results yet</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Choose armor and stat targets, then run the optimizer.
+                                    </p>
                                 </div>
                             </div>
                         )}

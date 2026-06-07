@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import useSWR from "swr";
+import { useQuery } from "@tanstack/react-query";
 import { fetchManifestDefinitions } from "@/lib/manifestTableClient";
 
 const fetchPlugSetDefinitions = async (plugSetHashes: number[]) => {
@@ -11,14 +11,15 @@ export function usePlugSetDefinitions(plugSetHashes: number[]) {
     () => Array.from(new Set(plugSetHashes)).sort((a, b) => a - b),
     [plugSetHashes]
   );
-  const cacheKey =
-    stablePlugSetHashes.length > 0
-      ? ["plug-set-definitions", stablePlugSetHashes.join(",")]
-      : null;
+  const plugSetHashesKey = stablePlugSetHashes.join(",");
 
-  const { data, error, isLoading } = useSWR(cacheKey, () =>
-    fetchPlugSetDefinitions(stablePlugSetHashes)
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["plugSetDefinitions", plugSetHashesKey],
+    queryFn: () => fetchPlugSetDefinitions(stablePlugSetHashes),
+    enabled: stablePlugSetHashes.length > 0,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
 
   return {
     plugSetDefinitions: data ?? {},

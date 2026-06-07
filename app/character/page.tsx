@@ -6,6 +6,7 @@ import { DestinyItemCard } from "@/components/DestinyItemCard";
 import { ItemTile, type ItemTileModel } from "@/components/ItemTile";
 import { ProfileInventoryPanel } from "@/components/ProfileInventoryPanel";
 import { useInventoryItemDefinitionsFromTable } from "@/hooks/useInventoryItemDefinitionsFromTable";
+import { useInventorySearchMatches } from "@/hooks/useInventoryViewModels";
 import { useManifestTable } from "@/hooks/useManifestTable";
 import { BUCKETS, CURRENCIES, MATERIALS } from "@/lib/destinyUtils";
 import {
@@ -16,9 +17,9 @@ import {
 import { ITEM_ICON_CSS_PX, type ItemIconSize } from "@/lib/itemIconImage";
 import { getBungieImage, loginWithBungie, moveItem } from "@/lib/bungie";
 import { normalizeBungieAssetPath } from "@/lib/bungieImageProxy";
-import { checkItemMatch, parseSearchQuery } from "@/lib/searchUtils";
+import { parseSearchQuery } from "@/lib/searchUtils";
 import { cn } from "@/lib/utils";
-import { useSettingsStore } from "@/store/settingsStore";
+import { useSettingsStore, type VaultGroupingOptions } from "@/store/settingsStore";
 import { useTransferStore } from "@/store/transferStore";
 import { useUIStore } from "@/store/uiStore";
 import { useWishListStore } from "@/store/wishlistStore";
@@ -62,9 +63,15 @@ const CURRENCY_CARD_WIDTH_PX = 360;
 const MIN_CURRENCY_CARD_WIDTH_PX = 180;
 const CHARACTER_TOGGLE_COLUMN_WIDTH_PX = 44;
 const MATERIAL_ITEM_CATEGORY_HASH = 40;
-const INVENTORY_OVERSCAN_PX = 360;
-const SCROLL_METRIC_UPDATE_THRESHOLD_PX = 24;
+const INVENTORY_OVERSCAN_PX = 160;
+const SCROLL_IDLE_TIMEOUT_MS = 150;
 const POSTMASTER_POPOUT_ICON_SIZE: ItemIconSize = "small";
+const AMMO_TYPE_GROUPS = {
+  PRIMARY: 1,
+  SPECIAL: 2,
+  HEAVY: 3,
+  OTHER: 99,
+} as const;
 
 function ignoreDragLeave() {}
 
@@ -298,11 +305,28 @@ type TileRenderData = {
   transferStatus: string | null;
 };
 
+type TileItemRef = {
+  key: string;
+  item: InventoryItem;
+  ownerId: string;
+  fallbackIndex: number;
+  isDimmed: boolean;
+};
+
 type CharacterColumnSlice = {
   characterId: string;
-  equippedTile: TileRenderData | null;
-  inventoryTiles: Array<TileRenderData | null>;
+  equippedItemRef: TileItemRef | null;
+  inventoryItemRefs: Array<TileItemRef | null>;
 };
+
+type VaultDisplayRow =
+  {
+    type: "items";
+    key: string;
+    items: InventoryItem[];
+    startIndex: number;
+    groupLabel?: string;
+  };
 
 type CharacterInventoryRow =
   | {
@@ -320,13 +344,73 @@ type CharacterInventoryRow =
       bucketRow: BucketRow;
       sliceIndex: number;
       characterColumns: CharacterColumnSlice[];
-      vaultTiles: TileRenderData[];
+      vaultItemRefs: TileItemRef[];
+      vaultGroupLabel?: string;
       height: number;
     };
 
 type VirtualRow = CharacterInventoryRow & {
   top: number;
 };
+
+type VisibleRowWindow = {
+  startIndex: number;
+  endIndex: number;
+  startTop: number;
+};
+
+function getVisibleRowWindow(
+  virtualRows: VirtualRow[],
+  scrollMetrics: ReturnType<typeof getInitialScrollMetrics>,
+): VisibleRowWindow {
+  if (virtualRows.length === 0) {
+    return {
+      startIndex: 0,
+      endIndex: 0,
+      startTop: 0,
+    };
+  }
+
+  const visibleTop = Math.max(
+    0,
+    scrollMetrics.scrollTop -
+      scrollMetrics.virtualListTop -
+      INVENTORY_OVERSCAN_PX,
+  );
+  const visibleBottom =
+    Math.max(0, scrollMetrics.scrollTop - scrollMetrics.virtualListTop) +
+    scrollMetrics.viewportHeight +
+    INVENTORY_OVERSCAN_PX;
+  let lowIndex = 0;
+  let highIndex = virtualRows.length - 1;
+  let startIndex = 0;
+
+  while (lowIndex <= highIndex) {
+    const middleIndex = Math.floor((lowIndex + highIndex) / 2);
+    const middleRow = virtualRows[middleIndex];
+
+    if (middleRow.top + middleRow.height >= visibleTop) {
+      startIndex = middleIndex;
+      highIndex = middleIndex - 1;
+    } else {
+      lowIndex = middleIndex + 1;
+    }
+  }
+
+  let endIndex = startIndex;
+  while (
+    endIndex < virtualRows.length &&
+    virtualRows[endIndex].top <= visibleBottom
+  ) {
+    endIndex += 1;
+  }
+
+  return {
+    startIndex,
+    endIndex,
+    startTop: virtualRows[startIndex]?.top ?? 0,
+  };
+}
 
 function getInstanceDataWithStats(
   profile: any,
@@ -410,6 +494,33 @@ function getItemRenderKey(
   fallbackIndex = 0,
 ) {
   return `${ownerId}:${item.itemInstanceId ?? `${item.itemHash}:${item.bucketHash ?? "none"}:${fallbackIndex}`}`;
+}
+
+function getItemSearchKey(item: InventoryItem) {
+  return (
+    item.itemInstanceId ??
+    `${item.itemHash}:${item.bucketHash ?? "none"}:${item.quantity ?? 0}`
+  );
+}
+
+function createTileItemRef({
+  item,
+  ownerId,
+  fallbackIndex,
+  isDimmed,
+}: {
+  item: InventoryItem;
+  ownerId: string;
+  fallbackIndex: number;
+  isDimmed: boolean;
+}): TileItemRef {
+  return {
+    key: getItemRenderKey(item, ownerId, fallbackIndex),
+    item,
+    ownerId,
+    fallbackIndex,
+    isDimmed,
+  };
 }
 
 function getSocketReusablePlugs(
@@ -618,6 +729,117 @@ function getItemSortValue(
   }
 }
 
+function getWeaponBucketHash(definition: any) {
+  return Number(definition?.inventory?.bucketTypeHash);
+}
+
+function getNormalizedAmmoTypeGroup(definition: any) {
+  const rawAmmoType = definition?.equippingBlock?.ammoType;
+  const numericAmmoType = Number(rawAmmoType);
+
+  if (
+    numericAmmoType === AMMO_TYPE_GROUPS.PRIMARY ||
+    numericAmmoType === AMMO_TYPE_GROUPS.SPECIAL ||
+    numericAmmoType === AMMO_TYPE_GROUPS.HEAVY
+  ) {
+    return numericAmmoType;
+  }
+
+  if (typeof rawAmmoType !== "string") {
+    return null;
+  }
+
+  const normalizedAmmoType = rawAmmoType.toLowerCase();
+
+  if (normalizedAmmoType === "primary") return AMMO_TYPE_GROUPS.PRIMARY;
+  if (normalizedAmmoType === "special") return AMMO_TYPE_GROUPS.SPECIAL;
+  if (normalizedAmmoType === "heavy") return AMMO_TYPE_GROUPS.HEAVY;
+
+  return null;
+}
+
+function getItemAmmoTypeGroup(definition: any) {
+  const ammoTypeGroup = getNormalizedAmmoTypeGroup(definition);
+
+  if (ammoTypeGroup !== null) {
+    return ammoTypeGroup;
+  }
+
+  const weaponBucketHash = getWeaponBucketHash(definition);
+
+  if (weaponBucketHash === BUCKETS.POWER_WEAPON) {
+    return AMMO_TYPE_GROUPS.HEAVY;
+  }
+
+  if (
+    weaponBucketHash === BUCKETS.KINETIC_WEAPON ||
+    weaponBucketHash === BUCKETS.ENERGY_WEAPON
+  ) {
+    return AMMO_TYPE_GROUPS.PRIMARY;
+  }
+
+  return AMMO_TYPE_GROUPS.OTHER;
+}
+
+function getItemAmmoTypeLabel(definition: any) {
+  const ammoTypeGroup = getItemAmmoTypeGroup(definition);
+
+  if (ammoTypeGroup === AMMO_TYPE_GROUPS.PRIMARY) return "Primary";
+  if (ammoTypeGroup === AMMO_TYPE_GROUPS.SPECIAL) return "Special";
+  if (ammoTypeGroup === AMMO_TYPE_GROUPS.HEAVY) return "Heavy";
+
+  return "Other";
+}
+
+function getItemRarityLabel(definition: any) {
+  return definition?.inventory?.tierTypeName ?? "Unknown Rarity";
+}
+
+function hasActiveVaultGrouping(vaultGrouping: VaultGroupingOptions) {
+  return Boolean(vaultGrouping.byAmmoType || vaultGrouping.byRarity);
+}
+
+function getVaultGroupLabel(definition: any, vaultGrouping: VaultGroupingOptions) {
+  const labelParts: string[] = [];
+
+  if (vaultGrouping.byAmmoType) {
+    labelParts.push(getItemAmmoTypeLabel(definition));
+  }
+
+  if (vaultGrouping.byRarity) {
+    labelParts.push(getItemRarityLabel(definition));
+  }
+
+  return labelParts.join(" / ") || "Vault";
+}
+
+function compareItemGrouping(
+  firstDefinition: any,
+  secondDefinition: any,
+  vaultGrouping: VaultGroupingOptions,
+) {
+  if (vaultGrouping.byAmmoType) {
+    const ammoTypeDifference =
+      getItemAmmoTypeGroup(firstDefinition) - getItemAmmoTypeGroup(secondDefinition);
+
+    if (ammoTypeDifference !== 0) {
+      return ammoTypeDifference;
+    }
+  }
+
+  if (vaultGrouping.byRarity) {
+    const firstTier = firstDefinition?.inventory?.tierType ?? 0;
+    const secondTier = secondDefinition?.inventory?.tierType ?? 0;
+    const rarityDifference = secondTier - firstTier;
+
+    if (rarityDifference !== 0) {
+      return rarityDifference;
+    }
+  }
+
+  return 0;
+}
+
 function getSortedItems(
   items: InventoryItem[],
   definitions: Record<number, any>,
@@ -647,28 +869,152 @@ function getSortedItems(
   });
 }
 
+function getVaultDisplayRows({
+  items,
+  definitions,
+  profile,
+  sortMethod,
+  vaultGrouping,
+  vaultColumnCount,
+}: {
+  items: InventoryItem[];
+  definitions: Record<number, any>;
+  profile: any;
+  sortMethod: string;
+  vaultGrouping: VaultGroupingOptions;
+  vaultColumnCount: number;
+}): VaultDisplayRow[] {
+  if (!hasActiveVaultGrouping(vaultGrouping)) {
+    return chunkVaultItems(items, vaultColumnCount, "vault");
+  }
+
+  const sortedItems = [...items].sort((firstItem, secondItem) => {
+    const firstDefinition = definitions[firstItem.itemHash];
+    const secondDefinition = definitions[secondItem.itemHash];
+    const groupingDifference = compareItemGrouping(
+      firstDefinition,
+      secondDefinition,
+      vaultGrouping,
+    );
+
+    if (groupingDifference !== 0) {
+      return groupingDifference;
+    }
+
+    return getSortedItems(
+      [firstItem, secondItem],
+      definitions,
+      profile,
+      sortMethod,
+    )[0] === firstItem
+      ? -1
+      : 1;
+  });
+  const rows: VaultDisplayRow[] = [];
+  let currentGroupKey = "";
+  let currentGroupItems: InventoryItem[] = [];
+  let currentGroupLabel = "";
+
+  const flushCurrentGroup = () => {
+    if (currentGroupItems.length === 0) return;
+
+    rows.push(
+      ...chunkVaultItems(
+        currentGroupItems,
+        vaultColumnCount,
+        currentGroupKey,
+        currentGroupLabel,
+      ),
+    );
+  };
+
+  for (const item of sortedItems) {
+    const definition = definitions[item.itemHash];
+    const groupLabel = getVaultGroupLabel(definition, vaultGrouping);
+    const groupKey = groupLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    if (currentGroupItems.length > 0 && groupKey !== currentGroupKey) {
+      flushCurrentGroup();
+      currentGroupItems = [];
+    }
+
+    currentGroupKey = groupKey;
+    currentGroupLabel = groupLabel;
+    currentGroupItems.push(item);
+  }
+
+  flushCurrentGroup();
+
+  return rows;
+}
+
+function chunkVaultItems(
+  items: InventoryItem[],
+  vaultColumnCount: number,
+  keyPrefix: string,
+  groupLabel?: string,
+): VaultDisplayRow[] {
+  const rows: VaultDisplayRow[] = [];
+  let startIndex = 0;
+  let isFirstRow = true;
+
+  while (startIndex < items.length) {
+    const rowItemCount =
+      isFirstRow && groupLabel
+        ? Math.max(1, vaultColumnCount - 1)
+        : vaultColumnCount;
+
+    rows.push({
+      type: "items",
+      key: `${keyPrefix}-items-${startIndex}`,
+      items: items.slice(startIndex, startIndex + rowItemCount),
+      startIndex,
+      groupLabel: isFirstRow ? groupLabel : undefined,
+    });
+
+    startIndex += rowItemCount;
+    isFirstRow = false;
+  }
+
+  return rows;
+}
+
+function getVaultGroupAmmoIconPath(groupLabel?: string) {
+  const ammoGroupName = groupLabel?.split("/")[0]?.trim().toLowerCase();
+
+  if (
+    ammoGroupName === "primary" ||
+    ammoGroupName === "special" ||
+    ammoGroupName === "heavy"
+  ) {
+    return `/ammo-${ammoGroupName}.svg`;
+  }
+
+  return null;
+}
+
 function createTileRenderData({
   item,
   ownerId,
   fallbackIndex,
   definitions,
-  dimDefinitions,
   profile,
   isDimmed,
   getWishListInfo,
+  getNormalizedItem,
   pendingOperationByItemId,
 }: {
   item: InventoryItem;
   ownerId: string;
   fallbackIndex?: number;
   definitions: Record<number, any>;
-  dimDefinitions: DimDefinitionTables;
   profile: any;
   isDimmed: boolean;
   getWishListInfo: (
     itemHash: number,
     perkHashes?: number[],
   ) => TileWishListInfo;
+  getNormalizedItem: (item: InventoryItem) => DimItemMini | undefined;
   pendingOperationByItemId: Map<string, string>;
 }): TileRenderData {
   const definition = definitions[item.itemHash];
@@ -679,11 +1025,7 @@ function createTileRenderData({
   const reusablePlugs = item.itemInstanceId
     ? profile?.itemComponents?.reusablePlugs?.data?.[item.itemInstanceId]?.plugs
     : undefined;
-  const normalizedItem = buildDimItemMini(
-    item,
-    profile?.itemComponents ?? {},
-    dimDefinitions,
-  );
+  const normalizedItem = getNormalizedItem(item);
   const wishListPlugHashes =
     normalizedItem?.sockets?.allSockets.flatMap((socket) =>
       socket.plugOptions.map((plug) => plug.plugDef.hash),
@@ -747,10 +1089,12 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
   tile,
   iconSize,
   fetchPriority,
+  suppressDetails,
 }: {
   tile: TileRenderData;
   iconSize: ItemIconSize;
   fetchPriority: "auto" | "high" | "low";
+  suppressDetails: boolean;
 }) {
   const [tooltipPosition, setTooltipPosition] = useState<{
     x: number;
@@ -765,6 +1109,8 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
   const isPending = tile.transferStatus !== null;
 
   const handleMouseEnter = (event: React.MouseEvent) => {
+    if (suppressDetails) return;
+
     if (!contextMenuPosition) {
       setTooltipPosition({ x: event.clientX, y: event.clientY });
     }
@@ -772,6 +1118,8 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
 
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
+    if (suppressDetails) return;
+
     setTooltipPosition(null);
     setContextMenuPosition({ x: event.clientX, y: event.clientY });
   };
@@ -806,6 +1154,13 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
     setIsDragging(false);
   };
 
+  useEffect(() => {
+    if (!suppressDetails) return;
+
+    setTooltipPosition(null);
+    setContextMenuPosition(null);
+  }, [suppressDetails]);
+
   return (
     <div
       ref={tileRef}
@@ -824,7 +1179,7 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
         fetchPriority={fetchPriority}
       />
 
-      {(tooltipPosition || contextMenuPosition) && (
+      {!suppressDetails && (tooltipPosition || contextMenuPosition) && (
         <DestinyItemCard
           itemHash={tile.item.itemHash}
           definition={tile.definition}
@@ -936,13 +1291,14 @@ function CharacterHeaderCard({
           </div>
         </div>
 
-        {postmasterItemCount > 0 && (
-          <div className="pointer-events-none absolute bottom-1.5 right-2 flex h-5 items-center gap-1 border border-destiny-gold/40 bg-black/65 px-1.5 text-[10px] font-bold leading-none text-destiny-gold shadow-lg">
-            <Archive className="h-3 w-3" />
-            <span>{postmasterItemCount}</span>
-          </div>
-        )}
       </button>
+
+      {postmasterItemCount > 0 && (
+        <div className="pointer-events-none absolute right-2 top-full z-20 -mt-px flex h-5 items-center gap-1 rounded-b-sm border border-t-0 border-destiny-gold/45 bg-black/85 px-1.5 text-[10px] font-bold leading-none text-destiny-gold shadow-lg">
+          <Archive className="h-3 w-3" />
+          <span>{postmasterItemCount}</span>
+        </div>
+      )}
 
       {isPopoutOpen && (
         <CharacterClassPopout
@@ -1035,6 +1391,7 @@ function CharacterClassPopout({
                   tile={tile}
                   iconSize={POSTMASTER_POPOUT_ICON_SIZE}
                   fetchPriority={index < 6 ? "auto" : "low"}
+                  suppressDetails={false}
                 />
               ))}
             </div>
@@ -1253,6 +1610,8 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
   iconSize,
   sliceIndex,
   rowHeightPx,
+  renderTile,
+  suppressDetails,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -1262,6 +1621,8 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
   iconSize: ItemIconSize;
   sliceIndex: number;
   rowHeightPx: number;
+  renderTile: (tileRef: TileItemRef) => TileRenderData;
+  suppressDetails: boolean;
   onDragOver: (event: React.DragEvent, targetId: string) => void;
   onDragLeave: () => void;
   onDrop: (
@@ -1271,8 +1632,8 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
   ) => void;
 }) {
   const dropZoneId = `${characterColumn.characterId}-${bucketRow.bucketHash}`;
-  const visibleEquippedTile =
-    sliceIndex === 0 ? characterColumn.equippedTile : null;
+  const visibleEquippedItemRef =
+    sliceIndex === 0 ? characterColumn.equippedItemRef : null;
 
   return (
     <div
@@ -1287,11 +1648,12 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
       <div className="flex items-start gap-2">
         {bucketRow.showEquipped && (
           <div className="shrink-0">
-            {visibleEquippedTile ? (
+            {visibleEquippedItemRef ? (
               <InteractiveInventoryTile
-                tile={visibleEquippedTile}
+                tile={renderTile(visibleEquippedItemRef)}
                 iconSize={iconSize}
                 fetchPriority="auto"
+                suppressDetails={suppressDetails}
               />
             ) : (
               <EmptyInventorySlot iconSize={iconSize} />
@@ -1300,13 +1662,14 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
         )}
 
         <div className="grid shrink-0 grid-cols-3 gap-1">
-          {characterColumn.inventoryTiles.map((tile, index) =>
-            tile ? (
+          {characterColumn.inventoryItemRefs.map((tileRef, index) =>
+            tileRef ? (
               <InteractiveInventoryTile
-                key={tile.key}
-                tile={tile}
+                key={tileRef.key}
+                tile={renderTile(tileRef)}
                 iconSize={iconSize}
                 fetchPriority={sliceIndex === 0 && index < 3 ? "auto" : "low"}
+                suppressDetails={suppressDetails}
               />
             ) : (
               <EmptyInventorySlot
@@ -1323,19 +1686,25 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
 
 const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
   bucketRow,
-  vaultTiles,
+  vaultItemRefs,
+  vaultGroupLabel,
   vaultColumnCount,
   iconSize,
   rowHeightPx,
+  renderTile,
+  suppressDetails,
   onDragOver,
   onDragLeave,
   onDrop,
 }: {
   bucketRow: BucketRow;
-  vaultTiles: TileRenderData[];
+  vaultItemRefs: TileItemRef[];
+  vaultGroupLabel?: string;
   vaultColumnCount: number;
   iconSize: ItemIconSize;
   rowHeightPx: number;
+  renderTile: (tileRef: TileItemRef) => TileRenderData;
+  suppressDetails: boolean;
   onDragOver: (event: React.DragEvent, targetId: string) => void;
   onDragLeave: () => void;
   onDrop: (
@@ -1346,6 +1715,7 @@ const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
 }) {
   const { gapPx, iconSizePx } = getVaultGridMeasurements(iconSize);
   const dropZoneId = `${VAULT_OWNER_ID}-${bucketRow.bucketHash}`;
+  const vaultGroupAmmoIconPath = getVaultGroupAmmoIconPath(vaultGroupLabel);
 
   return (
     <div
@@ -1355,21 +1725,38 @@ const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
       onDragLeave={onDragLeave}
       onDrop={(event) => onDrop(event, VAULT_OWNER_ID, bucketRow.bucketHash)}
     >
-      <div
-        className="grid content-start"
-        style={{
-          gap: `${gapPx}px`,
-          gridTemplateColumns: `repeat(${vaultColumnCount}, ${iconSizePx}px)`,
-        }}
-      >
-        {vaultTiles.map((tile, index) => (
-          <InteractiveInventoryTile
-            key={tile.key}
-            tile={tile}
-            iconSize={iconSize}
-            fetchPriority={index < 18 ? "auto" : "low"}
-          />
-        ))}
+      <div className="h-full">
+        <div
+          className="grid content-start"
+          style={{
+            gap: `${gapPx}px`,
+            gridTemplateColumns: `repeat(${vaultColumnCount}, ${iconSizePx}px)`,
+          }}
+        >
+          {vaultGroupAmmoIconPath && (
+            <div
+              className="flex items-center justify-center"
+              style={{ height: iconSizePx, width: iconSizePx }}
+              aria-label={`${vaultGroupLabel} ammo`}
+              title={vaultGroupLabel}
+            >
+              <img
+                src={vaultGroupAmmoIconPath}
+                alt=""
+                className="h-1/2 w-1/2 object-contain opacity-90"
+              />
+            </div>
+          )}
+          {vaultItemRefs.map((tileRef, index) => (
+            <InteractiveInventoryTile
+              key={tileRef.key}
+              tile={renderTile(tileRef)}
+              iconSize={iconSize}
+              fetchPriority={index < 18 ? "auto" : "low"}
+              suppressDetails={suppressDetails}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1381,6 +1768,8 @@ const CharacterVirtualRow = memo(function CharacterVirtualRow({
   boardGridTemplateColumns,
   hasCharacterToggleColumn,
   vaultColumnCount,
+  renderTile,
+  suppressDetails,
   onToggleSection,
   onDragOver,
   onDragLeave,
@@ -1391,6 +1780,8 @@ const CharacterVirtualRow = memo(function CharacterVirtualRow({
   boardGridTemplateColumns: string;
   hasCharacterToggleColumn: boolean;
   vaultColumnCount: number;
+  renderTile: (tileRef: TileItemRef) => TileRenderData;
+  suppressDetails: boolean;
   onToggleSection: (sectionKey: string) => void;
   onDragOver: (event: React.DragEvent, targetId: string) => void;
   onDragLeave: () => void;
@@ -1400,8 +1791,6 @@ const CharacterVirtualRow = memo(function CharacterVirtualRow({
     bucketHash: number,
   ) => void;
 }) {
-  const { rowHeightPx } = getVaultGridMeasurements(iconSize);
-
   if (row.type === "section") {
     return (
       <button
@@ -1430,27 +1819,32 @@ const CharacterVirtualRow = memo(function CharacterVirtualRow({
       }}
     >
       {row.characterColumns.map((characterColumn) => (
-        <CharacterBucketRowSlice
-          key={`${row.key}-${characterColumn.characterId}`}
-          bucketRow={row.bucketRow}
-          characterColumn={characterColumn}
-          iconSize={iconSize}
-          sliceIndex={row.sliceIndex}
-          rowHeightPx={rowHeightPx}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        />
+          <CharacterBucketRowSlice
+            key={`${row.key}-${characterColumn.characterId}`}
+            bucketRow={row.bucketRow}
+            characterColumn={characterColumn}
+            iconSize={iconSize}
+            sliceIndex={row.sliceIndex}
+            rowHeightPx={row.height}
+            renderTile={renderTile}
+            suppressDetails={suppressDetails}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+          />
       ))}
 
       {hasCharacterToggleColumn && <div aria-hidden="true" />}
 
       <VaultBucketRowSlice
         bucketRow={row.bucketRow}
-        vaultTiles={row.vaultTiles}
+        vaultItemRefs={row.vaultItemRefs}
+        vaultGroupLabel={row.vaultGroupLabel}
         vaultColumnCount={vaultColumnCount}
         iconSize={iconSize}
-        rowHeightPx={rowHeightPx}
+        rowHeightPx={row.height}
+        renderTile={renderTile}
+        suppressDetails={suppressDetails}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -1462,23 +1856,32 @@ const CharacterVirtualRow = memo(function CharacterVirtualRow({
 export default function CharacterPage() {
   const { profile, stats, isLoading, isLoggedIn, membershipInfo } =
     useDestinyProfileContext();
-  const {
-    addOperation,
-    removeOperation,
-    updateOperationStatus,
-    pendingOperations,
-  } = useTransferStore();
-  const { iconSize, sortMethod, setIconSize, setSortMethod } =
-    useSettingsStore();
-  const {
-    headerSearchQuery: searchQuery,
-    setHeaderSearchQuery: setSearchQuery,
-    setHeaderSearchVisible,
-    setHeaderSearchPlaceholder,
-  } = useUIStore();
+  const addOperation = useTransferStore((state) => state.addOperation);
+  const removeOperation = useTransferStore((state) => state.removeOperation);
+  const updateOperationStatus = useTransferStore(
+    (state) => state.updateOperationStatus,
+  );
+  const pendingOperations = useTransferStore(
+    (state) => state.pendingOperations,
+  );
+  const iconSize = useSettingsStore((state) => state.iconSize);
+  const sortMethod = useSettingsStore((state) => state.sortMethod);
+  const vaultGrouping = useSettingsStore((state) => state.vaultGrouping);
+  const setIconSize = useSettingsStore((state) => state.setIconSize);
+  const setSortMethod = useSettingsStore((state) => state.setSortMethod);
+  const setVaultGrouping = useSettingsStore((state) => state.setVaultGrouping);
+  const searchQuery = useUIStore((state) => state.headerSearchQuery);
+  const setSearchQuery = useUIStore((state) => state.setHeaderSearchQuery);
+  const setHeaderSearchVisible = useUIStore(
+    (state) => state.setHeaderSearchVisible,
+  );
+  const setHeaderSearchPlaceholder = useUIStore(
+    (state) => state.setHeaderSearchPlaceholder,
+  );
   const getWishListInfo = useWishListStore((state) => state.getWishListInfo);
   const wishListLookup = useWishListStore((state) => state.wishListLookup);
   const trashListLookup = useWishListStore((state) => state.trashListLookup);
+  const activeSortMethod = sortMethod === "rarity" ? "power" : sortMethod;
   const { table: recordDefinitions } = useManifestTable<any>(
     "DestinyRecordDefinition",
   );
@@ -1503,7 +1906,20 @@ export default function CharacterPage() {
   const settingsRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const virtualListRef = useRef<HTMLDivElement>(null);
-  const [scrollMetrics, setScrollMetrics] = useState(getInitialScrollMetrics);
+  const liveScrollMetricsRef = useRef(getInitialScrollMetrics());
+  const visibleRowWindowRef = useRef<VisibleRowWindow>({
+    startIndex: 0,
+    endIndex: 0,
+    startTop: 0,
+  });
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInventoryScrollingRef = useRef(false);
+  const [visibleRowWindow, setVisibleRowWindow] =
+    useState<VisibleRowWindow>(() => visibleRowWindowRef.current);
+  const [isInventoryScrolling, setIsInventoryScrolling] = useState(false);
+  const [layoutViewportWidth, setLayoutViewportWidth] = useState(
+    () => getInitialScrollMetrics().viewportWidth,
+  );
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const parsedSearch = useMemo(
     () => parseSearchQuery(deferredSearchQuery),
@@ -1538,61 +1954,11 @@ export default function CharacterPage() {
     };
   }, [setHeaderSearchPlaceholder, setHeaderSearchVisible, setSearchQuery]);
 
-  useLayoutEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    let frameId = 0;
-
-    const updateScrollMetrics = () => {
-      frameId = 0;
-      const nextMetrics = {
-        scrollTop: scrollContainer.scrollTop,
-        viewportHeight: scrollContainer.clientHeight,
-        viewportWidth: scrollContainer.clientWidth,
-        virtualListTop: virtualListRef.current?.offsetTop ?? 0,
-      };
-
-      setScrollMetrics((currentMetrics) => {
-        const layoutChanged =
-          currentMetrics.viewportHeight !== nextMetrics.viewportHeight ||
-          currentMetrics.viewportWidth !== nextMetrics.viewportWidth ||
-          currentMetrics.virtualListTop !== nextMetrics.virtualListTop;
-        const scrollChangedEnough =
-          Math.abs(currentMetrics.scrollTop - nextMetrics.scrollTop) >=
-          SCROLL_METRIC_UPDATE_THRESHOLD_PX;
-
-        if (!layoutChanged && !scrollChangedEnough) {
-          return currentMetrics;
-        }
-
-        return nextMetrics;
-      });
-    };
-
-    const scheduleUpdate = () => {
-      if (frameId) return;
-      frameId = requestAnimationFrame(updateScrollMetrics);
-    };
-
-    const observer = new ResizeObserver(scheduleUpdate);
-
-    updateScrollMetrics();
-    observer.observe(scrollContainer);
-    scrollContainer.addEventListener("scroll", scheduleUpdate, {
-      passive: true,
-    });
-    window.addEventListener("resize", scheduleUpdate);
-
-    return () => {
-      observer.disconnect();
-      scrollContainer.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
-      if (frameId) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [mounted, isLoggedIn, isLoading]);
+  useEffect(() => {
+    if (sortMethod === "rarity") {
+      setSortMethod("power");
+    }
+  }, [setSortMethod, sortMethod]);
 
   const characters = useMemo(() => {
     const characterList = profile?.characters?.data
@@ -1662,7 +2028,7 @@ export default function CharacterPage() {
       Math.max(0, bodyColumnCount - 1) * INVENTORY_GRID_GAP_PX;
     const availableContentWidth = Math.max(
       0,
-      scrollMetrics.viewportWidth - INVENTORY_GRID_PADDING_PX,
+      layoutViewportWidth - INVENTORY_GRID_PADDING_PX,
     );
     const minimumVaultColumnWidth = layout.sizePx;
     const availableCurrencyColumnWidth =
@@ -1733,7 +2099,7 @@ export default function CharacterPage() {
     layout.characterColumnWidth,
     layout.sizePx,
     layout.vaultColumnWidth,
-    scrollMetrics.viewportWidth,
+    layoutViewportWidth,
     visibleCharacters,
   ]);
 
@@ -1752,7 +2118,12 @@ export default function CharacterPage() {
     ).flatMap((characterInventory: any) => characterInventory.items ?? []);
     const equippedItems = Object.values(
       profile.characterEquipment?.data ?? {},
-    ).flatMap((characterEquipment: any) => characterEquipment.items ?? []);
+    ).flatMap((characterEquipment: any) =>
+      (characterEquipment.items ?? []).map((item: InventoryItem) => ({
+        ...item,
+        __isEquipped: true,
+      })),
+    );
     const characterCurrencyItems = Object.values(
       profile.characterCurrencies?.data ?? {},
     ).flatMap((characterCurrencies: any) => characterCurrencies.items ?? []);
@@ -1796,6 +2167,18 @@ export default function CharacterPage() {
   const { definitions, isLoading: definitionsLoading } =
     useInventoryItemDefinitionsFromTable(allItemHashes, "card");
 
+  const inventoryItemByInstanceId = useMemo(() => {
+    const itemMap = new Map<string, InventoryItem>();
+
+    for (const item of fullInventoryList) {
+      if (item.itemInstanceId) {
+        itemMap.set(item.itemInstanceId, item);
+      }
+    }
+
+    return itemMap;
+  }, [fullInventoryList]);
+
   const dimDefinitions = useMemo<DimDefinitionTables>(
     () => ({
       inventoryItems: definitions,
@@ -1803,6 +2186,47 @@ export default function CharacterPage() {
       stats: statDefinitions ?? {},
     }),
     [definitions, equipableItemSetDefinitions, statDefinitions],
+  );
+
+  const normalizedItemCacheRef = useRef(
+    new Map<string, DimItemMini | undefined>(),
+  );
+  const normalizedItemCacheScopeRef = useRef<{
+    dimDefinitions: DimDefinitionTables | null;
+    profile: any;
+  }>({
+    dimDefinitions: null,
+    profile: null,
+  });
+
+  const getNormalizedItem = useCallback(
+    (item: InventoryItem) => {
+      const cacheScope = normalizedItemCacheScopeRef.current;
+      if (
+        cacheScope.dimDefinitions !== dimDefinitions ||
+        cacheScope.profile !== profile
+      ) {
+        normalizedItemCacheRef.current.clear();
+        cacheScope.dimDefinitions = dimDefinitions;
+        cacheScope.profile = profile;
+      }
+
+      const cacheKey = getItemSearchKey(item);
+      const cache = normalizedItemCacheRef.current;
+
+      if (cache.has(cacheKey)) {
+        return cache.get(cacheKey);
+      }
+
+      const normalizedItem = buildDimItemMini(
+        item,
+        profile?.itemComponents ?? {},
+        dimDefinitions,
+      );
+      cache.set(cacheKey, normalizedItem);
+      return normalizedItem;
+    },
+    [dimDefinitions, profile],
   );
 
   const inventoryByOwnerBucket = useMemo(() => {
@@ -1855,34 +2279,36 @@ export default function CharacterPage() {
     return itemMap;
   }, [profile]);
 
+  const inventorySearchRequest = useMemo(() => {
+    if (!deferredSearchQuery.trim()) {
+      return null;
+    }
+
+    return {
+      items: fullInventoryList,
+      definitions,
+      profile,
+      parsedSearch,
+      dimDefinitions,
+    };
+  }, [
+    deferredSearchQuery,
+    dimDefinitions,
+    definitions,
+    fullInventoryList,
+    parsedSearch,
+    profile,
+  ]);
+  const { matchByItemKey: searchMatchByItemKey } =
+    useInventorySearchMatches(inventorySearchRequest);
+
   const isItemMatch = useCallback(
     (item: InventoryItem) => {
-      if (!deferredSearchQuery) return true;
+      if (!searchMatchByItemKey) return true;
 
-      const definition = definitions[item.itemHash];
-      const instance = getInstanceDataWithStats(profile, item.itemInstanceId);
-      const normalizedItem = buildDimItemMini(
-        item,
-        profile?.itemComponents ?? {},
-        dimDefinitions,
-      );
-      return checkItemMatch(
-        item,
-        definition,
-        parsedSearch,
-        instance,
-        fullInventoryList,
-        normalizedItem,
-      );
+      return searchMatchByItemKey[getItemSearchKey(item)] ?? false;
     },
-    [
-      deferredSearchQuery,
-      definitions,
-      dimDefinitions,
-      fullInventoryList,
-      parsedSearch,
-      profile,
-    ],
+    [searchMatchByItemKey],
   );
 
   const searchState = useMemo(
@@ -1894,15 +2320,35 @@ export default function CharacterPage() {
     [deferredSearchQuery, isItemMatch, parsedSearch.hideNonMatches],
   );
 
-  const pendingOperationByItemId = useMemo(() => {
+  const pendingTransferIndex = useMemo(() => {
     const operationMap = new Map<string, string>();
+    const departingItemKeys = new Set<string>();
+    const arrivalsByOwnerBucket = new Map<string, typeof pendingOperations>();
 
     pendingOperations.forEach((operation) => {
       operationMap.set(operation.itemInstanceId, operation.status);
+      departingItemKeys.add(`${operation.fromOwnerId}:${operation.itemInstanceId}`);
+
+      if (operation.bucketHash) {
+        const ownerBucketKey = makeOwnerBucketKey(
+          operation.toOwnerId,
+          operation.bucketHash,
+        );
+        arrivalsByOwnerBucket.set(ownerBucketKey, [
+          ...(arrivalsByOwnerBucket.get(ownerBucketKey) ?? []),
+          operation,
+        ]);
+      }
     });
 
-    return operationMap;
+    return {
+      operationByItemId: operationMap,
+      departingItemKeys,
+      arrivalsByOwnerBucket,
+    };
   }, [pendingOperations]);
+
+  const pendingOperationByItemId = pendingTransferIndex.operationByItemId;
 
   const getItemsForOwnerBucket = useCallback(
     (ownerId: string, bucketHash: number) => {
@@ -1912,23 +2358,25 @@ export default function CharacterPage() {
         ) ?? []),
       ];
       const withoutDepartingItems = baseItems.filter((item) => {
-        return !pendingOperations.some(
-          (operation) =>
-            operation.fromOwnerId === ownerId &&
-            operation.itemInstanceId === item.itemInstanceId,
+        return !(
+          item.itemInstanceId &&
+          pendingTransferIndex.departingItemKeys.has(
+            `${ownerId}:${item.itemInstanceId}`,
+          )
         );
       });
 
-      const arrivingItems = pendingOperations
-        .filter((operation) => {
-          return (
-            operation.toOwnerId === ownerId &&
-            operation.bucketHash === bucketHash &&
+      const arrivingItems = (
+        pendingTransferIndex.arrivalsByOwnerBucket.get(
+          makeOwnerBucketKey(ownerId, bucketHash),
+        ) ?? []
+      )
+        .filter(
+          (operation) =>
             !withoutDepartingItems.some(
               (item) => item.itemInstanceId === operation.itemInstanceId,
-            )
-          );
-        })
+            ),
+        )
         .map((operation) => ({
           ...operation.item,
           itemHash: operation.itemHash,
@@ -1940,15 +2388,15 @@ export default function CharacterPage() {
         [...withoutDepartingItems, ...arrivingItems],
         definitions,
         profile,
-        sortMethod,
+        activeSortMethod,
       );
     },
     [
+      activeSortMethod,
       definitions,
       inventoryByOwnerBucket,
-      pendingOperations,
+      pendingTransferIndex,
       profile,
-      sortMethod,
     ],
   );
 
@@ -1960,15 +2408,16 @@ export default function CharacterPage() {
 
       if (!equippedItem) return undefined;
 
-      const isMovingAway = pendingOperations.some(
-        (operation) =>
-          operation.fromOwnerId === characterId &&
-          operation.itemInstanceId === equippedItem.itemInstanceId,
+      const isMovingAway = Boolean(
+        equippedItem.itemInstanceId &&
+          pendingTransferIndex.departingItemKeys.has(
+            `${characterId}:${equippedItem.itemInstanceId}`,
+          ),
       );
 
       return isMovingAway ? undefined : equippedItem;
     },
-    [equipmentByOwnerBucket, pendingOperations],
+    [equipmentByOwnerBucket, pendingTransferIndex],
   );
 
   const vaultCount = useMemo(() => {
@@ -2010,10 +2459,10 @@ export default function CharacterPage() {
           ownerId: character.characterId,
           fallbackIndex: index,
           definitions,
-          dimDefinitions,
           profile,
           isDimmed: false,
           getWishListInfo,
+          getNormalizedItem,
           pendingOperationByItemId,
         }),
       );
@@ -2025,8 +2474,8 @@ export default function CharacterPage() {
   }, [
     characters,
     definitions,
-    dimDefinitions,
     getItemsForOwnerBucket,
+    getNormalizedItem,
     getWishListInfo,
     pendingOperationByItemId,
     profile,
@@ -2052,9 +2501,7 @@ export default function CharacterPage() {
       } = JSON.parse(data);
       if (!itemInstanceId || fromOwnerId === targetOwnerId) return;
 
-      const fullItem = fullInventoryList.find(
-        (item) => item.itemInstanceId === itemInstanceId,
-      );
+      const fullItem = inventoryItemByInstanceId.get(itemInstanceId);
 
       addOperation({
         itemHash,
@@ -2104,7 +2551,7 @@ export default function CharacterPage() {
   }, [
     addOperation,
     characters,
-    fullInventoryList,
+    inventoryItemByInstanceId,
     membershipInfo,
     removeOperation,
     updateOperationStatus,
@@ -2143,23 +2590,27 @@ export default function CharacterPage() {
     const { rowHeightPx } = getVaultGridMeasurements(iconSize);
     const rows: CharacterInventoryRow[] = [];
 
-    const makeTile = (
+    const makeItemRef = (
       item: InventoryItem,
       ownerId: string,
       fallbackIndex: number,
       isDimmed: boolean,
-    ) =>
-      createTileRenderData({
+    ) => {
+      return createTileItemRef({
         item,
         ownerId,
         fallbackIndex,
-        definitions,
-        dimDefinitions,
-        profile,
         isDimmed,
-        getWishListInfo,
-        pendingOperationByItemId,
       });
+    };
+
+    const shouldShowItem = (item: InventoryItem) => {
+      if (!searchState.hasQuery || !searchState.hideNonMatches) {
+        return true;
+      }
+
+      return searchState.isMatch(item);
+    };
 
     for (const section of visibleInventorySections) {
       const isCollapsed = Boolean(collapsedSections[section.key]);
@@ -2184,20 +2635,13 @@ export default function CharacterPage() {
             ? getEquippedItemForBucket(ownerId, bucketRow.bucketHash)
             : undefined;
           const visibleEquippedItem =
-            equippedItem &&
-            (!searchState.hasQuery ||
-              !searchState.hideNonMatches ||
-              searchState.isMatch(equippedItem))
+            equippedItem && shouldShowItem(equippedItem)
               ? equippedItem
               : undefined;
           const inventoryItems = getItemsForOwnerBucket(
             ownerId,
             bucketRow.bucketHash,
-          ).filter((item) => {
-            if (!searchState.hasQuery || !searchState.hideNonMatches)
-              return true;
-            return searchState.isMatch(item);
-          });
+          ).filter(shouldShowItem);
           const sliceCount = Math.max(
             visibleEquippedItem ? 1 : 0,
             Math.ceil(inventoryItems.length / 3),
@@ -2205,8 +2649,8 @@ export default function CharacterPage() {
 
           return {
             ownerId,
-            equippedTile: visibleEquippedItem
-              ? makeTile(
+            equippedItemRef: visibleEquippedItem
+              ? makeItemRef(
                   visibleEquippedItem,
                   ownerId,
                   0,
@@ -2224,35 +2668,40 @@ export default function CharacterPage() {
             : getItemsForOwnerBucket(
                 VAULT_OWNER_ID,
                 bucketRow.bucketHash,
-              ).filter((item) => {
-                if (!searchState.hasQuery || !searchState.hideNonMatches)
-                  return true;
-                return searchState.isMatch(item);
-              });
-        const vaultTileData = vaultItems.map((item, index) =>
-          makeTile(
-            item,
-            VAULT_OWNER_ID,
-            index,
-            searchState.hasQuery && !searchState.isMatch(item),
-          ),
-        );
-        const vaultSliceCount = Math.ceil(
-          vaultTileData.length / vaultColumnCount,
-        );
-        const rowSliceCount = Math.max(
-          vaultSliceCount,
+              ).filter(shouldShowItem);
+        const vaultDisplayRows = getVaultDisplayRows({
+          items: vaultItems,
+          definitions,
+          profile,
+          sortMethod: activeSortMethod,
+          vaultGrouping: {
+            byClass: Boolean(vaultGrouping.byClass),
+            byRarity: Boolean(vaultGrouping.byRarity),
+            byAmmoType: Boolean(vaultGrouping.byAmmoType),
+            byTier: Boolean(vaultGrouping.byTier),
+          },
+          vaultColumnCount,
+        });
+        const characterSliceCount = Math.max(
           ...characterColumns.map(
             (characterColumn) => characterColumn.sliceCount,
           ),
           0,
         );
+        let characterSliceIndex = 0;
+        let vaultDisplayRowIndex = 0;
+        let renderedRowIndex = 0;
 
-        for (let sliceIndex = 0; sliceIndex < rowSliceCount; sliceIndex += 1) {
+        while (
+          characterSliceIndex < characterSliceCount ||
+          vaultDisplayRowIndex < vaultDisplayRows.length
+        ) {
+          const vaultDisplayRow = vaultDisplayRows[vaultDisplayRowIndex];
+          const currentCharacterSliceIndex = characterSliceIndex;
           const rowCharacterColumns = characterColumns.map(
             (characterColumn) => {
-              const startIndex = sliceIndex * 3;
-              const inventoryTiles = Array.from({ length: 3 }).map(
+              const startIndex = currentCharacterSliceIndex * 3;
+              const inventoryItemRefs = Array.from({ length: 3 }).map(
                 (_, offset) => {
                   const itemIndex = startIndex + offset;
                   const item = characterColumn.inventoryItems[itemIndex];
@@ -2261,7 +2710,7 @@ export default function CharacterPage() {
                     return null;
                   }
 
-                  return makeTile(
+                  return makeItemRef(
                     item,
                     characterColumn.ownerId,
                     itemIndex,
@@ -2272,39 +2721,63 @@ export default function CharacterPage() {
 
               return {
                 characterId: characterColumn.ownerId,
-                equippedTile:
-                  sliceIndex === 0 ? characterColumn.equippedTile : null,
-                inventoryTiles,
+                equippedItemRef:
+                  currentCharacterSliceIndex === 0
+                    ? characterColumn.equippedItemRef
+                    : null,
+                inventoryItemRefs,
               };
             },
           );
-          const vaultTiles = vaultTileData.slice(
-            sliceIndex * vaultColumnCount,
-            (sliceIndex + 1) * vaultColumnCount,
-          );
+          const vaultItemRefs =
+            vaultDisplayRow
+              ? vaultDisplayRow.items.map((item, offset) =>
+              makeItemRef(
+                item,
+                VAULT_OWNER_ID,
+                    vaultDisplayRow.startIndex + offset,
+                searchState.hasQuery && !searchState.isMatch(item),
+              ),
+                )
+              : [];
           const rowHasCharacterTiles = rowCharacterColumns.some(
             (characterColumn) => {
               return (
-                Boolean(characterColumn.equippedTile) ||
-                characterColumn.inventoryTiles.some(Boolean)
+                Boolean(characterColumn.equippedItemRef) ||
+                characterColumn.inventoryItemRefs.some(Boolean)
               );
             },
           );
 
-          if (!rowHasCharacterTiles && vaultTiles.length === 0) {
+          if (
+            !rowHasCharacterTiles &&
+            vaultItemRefs.length === 0
+          ) {
+            characterSliceIndex += 1;
+            if (vaultDisplayRow) {
+              vaultDisplayRowIndex += 1;
+            }
+            renderedRowIndex += 1;
             continue;
           }
 
           sectionRows.push({
             type: "items",
-            key: `items-${section.key}-${bucketRow.key}-${sliceIndex}`,
+            key: `items-${section.key}-${bucketRow.key}-${renderedRowIndex}`,
             sectionKey: section.key,
             bucketRow,
-            sliceIndex,
+            sliceIndex: Math.max(0, currentCharacterSliceIndex),
             height: rowHeightPx,
             characterColumns: rowCharacterColumns,
-            vaultTiles,
+            vaultItemRefs,
+            vaultGroupLabel: vaultDisplayRow?.groupLabel,
           });
+
+          characterSliceIndex += 1;
+          if (vaultDisplayRow) {
+            vaultDisplayRowIndex += 1;
+          }
+          renderedRowIndex += 1;
         }
       }
 
@@ -2325,19 +2798,16 @@ export default function CharacterPage() {
   }, [
     collapsedSections,
     definitions,
-    dimDefinitions,
     getEquippedItemForBucket,
     getItemsForOwnerBucket,
-    getWishListInfo,
     iconSize,
-    pendingOperationByItemId,
     profile,
     searchState,
+    activeSortMethod,
     vaultColumnCount,
+    vaultGrouping,
     visibleCharacters,
     visibleInventorySections,
-    wishListLookup,
-    trashListLookup,
   ]);
 
   const virtualRows = useMemo<VirtualRow[]>(() => {
@@ -2354,57 +2824,160 @@ export default function CharacterPage() {
     () => virtualRows.reduce((height, row) => height + row.height, 0),
     [virtualRows],
   );
-  const visibleVirtualRows = useMemo(() => {
-    const visibleTop = Math.max(
-      0,
-      scrollMetrics.scrollTop -
-        scrollMetrics.virtualListTop -
-        INVENTORY_OVERSCAN_PX,
+  const commitVisibleRowWindow = useCallback(() => {
+    const nextWindow = getVisibleRowWindow(
+      virtualRows,
+      liveScrollMetricsRef.current,
     );
-    const visibleBottom =
-      Math.max(0, scrollMetrics.scrollTop - scrollMetrics.virtualListTop) +
-      scrollMetrics.viewportHeight +
-      INVENTORY_OVERSCAN_PX;
+    const currentWindow = visibleRowWindowRef.current;
 
-    let startIndex = virtualRows.findIndex(
-      (row) => row.top + row.height >= visibleTop,
-    );
-    if (startIndex === -1) {
-      startIndex = 0;
-    }
-
-    let endIndex = startIndex;
-    while (
-      endIndex < virtualRows.length &&
-      virtualRows[endIndex].top <= visibleBottom
+    if (
+      currentWindow.startIndex === nextWindow.startIndex &&
+      currentWindow.endIndex === nextWindow.endIndex &&
+      currentWindow.startTop === nextWindow.startTop
     ) {
-      endIndex += 1;
+      return;
     }
+
+    visibleRowWindowRef.current = nextWindow;
+    setVisibleRowWindow(nextWindow);
+  }, [virtualRows]);
+
+  const visibleVirtualRows = useMemo(() => {
+    const startIndex = Math.min(
+      visibleRowWindow.startIndex,
+      virtualRows.length,
+    );
+    const endIndex = Math.min(
+      Math.max(visibleRowWindow.endIndex, startIndex),
+      virtualRows.length,
+    );
 
     return {
       startTop: virtualRows[startIndex]?.top ?? 0,
       rows: virtualRows.slice(startIndex, endIndex),
     };
-  }, [
-    scrollMetrics.scrollTop,
-    scrollMetrics.virtualListTop,
-    scrollMetrics.viewportHeight,
-    virtualRows,
-  ]);
+  }, [visibleRowWindow, virtualRows]);
+
+  const renderTile = useCallback(
+    (tileRef: TileItemRef) =>
+      createTileRenderData({
+        item: tileRef.item,
+        ownerId: tileRef.ownerId,
+        fallbackIndex: tileRef.fallbackIndex,
+        definitions,
+        profile,
+        isDimmed: tileRef.isDimmed,
+        getWishListInfo,
+        getNormalizedItem,
+        pendingOperationByItemId,
+      }),
+    [
+      definitions,
+      getNormalizedItem,
+      getWishListInfo,
+      pendingOperationByItemId,
+      profile,
+    ],
+  );
 
   useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
 
     if (!scrollContainer) return;
 
-    setScrollMetrics((currentMetrics) => ({
-      ...currentMetrics,
-      viewportHeight: scrollContainer.clientHeight,
-      viewportWidth: scrollContainer.clientWidth,
-      virtualListTop:
-        virtualListRef.current?.offsetTop ?? currentMetrics.virtualListTop,
-    }));
-  }, [boardLayout.minWidth, totalInventoryHeight, visibleCharacters.length]);
+    let scrollFrameId = 0;
+    let layoutFrameId = 0;
+
+    const markInventoryScrolling = () => {
+      if (!isInventoryScrollingRef.current) {
+        isInventoryScrollingRef.current = true;
+        setIsInventoryScrolling(true);
+      }
+
+      if (scrollIdleTimerRef.current) {
+        clearTimeout(scrollIdleTimerRef.current);
+      }
+
+      scrollIdleTimerRef.current = setTimeout(() => {
+        isInventoryScrollingRef.current = false;
+        setIsInventoryScrolling(false);
+      }, SCROLL_IDLE_TIMEOUT_MS);
+    };
+
+    const updateVisibleRowsFromScroll = () => {
+      scrollFrameId = 0;
+      liveScrollMetricsRef.current = {
+        ...liveScrollMetricsRef.current,
+        scrollTop: scrollContainer.scrollTop,
+      };
+      commitVisibleRowWindow();
+    };
+
+    const updateLayoutMetrics = () => {
+      layoutFrameId = 0;
+      const currentMetrics = liveScrollMetricsRef.current;
+      const viewportWidth = scrollContainer.clientWidth;
+      liveScrollMetricsRef.current = {
+        scrollTop: scrollContainer.scrollTop,
+        viewportHeight: scrollContainer.clientHeight,
+        viewportWidth,
+        virtualListTop:
+          virtualListRef.current?.offsetTop ?? currentMetrics.virtualListTop,
+      };
+      setLayoutViewportWidth((currentViewportWidth) =>
+        currentViewportWidth === viewportWidth
+          ? currentViewportWidth
+          : viewportWidth,
+      );
+      commitVisibleRowWindow();
+    };
+
+    const scheduleScrollUpdate = () => {
+      markInventoryScrolling();
+      if (scrollFrameId) return;
+      scrollFrameId = requestAnimationFrame(updateVisibleRowsFromScroll);
+    };
+
+    const scheduleLayoutUpdate = () => {
+      if (layoutFrameId) return;
+      layoutFrameId = requestAnimationFrame(updateLayoutMetrics);
+    };
+
+    const observer = new ResizeObserver(scheduleLayoutUpdate);
+    const virtualList = virtualListRef.current;
+
+    updateLayoutMetrics();
+    observer.observe(scrollContainer);
+    if (virtualList) {
+      observer.observe(virtualList);
+    }
+    scrollContainer.addEventListener("scroll", scheduleScrollUpdate, {
+      passive: true,
+    });
+    window.addEventListener("resize", scheduleLayoutUpdate);
+
+    return () => {
+      observer.disconnect();
+      scrollContainer.removeEventListener("scroll", scheduleScrollUpdate);
+      window.removeEventListener("resize", scheduleLayoutUpdate);
+      if (scrollFrameId) {
+        cancelAnimationFrame(scrollFrameId);
+      }
+      if (layoutFrameId) {
+        cancelAnimationFrame(layoutFrameId);
+      }
+      if (scrollIdleTimerRef.current) {
+        clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
+      }
+    };
+  }, [
+    boardLayout.minWidth,
+    commitVisibleRowWindow,
+    totalInventoryHeight,
+    visibleCharacters.length,
+  ]);
 
   if (!mounted) return null;
 
@@ -2486,13 +3059,13 @@ export default function CharacterPage() {
                 Sort By
               </h3>
               <div className="grid grid-cols-2 gap-1">
-                {["power", "name", "rarity", "newest"].map((method) => (
+                {(["power", "name", "newest"] as const).map((method) => (
                   <button
                     key={method}
                     onClick={() => setSortMethod(method as any)}
                     className={cn(
                       "border px-2 py-1.5 text-xs font-bold uppercase transition-colors",
-                      sortMethod === method
+                      activeSortMethod === method
                         ? "border-destiny-gold bg-destiny-gold text-black"
                         : "border-white/10 bg-black/40 text-slate-400 hover:border-white/30",
                     )}
@@ -2500,6 +3073,38 @@ export default function CharacterPage() {
                     {method}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">
+                Group By
+              </h3>
+              <div className="grid grid-cols-2 gap-1">
+                {[
+                  { key: "byRarity", label: "rarity" },
+                  { key: "byAmmoType", label: "ammo" },
+                ].map((groupingOption) => {
+                  const optionKey = groupingOption.key as keyof VaultGroupingOptions;
+                  const isSelected = Boolean(vaultGrouping[optionKey]);
+
+                  return (
+                    <button
+                      key={groupingOption.key}
+                      onClick={() =>
+                        setVaultGrouping({ [optionKey]: !isSelected })
+                      }
+                      className={cn(
+                        "border px-2 py-1.5 text-xs font-bold uppercase transition-colors",
+                        isSelected
+                          ? "border-destiny-gold bg-destiny-gold text-black"
+                          : "border-white/10 bg-black/40 text-slate-400 hover:border-white/30",
+                      )}
+                    >
+                      {groupingOption.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -2512,7 +3117,7 @@ export default function CharacterPage() {
       >
         <div className="w-full" style={{ minWidth: boardLayout.minWidth }}>
           <div
-            className="sticky top-0 z-30 grid gap-2 p-2"
+            className="sticky top-0 z-30 grid gap-2 p-2 pb-5"
             style={{
               gridTemplateColumns: boardLayout.headerGridTemplateColumns,
             }}
@@ -2586,6 +3191,8 @@ export default function CharacterPage() {
                       boardLayout.hasCharacterToggleColumn
                     }
                     vaultColumnCount={vaultColumnCount}
+                    renderTile={renderTile}
+                    suppressDetails={isInventoryScrolling}
                     onToggleSection={toggleSection}
                     onDragOver={handleDragOver}
                     onDragLeave={ignoreDragLeave}
@@ -2599,7 +3206,7 @@ export default function CharacterPage() {
           <div className="p-2">
             <ProfileInventoryPanel
               iconSize={iconSize}
-              sortMethod={sortMethod}
+              sortMethod={activeSortMethod}
             />
           </div>
         </div>

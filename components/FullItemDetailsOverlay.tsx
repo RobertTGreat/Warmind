@@ -66,11 +66,11 @@ export function FullItemDetailsOverlay() {
 
   return (
     <div
-      className="fixed inset-0 z-[120] bg-black/90 p-3 text-white backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-[120] bg-black/90 p-0 text-white backdrop-blur-sm sm:p-3 lg:p-5"
       onClick={closeOverlay}
     >
       <div
-        className="relative h-full w-full overflow-hidden rounded-sm border border-white/15 bg-[#121212] shadow-2xl shadow-black"
+        className="relative h-full w-full overflow-hidden border border-white/15 bg-[#121212] shadow-2xl shadow-black sm:rounded-sm"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="absolute right-4 top-4 z-50 flex max-w-[calc(100%-2rem)] items-center gap-2 md:right-6 md:top-6 md:gap-4">
@@ -92,7 +92,7 @@ export function FullItemDetailsOverlay() {
           </button>
         </div>
 
-        <div className="h-full overflow-hidden">
+        <div className="h-full overflow-y-auto overflow-x-hidden overscroll-contain">
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-sm text-slate-400">

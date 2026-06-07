@@ -1,17 +1,20 @@
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import { bungieApi, endpoints } from '@/lib/bungie';
-import { useState, useEffect } from 'react';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
 export function useOtherUserProfile(membershipType: number | null, destinyMembershipId: string | null) {
-    const { data: profile, error, isLoading } = useSWR(
-        membershipType && destinyMembershipId 
+    const profileUrl =
+        membershipType && destinyMembershipId
             ? endpoints.getProfile(membershipType, destinyMembershipId)
-            : null,
-        fetcher,
-        { revalidateOnFocus: false }
-    );
+            : null;
+    const { data: profile, error, isLoading } = useQuery({
+        queryKey: ['destinyProfile', 'otherUser', membershipType, destinyMembershipId],
+        queryFn: () => fetcher(profileUrl as string),
+        enabled: Boolean(profileUrl),
+        staleTime: 5 * 60 * 1000,
+        gcTime: 30 * 60 * 1000,
+    });
 
     return {
         profile: profile?.Response,

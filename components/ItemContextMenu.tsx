@@ -43,6 +43,7 @@ interface ItemContextMenuProps {
     tooltipEnhancementTier?: number | null;
     tooltipIsShiny?: boolean;
     tooltipArmorQuality?: ArmorQuality | null;
+    onSocketPlugChange?: (socketIndex: number, plugItemHash: number) => void;
 }
 
 function findOwnedItemCopy(profile: any, itemHash: number) {
@@ -100,6 +101,7 @@ export function ItemContextMenu({
     tooltipEnhancementTier,
     tooltipIsShiny,
     tooltipArmorQuality,
+    onSocketPlugChange,
 }: ItemContextMenuProps) {
     const shellRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
@@ -134,6 +136,7 @@ export function ItemContextMenu({
                 // This works for weapon perk toggles, subclass abilities, and free mods
                 // Reference: https://github.com/DestinyItemManager/DIM/blob/master/src/app/inventory/advanced-write-actions.ts
                 await insertSocketPlugFree(itemInstanceId, plugItemHash, socketIndex, targetCharacterId, membershipInfo.membershipType);
+                onSocketPlugChange?.(socketIndex, plugItemHash);
             } finally {
                 // 4. Relock if it was locked (restore state)
                 if (isLocked) {
@@ -186,7 +189,8 @@ export function ItemContextMenu({
             armorQuality: tooltipArmorQuality ?? undefined,
             wishListInfo,
             socketsData,
-            plugDefs
+            plugDefs,
+            isLocked
         };
     }, [
         tooltipReady,
@@ -210,6 +214,7 @@ export function ItemContextMenu({
         tooltipEnhancementTier,
         tooltipIsShiny,
         tooltipArmorQuality,
+        isLocked,
     ]);
 
     const canManageInstance = Boolean(itemInstanceId && membershipInfo && ownerId);

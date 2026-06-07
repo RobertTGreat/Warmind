@@ -57,7 +57,7 @@ export interface CustomLoadout {
     description?: string;
     notes?: string; // User notes
     classType: number; // 0: Titan, 1: Hunter, 2: Warlock
-    icon: string; // Icon path or emoji
+    icon: string; // Lucide icon id (legacy emoji values are migrated at render time)
     color: string; // Hex color
     items: LoadoutItem[];
     mods?: LoadoutItem[]; // Legacy mods
@@ -167,7 +167,7 @@ const safeLocalStorage: StateStorage = {
 const createDefaultLoadout = (classType: number): Omit<CustomLoadout, 'id' | 'createdAt' | 'updatedAt'> => ({
     name: 'New Loadout',
     classType,
-    icon: '⚔️',
+    icon: 'swords',
     color: '#e3ce62',
     items: [],
 });
@@ -247,7 +247,7 @@ export function decodeLoadoutShareCode(code: string): Omit<CustomLoadout, 'id' |
             name: data.n || 'Imported Loadout',
             description: data.d,
             classType: data.c ?? 0,
-            icon: data.i || '⚔️',
+            icon: data.i || 'swords',
             color: data.cl || '#e3ce62',
             items: (data.it || []).map((item: any) => ({
                 itemHash: item.h,
@@ -658,23 +658,23 @@ export const useLoadoutStore = create<LoadoutStore>()(
 
 export const LOADOUT_BUCKETS = {
     weapons: [
-        { hash: BUCKETS.KINETIC_WEAPON, name: 'Kinetic', icon: '🔫' },
-        { hash: BUCKETS.ENERGY_WEAPON, name: 'Energy', icon: '⚡' },
-        { hash: BUCKETS.POWER_WEAPON, name: 'Power', icon: '💥' },
+        { hash: BUCKETS.KINETIC_WEAPON, name: 'Kinetic', icon: 'crosshair' },
+        { hash: BUCKETS.ENERGY_WEAPON, name: 'Energy', icon: 'zap' },
+        { hash: BUCKETS.POWER_WEAPON, name: 'Power', icon: 'flame' },
     ],
     armor: [
-        { hash: BUCKETS.HELMET, name: 'Helmet', icon: '🪖' },
-        { hash: BUCKETS.GAUNTLETS, name: 'Gauntlets', icon: '🧤' },
-        { hash: BUCKETS.CHEST_ARMOR, name: 'Chest', icon: '🦺' },
-        { hash: BUCKETS.LEG_ARMOR, name: 'Legs', icon: '👖' },
-        { hash: BUCKETS.CLASS_ARMOR, name: 'Class', icon: '🎗️' },
+        { hash: BUCKETS.HELMET, name: 'Helmet', icon: 'helmet' },
+        { hash: BUCKETS.GAUNTLETS, name: 'Gauntlets', icon: 'gauntlets' },
+        { hash: BUCKETS.CHEST_ARMOR, name: 'Chest', icon: 'chest' },
+        { hash: BUCKETS.LEG_ARMOR, name: 'Legs', icon: 'legs' },
+        { hash: BUCKETS.CLASS_ARMOR, name: 'Class', icon: 'class' },
     ],
 };
 
 export const LOADOUT_ICONS = [
-    '⚔️', '🗡️', '🛡️', '🏹', '🔥', '❄️', '⚡', '💜', '💚', 
-    '🌟', '💀', '👁️', '🎯', '💎', '🌙', '☀️', '🌊', '🍃',
-    '🐺', '🦅', '🐍', '🦁', '🔮', '⭐', '🎮', '🏆',
+    'swords', 'sword', 'shield', 'crosshair', 'flame', 'snowflake', 'zap', 'sparkles', 'leaf',
+    'star', 'skull', 'eye', 'target', 'gem', 'moon', 'sun', 'waves', 'wind',
+    'wolf', 'bird', 'snake', 'crown', 'wand', 'sparkle', 'gamepad', 'trophy',
 ];
 
 export const LOADOUT_COLORS = [

@@ -1,4 +1,4 @@
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import { getActivityHistory } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -56,34 +56,48 @@ const ALL_ACTIVITY_MODE = 0;
 const RAID_ACTIVITY_MODE = 4;
 const DUNGEON_ACTIVITY_MODE = 82;
 
+async function fetchHistoryForCharacter(
+    membershipType: number,
+    membershipId: string,
+    characterId: string,
+    mode: number
+) {
+    const characterHistory: ActivityHistoryItem[] = [];
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const response = await getActivityHistory(membershipType, membershipId, characterId, mode, 250, page);
+        const activities = response.data.Response?.activities;
+
+        if (activities && activities.length > 0) {
+            characterHistory.push(...activities.map((activity: any) => ({ ...activity, characterId })));
+            page++;
+        } else {
+            hasMore = false;
+        }
+    }
+
+    return characterHistory;
+}
+
 export async function fetchHistoryForMode(
     membershipType: number,
     membershipId: string,
     characterIds: string[],
     mode: number
 ) {
-    const activityHistory: ActivityHistoryItem[] = [];
-
-    for (const characterId of characterIds) {
-        try {
-            let page = 0;
-            let hasMore = true;
-
-            while (hasMore) {
-                const response = await getActivityHistory(membershipType, membershipId, characterId, mode, 250, page);
-                const activities = response.data.Response?.activities;
-
-                if (activities && activities.length > 0) {
-                    activityHistory.push(...activities.map((activity: any) => ({ ...activity, characterId })));
-                    page++;
-                } else {
-                    hasMore = false;
-                }
+    const historyByCharacter = await Promise.all(
+        characterIds.map(async (characterId) => {
+            try {
+                return await fetchHistoryForCharacter(membershipType, membershipId, characterId, mode);
+            } catch (error) {
+                console.error(`Failed to fetch mode ${mode} history for character ${characterId}`, error);
+                return [];
             }
-        } catch (error) {
-            console.error(`Failed to fetch mode ${mode} history for character ${characterId}`, error);
-        }
-    }
+        })
+    );
+    const activityHistory = historyByCharacter.flat();
 
     return filterAndSortHistory(activityHistory);
 }
@@ -220,10 +234,13 @@ export function useActivityHistory(options: UseActivityHistoryOptions = {}) {
 }
 
 export function usePGCR(instanceId: string | null) {
-    const { data, error, isLoading } = useSWR(
-        instanceId ? `pgcr/${instanceId}` : null,
-        () => getOrFetchPGCR(instanceId!)
-    );
+    const { data, error, isLoading } = useQuery({
+        queryKey: ['pgcr', instanceId],
+        queryFn: () => getOrFetchPGCR(instanceId!),
+        enabled: Boolean(instanceId),
+        staleTime: 24 * 60 * 60 * 1000,
+        gcTime: 7 * 24 * 60 * 60 * 1000,
+    });
 
     return {
         pgcr: data,

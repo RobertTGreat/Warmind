@@ -20,6 +20,7 @@ export type SubscriptionTier = 'free' | 'premium';
 export interface VaultGroupingOptions {
     byClass: boolean;
     byRarity: boolean;
+    byAmmoType: boolean;
     byTier: boolean;
 }
 
@@ -163,7 +164,7 @@ const defaultSyncableSettings: SyncableSettings = {
     // Inventory & Vault
     iconSize: 'medium',
     sortMethod: 'power',
-    vaultGrouping: { byClass: false, byRarity: false, byTier: false },
+    vaultGrouping: { byClass: false, byRarity: false, byAmmoType: false, byTier: false },
     showLockedHighlight: true,
     postmasterWarningThreshold: 18,
     

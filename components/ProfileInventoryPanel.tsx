@@ -1,12 +1,13 @@
 "use client";
 
-import { ItemTile, type ItemTileModel } from "@/components/ItemTile";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
+import {
+  VirtualizedItemGrid,
+  type VirtualizedItem,
+} from "@/components/VirtualizedItemGrid";
 import { useInventoryItemDefinitionsFromTable } from "@/hooks/useInventoryItemDefinitionsFromTable";
-import { getBungieImage } from "@/lib/bungie";
 import { BUCKETS } from "@/lib/destinyUtils";
 import { ITEM_ICON_CSS_PX, type ItemIconSize } from "@/lib/itemIconImage";
-import { cn } from "@/lib/utils";
 import type { SortMethod } from "@/store/settingsStore";
 import { useMemo } from "react";
 
@@ -40,21 +41,6 @@ const PROFILE_INVENTORY_SECTIONS: ProfileInventorySection[] = [
     bucketHash: BUCKETS.MODS,
   },
 ];
-
-function getRarityClassName(definition: any) {
-  switch (definition?.inventory?.tierTypeName) {
-    case "Exotic":
-      return "border-yellow-500";
-    case "Legendary":
-      return "border-purple-500";
-    case "Rare":
-      return "border-blue-500";
-    case "Common":
-      return "border-green-500";
-    default:
-      return "border-white/20";
-  }
-}
 
 function compareProfileInventoryItems(
   firstItem: ProfileInventoryItem,
@@ -90,25 +76,6 @@ function compareProfileInventoryItems(
   return 0;
 }
 
-function buildProfileInventoryTile(
-  item: ProfileInventoryItem,
-  definition: any,
-): ItemTileModel {
-  const iconPath = definition?.displayProperties?.icon;
-  const watermarkPath =
-    definition?.iconWatermark ?? definition?.iconWatermarkShelved;
-
-  return {
-    itemHash: item.itemHash,
-    itemInstanceId: item.itemInstanceId,
-    name: definition?.displayProperties?.name ?? `Item ${item.itemHash}`,
-    iconSrc: iconPath ? getBungieImage(iconPath) : null,
-    watermarkSrc: watermarkPath ? getBungieImage(watermarkPath) : null,
-    quantity: item.itemInstanceId ? undefined : item.quantity,
-    rarityClassName: getRarityClassName(definition),
-  };
-}
-
 function ProfileInventoryGrid({
   items,
   definitions,
@@ -118,29 +85,30 @@ function ProfileInventoryGrid({
   definitions: Record<number, any>;
   iconSize: ItemIconSize;
 }) {
-  const tileWidthClassName = {
-    small: "w-12",
-    medium: "w-14",
-    large: "w-16",
-  }[iconSize];
+  const virtualizedItems = useMemo<VirtualizedItem[]>(
+    () =>
+      items.map((item) => ({
+        ...item,
+        definition: definitions[item.itemHash],
+      })),
+    [definitions, items],
+  );
+  const rowHeight = ITEM_ICON_CSS_PX[iconSize] + 32;
+  const estimatedRowCount = Math.ceil(items.length / 8);
+  const containerHeight = Math.min(
+    420,
+    Math.max(rowHeight * 2, estimatedRowCount * rowHeight),
+  );
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item, itemIndex) => {
-        const definition = definitions[item.itemHash];
-        const tile = buildProfileInventoryTile(item, definition);
-
-        return (
-          <ItemTile
-            key={`${item.itemHash}-${item.itemInstanceId ?? "profile"}-${itemIndex}`}
-            item={tile}
-            sizePx={ITEM_ICON_CSS_PX[iconSize]}
-            className={cn("shrink-0", tileWidthClassName)}
-            fetchPriority={itemIndex < 24 ? "auto" : "low"}
-          />
-        );
-      })}
-    </div>
+    <VirtualizedItemGrid
+      items={virtualizedItems}
+      iconSize={iconSize}
+      ownerId="profile"
+      containerHeight={containerHeight}
+      overscan={160}
+      gap={8}
+    />
   );
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import useSWR from 'swr';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { Loader2, Users, Shield, Star } from 'lucide-react';
@@ -25,19 +25,29 @@ interface FireteamMember {
 
 // Reusing styles from ClanMemberCard slightly modified for Fireteam context
 export function FireteamList() {
+    const queryClient = useQueryClient();
     const { membershipInfo } = useDestinyProfileContext();
     const [members, setMembers] = useState<FireteamMember[]>([]);
     const [isLoadingMembers, setIsLoadingMembers] = useState(false);
-    const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
+    const favoriteMembers = useSettingsStore((state) => state.favoriteMembers);
+    const toggleFavoriteMember = useSettingsStore((state) => state.toggleFavoriteMember);
 
     // 1. Get Transitory Data (Component 1000)
-    const { data: profileData, isLoading: profileLoading } = useSWR(
-        membershipInfo 
-            ? endpoints.getProfile(membershipInfo.membershipType, membershipInfo.membershipId, [1000]) 
-            : null,
-        fetcher,
-        { refreshInterval: 30000 } // Refresh every 30s
-    );
+    const { data: profileData, isLoading: profileLoading } = useQuery({
+        queryKey: ['fireteamTransitoryProfile', membershipInfo?.membershipType, membershipInfo?.membershipId],
+        queryFn: () =>
+            fetcher(
+                endpoints.getProfile(
+                    membershipInfo!.membershipType,
+                    membershipInfo!.membershipId,
+                    [1000]
+                )
+            ),
+        enabled: Boolean(membershipInfo),
+        refetchInterval: 30000,
+        staleTime: 25000,
+        gcTime: 5 * 60 * 1000,
+    });
 
     const transitoryData = profileData?.Response?.profileTransitoryData?.data;
     const partyMembers = transitoryData?.partyMembers;
@@ -66,9 +76,12 @@ export function FireteamList() {
                 try {
                     // First, look up the member's actual memberships using BungieNext type (254)
                     // This handles cross-platform players
-                    const membershipRes = await bungieApi.get(
-                        `/User/GetMembershipsById/${member.membershipId}/254/`
-                    );
+                    const membershipRes = await queryClient.fetchQuery({
+                        queryKey: ['bungieMembershipsById', member.membershipId],
+                        queryFn: () => bungieApi.get(`/User/GetMembershipsById/${member.membershipId}/254/`),
+                        staleTime: 10 * 60 * 1000,
+                        gcTime: 60 * 60 * 1000,
+                    });
                     
                     const membershipData = membershipRes.data.Response;
                     if (!membershipData?.destinyMemberships?.length) {
@@ -82,9 +95,15 @@ export function FireteamList() {
                         : membershipData.destinyMemberships[0];
                     
                     // Now fetch their Destiny profile with the correct membership type
-                    const res = await bungieApi.get(
-                        endpoints.getProfile(destinyMembership.membershipType, destinyMembership.membershipId, [100, 200])
-                    );
+                    const res = await queryClient.fetchQuery({
+                        queryKey: ['fireteamMemberProfile', destinyMembership.membershipType, destinyMembership.membershipId],
+                        queryFn: () =>
+                            bungieApi.get(
+                                endpoints.getProfile(destinyMembership.membershipType, destinyMembership.membershipId, [100, 200])
+                            ),
+                        staleTime: 10 * 60 * 1000,
+                        gcTime: 60 * 60 * 1000,
+                    });
                     
                     const p = res.data.Response;
                     if (!p) throw new Error('No profile data');
@@ -133,7 +152,7 @@ export function FireteamList() {
         return () => {
             cancelled = true;
         };
-    }, [partyMemberIds, membershipInfo?.membershipId, membershipInfo?.membershipType]);
+    }, [partyMemberIds, membershipInfo?.membershipId, membershipInfo?.membershipType, partyMembers, queryClient]);
 
     if (!membershipInfo) return null;
 

@@ -1,4 +1,4 @@
-import useSWR from "swr";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 export interface ActivityDefinitionCard {
@@ -30,7 +30,7 @@ export interface ActivityDefinitionCard {
   blacklisted?: boolean;
 }
 
-async function fetchActivityDefinitions([url, hashesKey]: [string, string]) {
+async function fetchActivityDefinitions(url: string, hashesKey: string) {
   const hashes = hashesKey.split(",").filter(Boolean).map(Number);
 
   const response = await fetch(url, {
@@ -53,16 +53,17 @@ export function useActivityDefinitions(hashes: number[]) {
     return [...new Set(hashes)].filter(Number.isFinite).sort((a, b) => a - b).join(",");
   }, [hashes.join(",")]);
 
-  const { data, error, isLoading } = useSWR<Record<string, ActivityDefinitionCard>>(
-    hashesKey
-      ? ["/api/manifest-table/DestinyActivityDefinition?view=activity-card", hashesKey]
-      : null,
-    fetchActivityDefinitions,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 24 * 60 * 60 * 1000,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["manifestDefinitions", "DestinyActivityDefinition", hashesKey, "activity-card"],
+    queryFn: () =>
+      fetchActivityDefinitions(
+        "/api/manifest-table/DestinyActivityDefinition?view=activity-card",
+        hashesKey,
+      ) as Promise<Record<string, ActivityDefinitionCard>>,
+    enabled: hashesKey.length > 0,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
 
   return {
     definitions: data ?? {},

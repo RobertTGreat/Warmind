@@ -111,6 +111,7 @@ export interface ItemTooltipProps {
     plugDefs?: Record<number, any>; // Plug definitions for archetype lookup
     wishListInfo?: WishListInfo; // Wish list match info
     patternUnlockProgress?: PatternUnlockProgress;
+    isLocked?: boolean;
     showWishListSection?: boolean; // Only show wish list section when true (context menu)
     showFullSetBonusDescriptions?: boolean;
     /** Render body only (no portal) — use inside a parent shell, e.g. context menu + tooltip row. */
@@ -320,6 +321,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
     plugDefs,
     wishListInfo,
     patternUnlockProgress,
+    isLocked,
     showWishListSection = false,
     showFullSetBonusDescriptions = false,
     docked = false,
@@ -623,7 +625,7 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
   }, [detailedPerks, exoticArmorTraits.length, exoticTraitPlugHashes]);
   const shouldShowDetailedPerks =
     Boolean(detailedPerksForGrid && detailedPerksForGrid.length > 0);
-  const shouldShowPlugSection = shouldShowDetailedPerks || mods.length > 0;
+  const shouldShowPlugSection = shouldShowDetailedPerks || mods.length > 0 || isLocked;
   const showTooltipScreenshots = false;
 
   return (
@@ -1400,9 +1402,17 @@ const ItemTooltipBody = memo(function ItemTooltipBody({
                                 </div>
                             )}
 
-                            {/* Mods Only - Horizontal display */}
-                            {mods.length > 0 && (
-                                <div className="flex flex-row gap-1.5 shrink-0 pt-0.5 border-l border-white/10 pl-3">
+                            {(mods.length > 0 || isLocked) && (
+                                <div className="ml-auto flex shrink-0 flex-row items-center gap-1.5 border-l border-white/10 pl-3 pt-0.5">
+                                    {isLocked && (
+                                        <div
+                                            className="flex h-8 items-center gap-1.5 rounded border border-orange-400/30 bg-orange-500/10 px-2 text-[9px] font-bold uppercase tracking-wide text-orange-300"
+                                            title="Locked"
+                                        >
+                                            <span className="h-2 w-2 rounded-full bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.7)]" />
+                                            Locked
+                                        </div>
+                                    )}
                                     {mods.map((plug, i) => {
                                         const iconUrl = tooltipBungieImageSrc(plug.displayProperties?.icon, 32);
                                         const clarityDescription = clarityDescriptions[plug.hash];

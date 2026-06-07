@@ -8,7 +8,7 @@
  * 3. Update display when fresh data arrives
  */
 
-import useSWR from 'swr';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import Cookies from 'js-cookie';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -22,8 +22,47 @@ import {
 import type { CachedProfile } from '@/lib/db';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
+const PROFILE_LOAD_LOCK_NAME = 'warmind-profile-load';
+const PROFILE_CACHE_RESPONSE_MARKER = '__warmindProfileCacheHit';
+
+async function fetchProfileWithCrossTabLock(
+  profileUrl: string,
+  profileCacheKey: string | null,
+  options: { bypassCache?: boolean } = {}
+) {
+  const loadProfile = async () => {
+    if (!options.bypassCache && profileCacheKey) {
+      const cachedProfile = await getCachedProfile(profileCacheKey);
+
+      if (cachedProfile && isProfileFresh(cachedProfile)) {
+        return {
+          Response: cachedProfile.data,
+          [PROFILE_CACHE_RESPONSE_MARKER]: true,
+        };
+      }
+    }
+
+    return fetcher(profileUrl);
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request(
+      PROFILE_LOAD_LOCK_NAME,
+      { mode: 'exclusive' },
+      loadProfile
+    );
+  }
+
+  return loadProfile();
+}
 
 export const PROFILE_COMPONENTS = {
+  shell: [
+    100, // profiles
+    200, // characters
+    202, // character progressions for season rank/header
+  ],
+
   vault: [
     100, // profiles
     102, // profile inventory
@@ -83,6 +122,14 @@ export const PROFILE_COMPONENTS = {
     901,
   ],
 
+  activity: [
+    100,
+    200,
+    900,
+    901,
+    1100,
+  ],
+
   full: [
     100, 102, 103, 104,
     200, 201, 202, 203, 204, 205, 206,
@@ -94,8 +141,24 @@ export const PROFILE_COMPONENTS = {
 } as const;
 
 export function getProfileComponentsForPathname(pathname: string | null) {
+  if (pathname?.startsWith('/character/loadouts')) {
+    return PROFILE_COMPONENTS.inventory;
+  }
+
+  if (pathname?.startsWith('/character/optimizer')) {
+    return PROFILE_COMPONENTS.vault;
+  }
+
   if (pathname === '/character') {
     return PROFILE_COMPONENTS.inventory;
+  }
+
+  if (pathname === '/' || pathname?.startsWith('/settings')) {
+    return PROFILE_COMPONENTS.shell;
+  }
+
+  if (pathname?.startsWith('/activity')) {
+    return PROFILE_COMPONENTS.activity;
   }
 
   if (pathname?.startsWith('/collections/armor-set-bonuses')) {
@@ -171,6 +234,7 @@ export interface ProfileCacheInfo {
 export function useDestinyProfile(
   components: readonly number[] = PROFILE_COMPONENTS.full
 ) {
+  const queryClient = useQueryClient();
   // Initialize to false to match server-side rendering and prevent hydration mismatch
   const [hasToken, setHasToken] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -223,10 +287,17 @@ export function useDestinyProfile(
     };
   }, []);
 
-  const { data: userMemberships, error: userError, isLoading: userLoading } = useSWR(
-    authReady && hasToken ? endpoints.getCurrentUser() : null,
-    fetcher
-  );
+  const {
+    data: userMemberships,
+    error: userError,
+    isLoading: userLoading,
+  } = useQuery({
+    queryKey: ['bungie', 'currentUser'],
+    queryFn: () => fetcher(endpoints.getCurrentUser()),
+    enabled: authReady && hasToken,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   const primaryMembership = userMemberships?.Response?.destinyMemberships?.[0];
   const membershipType = primaryMembership?.membershipType;
@@ -279,20 +350,23 @@ export function useDestinyProfile(
     data: profileResponse,
     error: profileError,
     isLoading: profileLoading,
-  } = useSWR(
-    profileKey,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 60_000,
-      focusThrottleInterval: 120_000,
-    }
-  );
+    isFetching: profileFetching,
+  } = useQuery({
+    queryKey: ['destinyProfile', membershipType, destinyMembershipId, componentsKey],
+    queryFn: () => fetchProfileWithCrossTabLock(profileKey as string, profileCacheKey),
+    enabled: Boolean(profileKey),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   // Cache the fresh profile data when it arrives
   useEffect(() => {
-    if (profileResponse?.Response && profileCacheKey && membershipType) {
+    if (
+      profileResponse?.Response &&
+      profileCacheKey &&
+      membershipType &&
+      !profileResponse?.[PROFILE_CACHE_RESPONSE_MARKER]
+    ) {
       console.log('[useDestinyProfile] Caching fresh profile to IndexedDB');
       cacheProfile(
         profileCacheKey,
@@ -316,25 +390,24 @@ export function useDestinyProfile(
   const profile = profileResponse?.Response || cachedProfileData;
   const isUsingCachedData = !profileResponse?.Response && !!cachedProfileData;
 
-  // Derived State
-  let stats: DestinyStats | null = null;
-  
-  // Root Hashes from Profile Records
-  const recordCategoriesRootNodeHash = profile?.profileRecords?.data?.recordCategoriesRootNodeHash;
-  const recordSealsRootNodeHash = profile?.profileRecords?.data?.recordSealsRootNodeHash;
-  
   const currentSeasonHash = profile?.profile?.data?.currentSeasonHash;
 
-  const { data: seasonDefData } = useSWR(
-      currentSeasonHash ? endpoints.getSeasonDefinition(currentSeasonHash) : null,
-      fetcher
-  );
+  const { data: seasonDefData } = useQuery({
+      queryKey: ['manifestDefinition', 'DestinySeasonDefinition', currentSeasonHash],
+      queryFn: () => fetcher(endpoints.getSeasonDefinition(currentSeasonHash)),
+      enabled: Boolean(currentSeasonHash),
+      staleTime: 24 * 60 * 60 * 1000,
+      gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
   const seasonDef = seasonDefData?.Response;
 
-  const { data: seasonPassDefData } = useSWR(
-      seasonDef?.seasonPassHash ? endpoints.getSeasonPassDefinition(seasonDef.seasonPassHash) : null,
-      fetcher
-  );
+  const { data: seasonPassDefData } = useQuery({
+      queryKey: ['manifestDefinition', 'DestinySeasonPassDefinition', seasonDef?.seasonPassHash],
+      queryFn: () => fetcher(endpoints.getSeasonPassDefinition(seasonDef.seasonPassHash)),
+      enabled: Boolean(seasonDef?.seasonPassHash),
+      staleTime: 24 * 60 * 60 * 1000,
+      gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
   const seasonPassDef = seasonPassDefData?.Response;
 
   // Track selected character (persisted in localStorage)
@@ -345,85 +418,92 @@ export function useDestinyProfile(
     return null;
   });
 
-  // Build list of all characters
-  let allCharacters: CharacterInfo[] = [];
-  
-  if (profile) {
-    const characters = profile.characters?.data;
-    const characterIds = profile.profile?.data?.characterIds || [];
-    const characterProgressions = profile.characterProgressions?.data;
-    
-    // Build all characters list
-    if (characters) {
-      allCharacters = Object.keys(characters)
-        .map(charId => {
-          const char = characters[charId];
-          return {
-            characterId: charId,
-            classType: char.classType,
-            light: char.light,
-            emblemPath: getBungieImage(char.emblemPath),
-            emblemBackgroundPath: getBungieImage(char.emblemBackgroundPath),
-            dateLastPlayed: char.dateLastPlayed,
-          };
-        })
-        .sort((a, b) => {
-          const dateA = new Date(a.dateLastPlayed).getTime();
-          const dateB = new Date(b.dateLastPlayed).getTime();
-          return dateB - dateA; // Most recently played first
-        });
-    }
-    
-    // Determine active character: selected > last played > first
-    let activeCharacterId = characterIds[0];
-    
-    // Check if selected character is valid
-    if (selectedCharacterId && characters?.[selectedCharacterId]) {
-      activeCharacterId = selectedCharacterId;
-    } else if (characters) {
-      // Fall back to last played
-      activeCharacterId = Object.keys(characters).sort((a, b) => {
-        const dateA = new Date(characters[a].dateLastPlayed).getTime();
-        const dateB = new Date(characters[b].dateLastPlayed).getTime();
-        return dateB - dateA;
-      })[0];
+  const {
+    stats,
+    allCharacters,
+    recordCategoriesRootNodeHash,
+    recordSealsRootNodeHash,
+  } = useMemo(() => {
+    const recordCategoriesRootNodeHash =
+      profile?.profileRecords?.data?.recordCategoriesRootNodeHash;
+    const recordSealsRootNodeHash =
+      profile?.profileRecords?.data?.recordSealsRootNodeHash;
+    const characters = profile?.characters?.data;
+    const characterIds = profile?.profile?.data?.characterIds || [];
+    const characterProgressions = profile?.characterProgressions?.data;
+
+    if (!profile || !characters) {
+      return {
+        stats: null,
+        allCharacters: [],
+        recordCategoriesRootNodeHash,
+        recordSealsRootNodeHash,
+      };
     }
 
-    const activeChar = characters?.[activeCharacterId];
-    const activeProgressions = characterProgressions?.[activeCharacterId]?.progressions;
-    
-    if (activeChar) {
-        // Guardian Rank is in profile data usually
-        const guardianRank = profile.profile?.data?.currentGuardianRank || 0;
-
-        let seasonRank: number | undefined = undefined;
-        if (activeProgressions && seasonPassDef) {
-            const progressionHash = seasonPassDef.rewardProgressionHash;
-            const prestigeProgressionHash = seasonPassDef.prestigeRewardProgressionHash;
-            
-            const userProgression = activeProgressions[progressionHash];
-            const userPrestigeProgression = activeProgressions[prestigeProgressionHash];
-            
-            const level = userProgression?.level || 0;
-            const prestigeLevel = userPrestigeProgression?.level || 0;
-            seasonRank = level + prestigeLevel;
-        }
-        
-        stats = {
-            characterId: activeCharacterId,
-            classType: activeChar.classType,
-            light: activeChar.light,
-            guardianRank,
-            emblemHash: activeChar.emblemHash,
-            emblemPath: getBungieImage(activeChar.emblemPath),
-            emblemBackgroundPath: getBungieImage(activeChar.emblemBackgroundPath),
-            title: "", // Title logic is complex (requires record hashes), skipping for now
-            seasonRank, 
-            characterProgressions: activeProgressions,
-            currentSeasonHash
+    const allCharacters = Object.keys(characters)
+      .map((characterId) => {
+        const character = characters[characterId];
+        return {
+          characterId,
+          classType: character.classType,
+          light: character.light,
+          emblemPath: getBungieImage(character.emblemPath),
+          emblemBackgroundPath: getBungieImage(character.emblemBackgroundPath),
+          dateLastPlayed: character.dateLastPlayed,
         };
+      })
+      .sort((firstCharacter, secondCharacter) => {
+        const firstDate = new Date(firstCharacter.dateLastPlayed).getTime();
+        const secondDate = new Date(secondCharacter.dateLastPlayed).getTime();
+        return secondDate - firstDate;
+      });
+
+    const activeCharacterId =
+      selectedCharacterId && characters[selectedCharacterId]
+        ? selectedCharacterId
+        : allCharacters[0]?.characterId ?? characterIds[0];
+    const activeCharacter = characters[activeCharacterId];
+    const activeProgressions =
+      characterProgressions?.[activeCharacterId]?.progressions;
+
+    if (!activeCharacter) {
+      return {
+        stats: null,
+        allCharacters,
+        recordCategoriesRootNodeHash,
+        recordSealsRootNodeHash,
+      };
     }
-  }
+
+    let seasonRank: number | undefined;
+    if (activeProgressions && seasonPassDef) {
+      const progressionHash = seasonPassDef.rewardProgressionHash;
+      const prestigeProgressionHash = seasonPassDef.prestigeRewardProgressionHash;
+      const userProgression = activeProgressions[progressionHash];
+      const userPrestigeProgression = activeProgressions[prestigeProgressionHash];
+      seasonRank = (userProgression?.level || 0) + (userPrestigeProgression?.level || 0);
+    }
+
+    return {
+      stats: {
+        characterId: activeCharacterId,
+        classType: activeCharacter.classType,
+        light: activeCharacter.light,
+        guardianRank: profile.profile?.data?.currentGuardianRank || 0,
+        emblemHash: activeCharacter.emblemHash,
+        emblemPath: getBungieImage(activeCharacter.emblemPath),
+        emblemBackgroundPath: getBungieImage(activeCharacter.emblemBackgroundPath),
+        title: "",
+        seasonRank,
+        characterProgressions: activeProgressions,
+        currentSeasonHash,
+      },
+      allCharacters,
+      recordCategoriesRootNodeHash,
+      recordSealsRootNodeHash,
+    };
+  }, [currentSeasonHash, profile, seasonPassDef, selectedCharacterId]);
 
   // Callback to select a character
   const selectCharacter = useCallback((characterId: string) => {
@@ -435,32 +515,94 @@ export function useDestinyProfile(
 
   // Force refresh function
   const forceRefresh = useCallback(async () => {
-    if (membershipType && destinyMembershipId && profileCacheKey) {
-      const response = await bungieApi.get(
-        endpoints.getProfile(
-          membershipType,
-          destinyMembershipId,
-          [...components]
-        )
-      );
-      if (response.data?.Response) {
-        await cacheProfile(
-          profileCacheKey,
-          membershipType,
-          response.data.Response,
-          displayName
-        );
+    if (membershipType && destinyMembershipId && profileCacheKey && profileKey) {
+      const response = await queryClient.fetchQuery({
+        queryKey: ['destinyProfile', membershipType, destinyMembershipId, componentsKey],
+        queryFn: () =>
+          fetchProfileWithCrossTabLock(profileKey, profileCacheKey, {
+            bypassCache: true,
+          }),
+        staleTime: 0,
+      });
+
+      if (response?.Response) {
+        await cacheProfile(profileCacheKey, membershipType, response.Response, displayName);
       }
     }
-  }, [membershipType, destinyMembershipId, profileCacheKey, displayName, components]);
+  }, [
+    componentsKey,
+    destinyMembershipId,
+    displayName,
+    membershipType,
+    profileCacheKey,
+    profileKey,
+    queryClient,
+  ]);
 
-  return {
+  const updateItemSocketPlug = useCallback(
+    (itemInstanceId: string, socketIndex: number, plugItemHash: number) => {
+      const patchProfile = (currentProfile: any) => {
+        const currentSockets =
+          currentProfile?.itemComponents?.sockets?.data?.[itemInstanceId]?.sockets;
+
+        if (!Array.isArray(currentSockets) || !currentSockets[socketIndex]) {
+          return currentProfile;
+        }
+
+        const patchedSockets = currentSockets.map((socket: any, index: number) =>
+          index === socketIndex
+            ? {
+                ...socket,
+                plugHash: plugItemHash,
+              }
+            : socket
+        );
+
+        return {
+          ...currentProfile,
+          itemComponents: {
+            ...currentProfile.itemComponents,
+            sockets: {
+              ...currentProfile.itemComponents.sockets,
+              data: {
+                ...currentProfile.itemComponents.sockets.data,
+                [itemInstanceId]: {
+                  ...currentProfile.itemComponents.sockets.data[itemInstanceId],
+                  sockets: patchedSockets,
+                },
+              },
+            },
+          },
+        };
+      };
+
+      queryClient.setQueriesData(
+        { queryKey: ['destinyProfile'] },
+        (currentResponse: any) => {
+          if (!currentResponse?.Response) {
+            return currentResponse;
+          }
+
+          return {
+            ...currentResponse,
+            Response: patchProfile(currentResponse.Response),
+          };
+        }
+      );
+
+      setCachedProfileData((currentProfile: any) => patchProfile(currentProfile));
+    },
+    [queryClient]
+  );
+
+  return useMemo(() => ({
     profile,
     stats,
     displayName,
     recordCategoriesRootNodeHash,
     recordSealsRootNodeHash,
-    isLoading: (userLoading || profileLoading) || isRefreshing,
+    isLoading: (userLoading || (profileLoading && !cachedProfileData)) || isRefreshing,
+    isFetching: profileFetching,
     isError: userError || profileError,
     isLoggedIn: hasToken && !userError,
     membershipInfo: primaryMembership ? {
@@ -474,5 +616,29 @@ export function useDestinyProfile(
     cacheInfo,
     isUsingCachedData,
     forceRefresh,
-  };
+    updateItemSocketPlug,
+  }), [
+    allCharacters,
+    cacheInfo,
+    cachedProfileData,
+    displayName,
+    forceRefresh,
+    hasToken,
+    isRefreshing,
+    isUsingCachedData,
+    primaryMembership,
+    profile,
+    profileError,
+    profileFetching,
+    profileLoading,
+    recordCategoriesRootNodeHash,
+    recordSealsRootNodeHash,
+    selectCharacter,
+    stats,
+    userError,
+    userLoading,
+    membershipType,
+    destinyMembershipId,
+    updateItemSocketPlug,
+  ]);
 }

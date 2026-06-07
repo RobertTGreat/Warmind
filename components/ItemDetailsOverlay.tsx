@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { X, ChevronRight, Star, Shield, Crosshair, Zap, Activity } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
@@ -30,7 +30,6 @@ import {
     getArmorSetBonusInfo,
     type ArmorSetBonusInfo,
 } from '@/lib/armorSetBonus';
-import { getItemSourceInfo, type ItemSourceInfo } from '@/lib/itemSourceInfo';
 import type { ClarityDescription } from '@/lib/clarityDescriptions';
 import { StatHashes } from '@/lib/dim-stats';
 
@@ -151,10 +150,10 @@ function getDetailDamageTypeIcon(
 }
 
 export function ItemDetailsOverlay() {
-  const { detailsItem, setDetailsItem, setFullDetailsItem } = useUIStore();
-  const { profile, membershipInfo } = useDestinyProfileContext();
-  const { table: collectibleDefinitions } =
-    useManifestTable<any>("DestinyCollectibleDefinition");
+  const detailsItem = useUIStore((state) => state.detailsItem);
+  const setDetailsItem = useUIStore((state) => state.setDetailsItem);
+  const setFullDetailsItem = useUIStore((state) => state.setFullDetailsItem);
+  const { profile, membershipInfo, updateItemSocketPlug } = useDestinyProfileContext();
   const { table: equipableItemSetDefinitions } =
     useManifestTable<any>("DestinyEquipableItemSetDefinition");
   const { table: sandboxPerkDefinitions } =
@@ -166,8 +165,27 @@ export function ItemDetailsOverlay() {
   const { definitions } = useItemDefinitions(detailsItem ? [detailsItem.itemHash] : []);
   const itemDef = definitions[detailsItem?.itemHash || 0];
 
+  const [socketPlugOverrides, setSocketPlugOverrides] = useState<Record<string, Record<number, number>>>({});
   const instance = detailsItem?.itemInstanceId ? profile?.itemComponents?.instances?.data?.[detailsItem.itemInstanceId] : undefined;
-  const sockets = detailsItem?.itemInstanceId ? profile?.itemComponents?.sockets?.data?.[detailsItem.itemInstanceId]?.sockets : undefined;
+  const profileSockets = detailsItem?.itemInstanceId ? profile?.itemComponents?.sockets?.data?.[detailsItem.itemInstanceId]?.sockets : undefined;
+  const activeSocketPlugOverrides = detailsItem?.itemInstanceId
+    ? socketPlugOverrides[detailsItem.itemInstanceId]
+    : undefined;
+  const sockets = useMemo(() => {
+    if (!profileSockets) return undefined;
+    if (!activeSocketPlugOverrides) return profileSockets;
+
+    return profileSockets.map((socket: any, socketIndex: number) => {
+      const overridePlugHash = activeSocketPlugOverrides[socketIndex];
+
+      return overridePlugHash
+        ? {
+            ...socket,
+            plugHash: overridePlugHash,
+          }
+        : socket;
+    });
+  }, [activeSocketPlugOverrides, profileSockets]);
   const stats = detailsItem?.itemInstanceId ? profile?.itemComponents?.stats?.data?.[detailsItem.itemInstanceId]?.stats : undefined;
   const objectives = detailsItem?.itemInstanceId ? profile?.itemComponents?.objectives?.data?.[detailsItem.itemInstanceId]?.objectives : undefined;
   const selectedSocketsData = useMemo(
@@ -271,15 +289,6 @@ export function ItemDetailsOverlay() {
   );
   const { descriptions: basicClarityDescriptions } =
     useClarityDescriptions(basicClarityHashes);
-  const itemSourceInfo = useMemo(
-    () =>
-      getItemSourceInfo({
-        itemDefinition: itemDef,
-        collectibleTable: collectibleDefinitions,
-      }),
-    [itemDef, collectibleDefinitions]
-  );
-
   const tierNumber = instance?.gearTier ?? 0;
   const damageTypeHash = getDetailDamageTypeHash(itemDef, instance);
   const damageTypeIcon = getDetailDamageTypeIcon(damageTypeHash, damageTypeDefinitions);
@@ -288,6 +297,20 @@ export function ItemDetailsOverlay() {
   useEffect(() => {
     setBackgroundImageFailed(false);
   }, [detailsItem?.itemHash, itemDef?.screenshot]);
+
+  const handleSocketPlugChange = useCallback(
+    (itemInstanceId: string, socketIndex: number, plugItemHash: number) => {
+      updateItemSocketPlug(itemInstanceId, socketIndex, plugItemHash);
+      setSocketPlugOverrides((currentOverrides) => ({
+        ...currentOverrides,
+        [itemInstanceId]: {
+          ...(currentOverrides[itemInstanceId] ?? {}),
+          [socketIndex]: plugItemHash,
+        },
+      }));
+    },
+    [updateItemSocketPlug]
+  );
 
   if (!detailsItem) return null;
 
@@ -377,25 +400,11 @@ export function ItemDetailsOverlay() {
                           )}
                       </div>
                       <div className="min-w-0 flex-1 pr-24 md:pr-0">
-                          <h2 className="break-words text-2xl font-bold uppercase leading-tight tracking-wide text-white md:text-4xl">{itemDef?.displayProperties?.name}</h2>
-                          <div className="text-sm text-slate-300 font-medium uppercase tracking-widest mt-2 flex items-center gap-3 flex-wrap">
-                              <span>{itemDef?.itemTypeDisplayName}</span>
-                              {false && tierNumber > 1 && (
-                                  <span className={cn(
-                                      "px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border",
-                                      tierNumber === 5 
-                                        ? "bg-destiny-gold/20 text-destiny-gold border-destiny-gold" 
-                                        : "bg-white/10 text-white border-white/10"
-                                  )}>
-                                    TIER {tierNumber} <span className="text-[8px]">✦</span>
-                                  </span>
-                              )}
-                          </div>
+                          <h2 className="break-words text-2xl font-bold uppercase leading-tight tracking-wide text-white md:text-3xl">{itemDef?.displayProperties?.name}</h2>
                       </div>
                   </div>
 
                   <BasicItemInfo
-                    sourceInfo={itemSourceInfo}
                     traitPlugs={isWeapon ? [] : detailTraitPlugs}
                     clarityDescriptions={basicClarityDescriptions}
                     armorSetBonus={armorSetBonus}
@@ -410,6 +419,7 @@ export function ItemDetailsOverlay() {
                             itemDef={itemDef}
                             profile={profile}
                             item={detailsItem}
+                            onSocketPlugChange={handleSocketPlugChange}
                         />
                      ) : (
                          sockets && (
@@ -421,6 +431,7 @@ export function ItemDetailsOverlay() {
                                  membershipInfo={membershipInfo}
                                  isSubclass={isSubclass}
                                  clarityDescriptions={basicClarityDescriptions}
+                                 onSocketPlugChange={handleSocketPlugChange}
                              />
                          )
                      )}
@@ -430,7 +441,6 @@ export function ItemDetailsOverlay() {
              {/* Middle Spacer (Allows background to show) */}
              <div className="hidden md:block flex-1 relative overflow-hidden">
                 <div className="absolute bottom-12 left-12 text-white/20 text-sm font-bold uppercase tracking-[0.2em] space-y-1 select-none pointer-events-none">
-                    <p>Item Hash: {detailsItem.itemHash}</p>
                     {instance?.itemInstanceId && <p>ID: {instance.itemInstanceId}</p>}
                 </div>
              </div>
@@ -460,46 +470,25 @@ export function ItemDetailsOverlay() {
 // --- Sub-components ---
 
 function BasicItemInfo({
-    sourceInfo,
     traitPlugs,
     clarityDescriptions,
     armorSetBonus,
     itemDef,
 }: {
-    sourceInfo: ItemSourceInfo | null;
     traitPlugs: any[];
     clarityDescriptions: Record<number, ClarityDescription>;
     armorSetBonus: ArmorSetBonusInfo | null;
     itemDef: any;
 }) {
-    const hasSourceInfo = Boolean(sourceInfo?.sourceText || sourceInfo?.requirementText);
     const hasTraits = traitPlugs.length > 0;
     const hasArmorSetBonus = Boolean(armorSetBonus);
 
-    if (!hasSourceInfo && !hasTraits && !hasArmorSetBonus) return null;
+    if (!hasTraits && !hasArmorSetBonus) return null;
 
     const isExotic = itemDef?.inventory?.tierTypeName === "Exotic";
 
     return (
         <div className="space-y-3 overflow-hidden border-y border-white/10 py-4">
-            {hasSourceInfo && (
-                <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-destiny-gold">
-                        Drop Source
-                    </p>
-                    {sourceInfo?.sourceText && (
-                        <p className="mt-1 break-words text-sm leading-relaxed text-slate-200">
-                            {sourceInfo.sourceText}
-                        </p>
-                    )}
-                    {sourceInfo?.requirementText && (
-                        <p className="mt-1 break-words text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            {sourceInfo.requirementText}
-                        </p>
-                    )}
-                </div>
-            )}
-
             {hasTraits && (
                 <div className="space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
@@ -876,7 +865,7 @@ function usePlugSets(hashes: number[]) {
     return { definitions };
 }
 
-function SubclassStats({ sockets, itemDef, profile, item }: any) {
+function SubclassStats({ sockets, itemDef, profile, item, onSocketPlugChange }: any) {
     const { membershipInfo } = useDestinyProfileContext();
     const [selectedSocket, setSelectedSocket] = useState<{ socketIndex: number, category: string } | null>(null);
     const [hoveredPlug, setHoveredPlug] = useState<any>(null);
@@ -1087,6 +1076,7 @@ function SubclassStats({ sockets, itemDef, profile, item }: any) {
                 characterId,
                 membershipInfo.membershipType
             );
+            onSocketPlugChange?.(item.itemInstanceId, socketIndex, plugHash);
             
             toast.success(`Equipped ${plugName}`, { id: 'equip-plug' });
         } catch (error: any) {
@@ -1276,7 +1266,7 @@ function SubclassStats({ sockets, itemDef, profile, item }: any) {
         if (!hoveredPlug || selectedSocket) return null;
         
         return (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-150 w-80 bg-[#0a0a0a]/95 border border-white/20 rounded-lg p-4 shadow-2xl backdrop-blur-md pointer-events-none">
+            <div className="fixed bottom-4 left-1/2 z-150 max-h-[calc(100vh-2rem)] w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2 overflow-y-auto rounded-lg border border-white/20 bg-[#0a0a0a]/95 p-4 shadow-2xl backdrop-blur-md pointer-events-none custom-scrollbar">
                 <p className="text-sm font-bold text-destiny-gold mb-1">{hoveredPlug.displayProperties?.name}</p>
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{hoveredPlug.itemTypeDisplayName}</p>
                 <p className="text-xs text-slate-300 leading-relaxed">{hoveredPlug.displayProperties?.description}</p>
@@ -1421,6 +1411,7 @@ function SocketViewer({
     membershipInfo,
     isSubclass,
     clarityDescriptions,
+    onSocketPlugChange,
 }: any) {
     const { definitions: categoryDefs } = useSocketCategoryDefinitions(itemDef?.sockets?.socketCategories?.map((c: any) => c.socketCategoryHash) || []);
     
@@ -1573,6 +1564,7 @@ function SocketViewer({
                             isSubclass={isSubclass}
                             clarityDescriptions={clarityDescriptions}
                             isFirstSocket={socketIndex === 0}
+                            onSocketPlugChange={onSocketPlugChange}
                             socketTitle={getBasicSocketTitle({
                                 socketIndex: socket.socketIndex,
                                 socketName: categoryDef.displayProperties?.name ?? "",
@@ -1632,25 +1624,31 @@ function PortalTooltip({ content, targetRect, position = 'top' }: any) {
     const gap = 8;
     const targetCenter = targetRect.left + targetRect.width / 2;
     const left = Math.min(
-        Math.max(targetCenter, viewportPadding + tooltipWidth / 2),
-        window.innerWidth - viewportPadding - tooltipWidth / 2
+        Math.max(targetCenter - tooltipWidth / 2, viewportPadding),
+        window.innerWidth - viewportPadding - tooltipWidth
     );
-    const hasTopSpace = targetRect.top > 180;
-    const shouldPlaceOnTop = position === 'top' && hasTopSpace;
-    const top = shouldPlaceOnTop ? targetRect.top - gap : targetRect.bottom + gap;
-    const transform = shouldPlaceOnTop ? 'translate(-50%, -100%)' : 'translate(-50%, 0)';
+    const topSpace = Math.max(0, targetRect.top - viewportPadding);
+    const bottomSpace = Math.max(0, window.innerHeight - targetRect.bottom - viewportPadding);
+    const shouldPlaceOnTop = position === 'top' && topSpace >= bottomSpace;
+    const availableHeight = Math.max(
+        0,
+        (shouldPlaceOnTop ? topSpace : bottomSpace) - gap
+    );
+    const verticalPosition = shouldPlaceOnTop
+        ? { bottom: window.innerHeight - targetRect.top + gap }
+        : { top: targetRect.bottom + gap };
 
     return createPortal(
         <div 
             className="fixed z-200 pointer-events-none max-w-[calc(100vw-2rem)]"
             style={{ 
-                top: top, 
                 left: left,
                 width: tooltipWidth,
-                transform,
+                maxHeight: availableHeight,
+                ...verticalPosition,
             }}
         >
-            <div className="rounded border border-white/20 bg-[#1a1a1a] p-3 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+            <div className="max-h-full overflow-y-auto rounded border border-white/20 bg-[#1a1a1a] p-3 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150 custom-scrollbar">
                 {content}
             </div>
         </div>,
@@ -1796,6 +1794,7 @@ function Socket({
     clarityDescriptions,
     isFirstSocket,
     socketTitle,
+    onSocketPlugChange,
 }: any) {
     const [isOpen, setIsOpen] = useState(false);
     const [hoveredPlug, setHoveredPlug] = useState<any>(null);
@@ -1881,6 +1880,7 @@ function Socket({
                     ownerId, 
                     membershipInfo.membershipType
                 );
+                onSocketPlugChange?.(item.itemInstanceId, socket.socketIndex, plugItemHash);
                 toast.success(`Equipped ${plugName}`, { id: 'equip-plug' });
             } catch (freeError: any) {
                 // If free endpoint fails, it might need the paid endpoint (AdvancedWriteActions scope)

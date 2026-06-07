@@ -107,6 +107,10 @@ export function getExoticArmorTraitPlugs({
     }
   }
 
+  if (traitPlugs.length > 0) {
+    return traitPlugs;
+  }
+
   if (itemDefinition?.sockets?.socketEntries && plugDefinitions) {
     for (const socketEntry of itemDefinition.sockets.socketEntries) {
       const initialPlug = socketEntry?.singleInitialItemHash

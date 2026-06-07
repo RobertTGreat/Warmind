@@ -5,6 +5,8 @@ import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { ClientProviders } from "@/components/ClientProviders";
 import { DestinyProfileProvider } from "@/components/DestinyProfileProvider";
+import { FullItemDetailsOverlay } from "@/components/FullItemDetailsOverlay";
+import { PostLoginBoot } from "@/components/PostLoginBoot";
 import { DestinyWrapped } from "@/components/Wrapped";
 
 // Primary font - clean and modern
@@ -136,8 +138,8 @@ export default function RootLayout({
       <body
         className={`antialiased min-h-screen flex flex-col font-sans`}
       >
-        <DestinyProfileProvider>
-          <ClientProviders>
+        <ClientProviders>
+          <DestinyProfileProvider>
             <Header />
             <div className="flex flex-1">
               <Sidebar />
@@ -145,9 +147,11 @@ export default function RootLayout({
               {children}
             </main>
             </div>
+            <PostLoginBoot />
             <DestinyWrapped />
-          </ClientProviders>
-        </DestinyProfileProvider>
+            <FullItemDetailsOverlay />
+          </DestinyProfileProvider>
+        </ClientProviders>
       </body>
     </html>
   );

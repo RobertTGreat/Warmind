@@ -637,6 +637,18 @@ export default function SettingsPage() {
                             options={sortOptions}
                         />
                     </SettingRow>
+                    <SettingRow label="Group by Rarity" description="Cluster inventory and vault items by rarity before sorting">
+                        <Toggle
+                            checked={Boolean(settings.vaultGrouping.byRarity)}
+                            onChange={(checked) => settings.setVaultGrouping({ byRarity: checked })}
+                        />
+                    </SettingRow>
+                    <SettingRow label="Group by Ammo Type" description="Cluster weapons by Primary, Special, and Heavy ammo before sorting">
+                        <Toggle
+                            checked={Boolean(settings.vaultGrouping.byAmmoType)}
+                            onChange={(checked) => settings.setVaultGrouping({ byAmmoType: checked })}
+                        />
+                    </SettingRow>
                 </SettingSection>
 
                 <SettingSection title="Data & Cache" icon={Database}>

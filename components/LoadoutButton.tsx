@@ -1,6 +1,6 @@
 "use client";
 
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import { endpoints, getBungieImage, equipLoadout, bungieApi } from '@/lib/bungie';
 import { toast } from 'sonner';
 import Image from 'next/image';
@@ -32,20 +32,21 @@ export function LoadoutButton({ loadout, index, activeCharacterId, membershipInf
     }, [isHovered, loadout, index]);
 
     // Fetch Loadout Identifiers
-    const { data: iconDef } = useSWR(
-        loadout.iconHash ? endpoints.getLoadoutIconDefinition(loadout.iconHash) : null,
-        fetcher
-    );
+    const { data: iconDef } = useQuery({
+        queryKey: ['manifestDefinition', 'DestinyLoadoutIconDefinition', loadout.iconHash],
+        queryFn: () => fetcher(endpoints.getLoadoutIconDefinition(loadout.iconHash)),
+        enabled: Boolean(loadout.iconHash),
+        staleTime: 24 * 60 * 60 * 1000,
+        gcTime: 7 * 24 * 60 * 60 * 1000,
+    });
 
-    const { data: nameDef } = useSWR(
-        loadout.nameHash ? endpoints.getLoadoutNameDefinition(loadout.nameHash) : null,
-        fetcher
-    );
-
-    const { data: colorDef } = useSWR(
-        loadout.colorHash ? endpoints.getLoadoutColorDefinition(loadout.colorHash) : null,
-        fetcher
-    );
+    const { data: nameDef } = useQuery({
+        queryKey: ['manifestDefinition', 'DestinyLoadoutNameDefinition', loadout.nameHash],
+        queryFn: () => fetcher(endpoints.getLoadoutNameDefinition(loadout.nameHash)),
+        enabled: Boolean(loadout.nameHash),
+        staleTime: 24 * 60 * 60 * 1000,
+        gcTime: 7 * 24 * 60 * 60 * 1000,
+    });
 
     const loadoutName = nameDef?.Response?.name || `Loadout ${index + 1}`;
     const loadoutIcon = iconDef?.Response?.iconImagePath;

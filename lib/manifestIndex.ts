@@ -24,6 +24,7 @@ import {
 // ============================================================================
 
 const MANIFEST_INDEX_VERSION_KEY = 'warmind-manifest-index-version';
+const MANIFEST_INDEX_LOCK_NAME = 'warmind-manifest-index-build';
 
 // Item types
 export const ITEM_TYPES = {
@@ -95,7 +96,27 @@ export const DAMAGE_TYPES = {
 /**
  * Build the manifest index from API or cache
  */
-export async function buildManifestIndex(forceRebuild = false): Promise<{ 
+async function runWithManifestIndexLock<T>(buildManifestIndex: () => Promise<T>) {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+        return navigator.locks.request(
+            MANIFEST_INDEX_LOCK_NAME,
+            { mode: 'exclusive' },
+            buildManifestIndex
+        );
+    }
+
+    return buildManifestIndex();
+}
+
+export async function buildManifestIndex(forceRebuild = false): Promise<{
+    itemCount: number;
+    fromCache: boolean;
+    version: string;
+}> {
+    return runWithManifestIndexLock(() => buildManifestIndexWithoutLock(forceRebuild));
+}
+
+async function buildManifestIndexWithoutLock(forceRebuild = false): Promise<{ 
     itemCount: number; 
     fromCache: boolean;
     version: string;
@@ -153,17 +174,42 @@ export async function buildManifestIndex(forceRebuild = false): Promise<{
         indexEntries.push({
             hash,
             name: item.displayProperties.name,
+            nameLower: item.displayProperties.name.toLowerCase(),
+            searchableText: [
+                item.displayProperties.name,
+                item.displayProperties.description,
+                item.itemTypeDisplayName,
+                item.inventory?.tierTypeName,
+                ...(item.itemCategoryHashes ?? []),
+                ...(item.sockets?.socketEntries ?? []).map((socketEntry: any) => socketEntry?.singleInitialItemHash),
+                ...(item.perks ?? []).map((perk: any) => perk?.perkHash),
+                ...(item.investmentStats ?? []).map((stat: any) => stat?.statTypeHash),
+            ]
+                .filter((value) => value !== undefined && value !== null)
+                .join(' ')
+                .toLowerCase(),
             itemType: item.itemType ?? 0,
             itemSubType: item.itemSubType ?? 0,
             tierType: item.inventory?.tierType ?? 0,
+            tierTypeName: item.inventory?.tierTypeName,
             bucketTypeHash: item.inventory?.bucketTypeHash ?? 0,
             classType: item.classType ?? 3,
+            ammoType: item.equippingBlock?.ammoType,
             damageType: item.defaultDamageTypeHash,
             defaultDamageTypeHash: item.defaultDamageTypeHash,
             itemCategoryHashes: item.itemCategoryHashes ?? [],
+            perkHashes: [
+                ...(item.perks ?? []).map((perk: any) => Number(perk?.perkHash)),
+                ...(item.sockets?.socketEntries ?? []).map((socketEntry: any) => Number(socketEntry?.singleInitialItemHash)),
+            ].filter(Number.isFinite),
+            statHashes: (item.investmentStats ?? [])
+                .map((stat: any) => Number(stat?.statTypeHash))
+                .filter(Number.isFinite),
             equippable: item.equippable ?? false,
             nonTransferrable: item.nonTransferrable ?? false,
             iconPath: item.displayProperties.icon,
+            watermarkPath: item.iconWatermark || item.iconWatermarkShelved,
+            manifestVersion: version,
         });
 
         // Store full definition for cache

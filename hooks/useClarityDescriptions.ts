@@ -1,4 +1,4 @@
-import useSWR from "swr";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { ClarityDescription } from "@/lib/clarityDescriptions";
 
@@ -19,11 +19,14 @@ export function useClarityDescriptions(plugHashes: number[]) {
       .sort((firstHash, secondHash) => firstHash - secondHash);
   }, [plugHashes]);
 
-  const clarityUrl =
-    uniqueHashes.length > 0 ? `/api/clarity?hashes=${uniqueHashes.join(",")}` : null;
-  const { data, error, isLoading } = useSWR(clarityUrl, fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 12 * 60 * 60 * 1000,
+  const clarityHashesKey = uniqueHashes.join(",");
+  const clarityUrl = `/api/clarity?hashes=${clarityHashesKey}`;
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["clarityDescriptions", clarityHashesKey],
+    queryFn: () => fetcher(clarityUrl),
+    enabled: uniqueHashes.length > 0,
+    staleTime: 12 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
   });
 
   return {

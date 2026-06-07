@@ -11,17 +11,46 @@ import Dexie, { Table } from 'dexie';
 export interface ManifestIndex {
     hash: number;
     name: string;
+    nameLower?: string;
+    searchableText?: string;
     itemType: number;           // 3 = weapon, 2 = armor, 19 = emblem, etc.
     itemSubType: number;        // 6 = hand cannon, 7 = scout rifle, etc.
     tierType: number;           // 6 = exotic, 5 = legendary, 4 = rare
+    tierTypeName?: string;
     bucketTypeHash: number;     // Inventory slot
     classType: number;          // 0 = titan, 1 = hunter, 2 = warlock, 3 = any
+    ammoType?: number;
     damageType?: number;        // Element type
     itemCategoryHashes: number[];
+    perkHashes?: number[];
+    statHashes?: number[];
     defaultDamageTypeHash?: number;
     equippable: boolean;
     nonTransferrable: boolean;
     iconPath?: string;          // For quick display without full lookup
+    watermarkPath?: string;
+    manifestVersion?: string;
+}
+
+export interface ManifestMeta {
+    key: string;
+    definitionType: string;
+    language: string;
+    view: string;
+    manifestVersion: string;
+    schemaVersion: string;
+    updatedAt: number;
+}
+
+export interface ManifestDefinitionCacheEntry {
+    definitionType: string;
+    language: string;
+    view: string;
+    hash: number;
+    manifestVersion: string;
+    schemaVersion: string;
+    definition: any;
+    updatedAt: number;
 }
 
 /**
@@ -178,6 +207,9 @@ export interface DBActivityCache {
 export class WarmindDB extends Dexie {
     // Tables
     manifestIndex!: Table<ManifestIndex, number>;
+    manifestMeta!: Table<ManifestMeta, string>;
+    manifestDefinitions!: Table<ManifestDefinitionCacheEntry, [string, string, number]>;
+    manifestCards!: Table<ManifestDefinitionCacheEntry, [string, string, number]>;
     profiles!: Table<CachedProfile, string>;
     loadouts!: Table<DBLoadout, number>;
     wishlists!: Table<DBWishlist, string>;
@@ -239,6 +271,21 @@ export class WarmindDB extends Dexie {
             // Indexes for querying by membership, activity, date
             activityCache: 'instanceId, membershipId, activityHash, dateCompleted, cachedAt',
         });
+
+        this.version(2).stores({
+            manifestIndex: 'hash, itemType, itemSubType, tierType, bucketTypeHash, classType, damageType, ammoType, *itemCategoryHashes, *perkHashes, *statHashes, manifestVersion',
+            manifestMeta: 'key, definitionType, language, view, manifestVersion, updatedAt',
+            manifestDefinitions: '[definitionType+view+hash], definitionType, view, hash, manifestVersion, [definitionType+manifestVersion]',
+            manifestCards: '[definitionType+view+hash], definitionType, view, hash, manifestVersion, [definitionType+manifestVersion]',
+            profiles: 'membershipId, lastUpdated',
+            loadouts: '++id, &externalId, classType, *tags, createdAt',
+            wishlists: 'id, url, enabled',
+            wishlistRolls: '++id, [wishlistId+itemHash], wishlistId, itemHash, isTrash',
+            itemTags: '[itemInstanceId+tag], itemInstanceId, tag, createdAt',
+            itemNotes: 'itemInstanceId, updatedAt',
+            settings: 'key',
+            activityCache: 'instanceId, membershipId, activityHash, dateCompleted, cachedAt',
+        });
     }
 }
 
@@ -280,6 +327,9 @@ export function isDatabaseAvailable(): boolean {
  */
 export async function clearAllData(): Promise<void> {
     await db.manifestIndex.clear();
+    await db.manifestMeta.clear();
+    await db.manifestDefinitions.clear();
+    await db.manifestCards.clear();
     await db.profiles.clear();
     await db.loadouts.clear();
     await db.wishlists.clear();
@@ -307,6 +357,6 @@ export async function getStorageEstimate(): Promise<{ usage: number; quota: numb
 /**
  * Export database version info
  */
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 export const DB_NAME = 'WarmindDB';
 

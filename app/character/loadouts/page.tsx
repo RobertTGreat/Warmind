@@ -43,7 +43,6 @@ import {
     ChevronDown, 
     Search,
     Loader2,
-    Sparkles,
     Package,
     Share2,
     Download,
@@ -63,8 +62,27 @@ import {
     Shield,
     Flame,
     Wind,
-    CircleDot
+    CircleDot,
+    Layers,
 } from 'lucide-react';
+
+import { loginWithBungie } from '@/lib/bungie';
+import { PageHeader } from '@/components/PageHeader';
+import { FrostedCard } from '@/components/FrostedCard';
+import {
+    LoadoutModal,
+    LoadoutModalFooter,
+    LoadoutPrimaryButton,
+    LoadoutSecondaryButton,
+    LoadoutGhostButton,
+} from '@/components/loadouts/LoadoutModal';
+import {
+    LoadoutIcon,
+    LoadoutIconBadge,
+    BucketIcon,
+    getLoadoutIconComponent,
+} from '@/components/loadouts/loadoutIcons';
+import { CLASS_NAMES, CLASS_ICONS, DEFAULT_LOADOUT_ICON } from '@/components/loadouts/constants';
 
 // Ability icons mapping
 const ABILITY_ICONS: Record<string, React.ComponentType<any>> = {
@@ -72,14 +90,6 @@ const ABILITY_ICONS: Record<string, React.ComponentType<any>> = {
     grenade: CircleDot,
     classAbility: Shield,
     movement: Wind,
-};
-import { loginWithBungie } from '@/lib/bungie';
-
-const CLASS_NAMES = ['Titan', 'Hunter', 'Warlock'];
-const CLASS_ICONS: Record<number, string> = {
-    0: '/class-titan.svg',
-    1: '/class-hunter.svg',
-    2: '/class-warlock.svg',
 };
 
 // ===== Share Dialog =====
@@ -109,92 +119,74 @@ function ShareDialog({ loadout, onClose }: ShareDialogProps) {
     };
     
     return (
-        <div className="fixed inset-0 bg-black/80 z-100 flex items-center justify-center p-4" onClick={onClose}>
-            <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-lg overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
-                    <div className="flex items-center gap-3">
-                        <Share2 className="w-5 h-5 text-destiny-gold" />
-                        <h3 className="text-lg font-bold text-white">Share Loadout</h3>
+        <LoadoutModal title="Share Loadout" icon={Share2} onClose={onClose} maxWidth="sm">
+            <div className="space-y-4 p-4 sm:p-5">
+                <div className="flex items-center gap-3 border border-white/10 bg-white/[0.03] p-3">
+                    <LoadoutIconBadge icon={loadout.icon} color={loadout.color} />
+                    <div>
+                        <div className="font-semibold text-white">{loadout.name}</div>
+                        <div className="text-xs text-slate-500">
+                            {CLASS_NAMES[loadout.classType]} · {loadout.items.length} items
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors">
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
                 </div>
                 
-                <div className="p-4 space-y-4">
-                    {/* Loadout Preview */}
-                    <div className="flex items-center gap-3 p-3 bg-black/30">
-                        <span className="text-2xl">{loadout.icon}</span>
-                        <div>
-                            <div className="font-semibold text-white">{loadout.name}</div>
-                            <div className="text-xs text-slate-500">
-                                {CLASS_NAMES[loadout.classType]} • {loadout.items.length} items
-                            </div>
-                        </div>
-                    </div>
-                    
-                    {/* Share URL */}
-                    <div>
-                        <label className="text-xs uppercase font-bold text-slate-500 mb-2 block tracking-wider">
-                            Share Link
-                        </label>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                readOnly
-                                value={shareUrl}
-                                className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-sm text-slate-300 truncate"
-                            />
-                            <button
-                                onClick={() => handleCopy('url')}
-                                className={cn(
-                                    "px-4 py-2 font-medium text-sm transition-all flex items-center gap-2",
-                                    copied === 'url' 
-                                        ? "bg-green-500/20 text-green-400" 
-                                        : "bg-destiny-gold/20 text-destiny-gold hover:bg-destiny-gold/30"
-                                )}
-                            >
-                                {copied === 'url' ? <Check className="w-4 h-4" /> : <Link className="w-4 h-4" />}
-                                {copied === 'url' ? 'Copied!' : 'Copy'}
-                            </button>
-                        </div>
-                    </div>
-                    
-                    {/* Share Code */}
-                    <div>
-                        <label className="text-xs uppercase font-bold text-slate-500 mb-2 block tracking-wider">
-                            Share Code
-                        </label>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                readOnly
-                                value={shareCode}
-                                className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-sm text-slate-300 font-mono truncate"
-                            />
-                            <button
-                                onClick={() => handleCopy('code')}
-                                className={cn(
-                                    "px-4 py-2 font-medium text-sm transition-all flex items-center gap-2",
-                                    copied === 'code' 
-                                        ? "bg-green-500/20 text-green-400" 
-                                        : "bg-white/10 text-white hover:bg-white/20"
-                                )}
-                            >
-                                {copied === 'code' ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
-                                {copied === 'code' ? 'Copied!' : 'Copy'}
-                            </button>
-                        </div>
-                        <p className="text-xs text-slate-600 mt-2">
-                            Share this code with others to let them import your loadout
-                        </p>
+                <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Share Link
+                    </label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            readOnly
+                            value={shareUrl}
+                            className="flex-1 truncate border border-white/10 bg-black/40 px-3 py-2 text-sm text-slate-300"
+                        />
+                        <button
+                            onClick={() => handleCopy('url')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all",
+                                copied === 'url' 
+                                    ? "bg-green-500/20 text-green-400" 
+                                    : "bg-destiny-gold/20 text-destiny-gold hover:bg-destiny-gold/30"
+                            )}
+                        >
+                            {copied === 'url' ? <Check className="w-4 h-4" /> : <Link className="w-4 h-4" />}
+                            {copied === 'url' ? 'Copied' : 'Copy'}
+                        </button>
                     </div>
                 </div>
+                
+                <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Share Code
+                    </label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            readOnly
+                            value={shareCode}
+                            className="flex-1 truncate border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-slate-300"
+                        />
+                        <button
+                            onClick={() => handleCopy('code')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all",
+                                copied === 'code' 
+                                    ? "bg-green-500/20 text-green-400" 
+                                    : "border border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06]"
+                            )}
+                        >
+                            {copied === 'code' ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
+                            {copied === 'code' ? 'Copied' : 'Copy'}
+                        </button>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-600">
+                        Share this code with others to let them import your loadout
+                    </p>
+                </div>
             </div>
-        </div>
+        </LoadoutModal>
     );
 }
 
@@ -241,87 +233,67 @@ function ImportDialog({ onImport, onClose }: ImportDialogProps) {
     };
     
     return (
-        <div className="fixed inset-0 bg-black/80 z-100 flex items-center justify-center p-4" onClick={onClose}>
-            <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-lg overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
-                    <div className="flex items-center gap-3">
-                        <Download className="w-5 h-5 text-destiny-gold" />
-                        <h3 className="text-lg font-bold text-white">Import Loadout</h3>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors">
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
-                </div>
-                
-                <div className="p-4 space-y-4">
-                    {/* Import Code Input */}
-                    <div>
-                        <label className="text-xs uppercase font-bold text-slate-500 mb-2 block tracking-wider">
-                            Paste Share Code or Link
-                        </label>
-                        <textarea
-                            value={importCode}
-                            onChange={(e) => handleCodeChange(e.target.value)}
-                            placeholder="Paste a loadout share code or URL here..."
-                            className="w-full bg-black/40 border border-white/10 px-3 py-2 text-sm text-white font-mono h-24 resize-none focus:outline-none focus:border-destiny-gold/50"
-                        />
-                        {error && (
-                            <p className="text-xs text-red-400 mt-1">{error}</p>
-                        )}
-                    </div>
-                    
-                    {/* Preview */}
-                    {preview && (
-                        <div className="p-4 bg-black/30 border border-white/10">
-                            <div className="flex items-center gap-3 mb-3">
-                                <span className="text-2xl">{preview.icon}</span>
-                                <div>
-                                    <div className="font-semibold text-white">{preview.name}</div>
-                                    <div className="text-xs text-slate-500 flex items-center gap-2">
-                                        <Image src={CLASS_ICONS[preview.classType]} width={12} height={12} alt="" />
-                                        {CLASS_NAMES[preview.classType]} • {preview.items.length} items
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {preview.description && (
-                                <p className="text-sm text-slate-400 mb-3">{preview.description}</p>
-                            )}
-                            
-                            {preview.tags && preview.tags.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                    {preview.tags.map((tag) => (
-                                        <span key={tag} className="px-2 py-0.5 bg-white/10 text-xs text-slate-400">
-                                            {tag}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+        <LoadoutModal
+            title="Import Loadout"
+            icon={Download}
+            onClose={onClose}
+            maxWidth="sm"
+            footer={
+                <LoadoutModalFooter>
+                    <LoadoutSecondaryButton onClick={onClose}>Cancel</LoadoutSecondaryButton>
+                    <LoadoutPrimaryButton onClick={handleImport} disabled={!preview}>
+                        <Download className="w-4 h-4" />
+                        Import Loadout
+                    </LoadoutPrimaryButton>
+                </LoadoutModalFooter>
+            }
+        >
+            <div className="space-y-4 p-4 sm:p-5">
+                <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Paste Share Code or Link
+                    </label>
+                    <textarea
+                        value={importCode}
+                        onChange={(e) => handleCodeChange(e.target.value)}
+                        placeholder="Paste a loadout share code or URL here..."
+                        className="h-24 w-full resize-none border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white focus:border-destiny-gold/50 focus:outline-none"
+                    />
+                    {error && (
+                        <p className="mt-1 text-xs text-red-400">{error}</p>
                     )}
                 </div>
                 
-                <div className="flex justify-end gap-3 p-4 border-t border-white/10">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleImport}
-                        disabled={!preview}
-                        className="px-6 py-2 bg-destiny-gold text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-white transition-color flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Download className="w-4 h-4" />
-                        Import Loadout
-                    </button>
-                </div>
+                {preview && (
+                    <div className="border border-white/10 bg-white/[0.03] p-4">
+                        <div className="mb-3 flex items-center gap-3">
+                            <LoadoutIconBadge icon={preview.icon} color={preview.color} />
+                            <div>
+                                <div className="font-semibold text-white">{preview.name}</div>
+                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <Image src={CLASS_ICONS[preview.classType]} width={12} height={12} alt="" />
+                                    {CLASS_NAMES[preview.classType]} · {preview.items.length} items
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {preview.description && (
+                            <p className="mb-3 text-sm text-slate-400">{preview.description}</p>
+                        )}
+                        
+                        {preview.tags && preview.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                                {preview.tags.map((tag) => (
+                                    <span key={tag} className="bg-white/10 px-2 py-0.5 text-xs text-slate-400">
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
-        </div>
+        </LoadoutModal>
     );
 }
 
@@ -389,27 +361,25 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
     };
     
     return (
-        <div className="fixed inset-0 bg-black/80 z-110 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
             <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden"
+                className="flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden border border-white/10 bg-[#0b0f14] shadow-2xl shadow-black/70"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
-                    <h3 className="text-lg font-bold text-white">Select Item</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors">
-                        <X className="w-5 h-5 text-slate-400" />
+                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
+                    <h3 className="font-condensed text-lg font-bold uppercase tracking-wide text-white">Select Item</h3>
+                    <button type="button" onClick={onClose} className="p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
                 
-                {/* Search */}
-                <div className="p-4 border-b border-white/10">
+                <div className="border-b border-white/10 p-4">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                         <input
                             type="text"
                             placeholder="Search items..."
-                            className="w-full bg-black/40 border border-white/10 py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50 "
+                            className="w-full border border-white/10 bg-black/40 py-2 pl-10 pr-4 text-sm text-white focus:border-destiny-gold/50 focus:outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             autoFocus
@@ -881,13 +851,13 @@ function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEd
     const aspect2Fragments = fragments.slice(3, 6);
     
     return (
-        <div 
-            className="bg-gray-800/20 border border-white/5 overflow-hidden hover:border-white/20 transition-all"
-            style={{ borderLeftColor: loadout.color, borderLeftWidth: '3px' }}
+        <div style={{ borderLeftColor: loadout.color }} className="border-l-[3px]">
+        <FrostedCard
+            hover
+            className="overflow-hidden p-0"
         >
-            {/* Header */}
             <div className="flex items-center gap-3 p-4">
-                <span className="text-2xl">{loadout.icon}</span>
+                <LoadoutIconBadge icon={loadout.icon} color={loadout.color} />
                 <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-white truncate">{loadout.name}</h3>
                     <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -916,7 +886,7 @@ function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEd
                     {showMenu && (
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                            <div className="absolute right-0 top-full mt-1 z-50 bg-gray-800/20 backdrop-blur-xl border border-white/10 shadow-xl py-1 min-w-[140px]">
+                            <div className="absolute right-0 top-full z-50 mt-1 min-w-[140px] border border-white/10 bg-[#0b0f14] py-1 shadow-xl">
                                 <button
                                     onClick={() => { onShare(); setShowMenu(false); }}
                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
@@ -1114,12 +1084,11 @@ function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEd
                 )}
             </div>
             
-            {/* Actions */}
             <div className="flex border-t border-white/5">
                 <button
                     onClick={handleEquip}
                     disabled={isEquipping || loadout.items.length === 0}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-destiny-gold hover:bg-linear-to-r from-destiny-gold/20 to-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium text-destiny-gold transition-colors hover:bg-destiny-gold/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {isEquipping ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -1129,6 +1098,7 @@ function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEd
                     Equip
                 </button>
             </div>
+        </FrostedCard>
         </div>
     );
 }
@@ -1887,7 +1857,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
             id: generateId(),
             name: 'New Loadout',
             classType,
-            icon: '⚔️',
+            icon: DEFAULT_LOADOUT_ICON,
             color: '#e3ce62',
             items: [],
             tags: [],
@@ -2120,47 +2090,53 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
     };
     
     return (
-        <div className="fixed inset-0 bg-black/80 z-100 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden rounded-lg"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
-                    <h3 className="text-lg font-bold text-white">
-                        {loadout ? 'Edit Loadout' : 'Create Loadout'}
-                    </h3>
-                    <button onClick={onCancel} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
-                </div>
-                
+        <>
+        <LoadoutModal
+            title={loadout ? 'Edit Loadout' : 'Create Loadout'}
+            icon={loadout ? Edit3 : Plus}
+            onClose={onCancel}
+            onBackdropClick={handleBackdropClick}
+            maxWidth="lg"
+            footer={
+                <LoadoutModalFooter>
+                    <LoadoutSecondaryButton onClick={onCancel}>Cancel</LoadoutSecondaryButton>
+                    <LoadoutPrimaryButton onClick={() => onSave(editedLoadout)}>
+                        <Save className="w-4 h-4" />
+                        Save Loadout
+                    </LoadoutPrimaryButton>
+                </LoadoutModalFooter>
+            }
+        >
                 {/* Name & Appearance Row */}
-                <div className="p-4 border-b border-white/10 space-y-4">
+                <div className="space-y-4 border-b border-white/10 p-4 sm:p-5">
                     <div className="flex items-center gap-4">
                         {/* Icon Picker */}
                         <div className="relative">
                             <button
+                                type="button"
                                 onClick={() => setShowIconPicker(!showIconPicker)}
-                                className="w-14 h-14 bg-black/40 border border-white/10 rounded-lg flex items-center justify-center text-2xl hover:border-white/30 transition-colors"
+                                className="flex h-14 w-14 items-center justify-center border border-white/10 bg-black/40 transition-colors hover:border-white/30"
                                 style={{ borderColor: editedLoadout.color }}
                             >
-                                {editedLoadout.icon}
+                                <LoadoutIcon icon={editedLoadout.icon} color={editedLoadout.color} size="lg" />
                             </button>
                             {showIconPicker && (
-                                <div className="absolute top-full left-0 mt-2 p-2 bg-slate-900 border border-white/10 rounded-lg grid grid-cols-7 gap-1 z-50 shadow-xl">
-                                    {LOADOUT_ICONS.map((icon) => (
+                                <div className="absolute left-0 top-full z-50 mt-2 grid grid-cols-7 gap-1 border border-white/10 bg-[#0b0f14] p-2 shadow-xl">
+                                    {LOADOUT_ICONS.map((iconId) => {
+                                        const IconComponent = getLoadoutIconComponent(iconId);
+                                        return (
                                         <button
-                                            key={icon}
+                                            key={iconId}
+                                            type="button"
                                             onClick={() => {
-                                                setEditedLoadout((prev) => ({ ...prev, icon }));
+                                                setEditedLoadout((prev) => ({ ...prev, icon: iconId }));
                                                 setShowIconPicker(false);
                                             }}
-                                            className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded text-lg"
+                                            className="flex h-8 w-8 items-center justify-center text-slate-300 hover:bg-white/10"
                                         >
-                                            {icon}
+                                            <IconComponent className="h-4 w-4" />
                                         </button>
-                                    ))}
+                                    )})}
                                 </div>
                             )}
                         </div>
@@ -2170,28 +2146,32 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                             type="text"
                             value={editedLoadout.name}
                             onChange={(e) => setEditedLoadout((prev) => ({ ...prev, name: e.target.value }))}
-                            className="flex-1 bg-black/40 border border-white/10 px-4 py-3 text-white text-lg font-bold focus:outline-none focus:border-destiny-gold/50 rounded-lg"
+                            className="flex-1 border border-white/10 bg-black/40 px-4 py-3 text-lg font-bold text-white focus:border-destiny-gold/50 focus:outline-none"
                             placeholder="Loadout Name"
                         />
                         
                         {/* Color Picker */}
                         <div className="relative">
                             <button
+                                type="button"
                                 onClick={() => setShowColorPicker(!showColorPicker)}
-                                className="w-10 h-10 rounded-lg border-2 border-white/20"
+                                className="h-10 w-10 border-2 border-white/20"
                                 style={{ backgroundColor: editedLoadout.color }}
+                                aria-label="Choose loadout color"
                             />
                             {showColorPicker && (
-                                <div className="absolute top-full right-0 mt-2 p-2 bg-slate-900 border border-white/10 rounded-lg flex gap-1 z-50 shadow-xl">
+                                <div className="absolute right-0 top-full z-50 mt-2 flex gap-1 border border-white/10 bg-[#0b0f14] p-2 shadow-xl">
                                     {LOADOUT_COLORS.map((color) => (
                                         <button
                                             key={color}
+                                            type="button"
                                             onClick={() => {
                                                 setEditedLoadout((prev) => ({ ...prev, color }));
                                                 setShowColorPicker(false);
                                             }}
-                                            className="w-6 h-6 rounded border-2 border-white/20 hover:scale-110 transition-transform"
+                                            className="h-6 w-6 border-2 border-white/20 transition-transform hover:scale-110"
                                             style={{ backgroundColor: color }}
+                                            aria-label={`Color ${color}`}
                                         />
                                     ))}
                                 </div>
@@ -2231,7 +2211,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                 </button>
                                 
                                 {showTagPicker && (
-                                    <div className="absolute top-full left-0 mt-2 p-2 bg-slate-900 border border-white/10 rounded-lg z-50 shadow-xl w-48 max-h-48 overflow-y-auto">
+                                    <div className="absolute left-0 top-full z-50 mt-2 max-h-48 w-48 overflow-y-auto border border-white/10 bg-[#0b0f14] p-2 shadow-xl">
                                         {LOADOUT_TAGS.filter((t) => !(editedLoadout.tags || []).includes(t)).map((tag) => (
                                             <button
                                                 key={tag}
@@ -2293,7 +2273,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                                 tierAsNumber
                                                             />
                                                         ) : (
-                                                            <span className="text-2xl opacity-50">{bucket.icon}</span>
+                                                            <BucketIcon icon={bucket.icon} />
                                                         )}
                                                     </button>
                                                     {/* Perks configured indicator */}
@@ -2353,7 +2333,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                                 tierAsNumber
                                                             />
                                                         ) : (
-                                                            <span className="text-lg opacity-50">{bucket.icon}</span>
+                                                            <BucketIcon icon={bucket.icon} className="opacity-50" />
                                                         )}
                                                     </button>
                                                     {/* Mods configured indicator */}
@@ -2595,24 +2575,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                             </div>
                     </div>
                 </div>
-                
-                {/* Footer */}
-                <div className="flex justify-end gap-3 p-4 border-t border-white/10">
-                    <button
-                        onClick={onCancel}
-                        className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={() => onSave(editedLoadout)}
-                        className="px-6 py-2 bg-destiny-gold text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-white transition-colors rounded-lg flex items-center gap-2"
-                    >
-                        <Save className="w-4 h-4" />
-                        Save Loadout
-                    </button>
-                </div>
-            </div>
+        </LoadoutModal>
             
             {/* Item Picker */}
             {pickerBucket !== null && (
@@ -2652,7 +2615,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                     onSelectPerk={handlePerkSelect}
                 />
             )}
-        </div>
+        </>
     
     );
 }
@@ -2755,15 +2718,12 @@ export default function LoadoutsPage() {
     
     if (!isLoggedIn) {
         return (
-            <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                <Package className="w-16 h-16 text-slate-600" />
+            <div className="flex h-[60vh] flex-col items-center justify-center space-y-4">
+                <Layers className="h-16 w-16 text-slate-600" />
                 <div className="text-slate-400">Please login to manage loadouts</div>
-                <button
-                    onClick={() => loginWithBungie()}
-                    className="px-6 py-2 bg-destiny-gold text-slate-900 font-bold uppercase tracking-widest hover:bg-white transition-colors rounded-lg"
-                >
+                <LoadoutPrimaryButton onClick={() => loginWithBungie()}>
                     Login
-                </button>
+                </LoadoutPrimaryButton>
             </div>
         );
     }
@@ -2777,60 +2737,43 @@ export default function LoadoutsPage() {
     }
     
     return (
-        <div className="p-6 max-w-6xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-white uppercase tracking-wide flex items-center gap-3">
-                        <Sparkles className="w-6 h-6 text-destiny-gold" />
-                        Loadouts
-                    </h1>
-                    <p className="text-slate-500 text-sm mt-1">
-                        Create, manage, and share custom loadouts for your Guardians
-                    </p>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setShowImportDialog(true)}
-                        className="px-4 py-2 bg-white/5 text-white font-medium text-sm hover:bg-white/10 transition-colors rounded-lg flex items-center gap-2"
-                    >
+        <div className="mx-auto max-w-6xl">
+            <PageHeader
+                title="Loadouts"
+                description="Create, manage, and share custom loadouts for your Guardians"
+            >
+                <div className="flex flex-wrap items-center gap-2">
+                    <LoadoutGhostButton onClick={() => setShowImportDialog(true)}>
                         <Download className="w-4 h-4" />
                         Import
-                    </button>
-                    <button
-                        onClick={handleExportAll}
-                        disabled={loadouts.length === 0}
-                        className="px-4 py-2 bg-white/5 text-white font-medium text-sm hover:bg-white/10 transition-colors rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                    </LoadoutGhostButton>
+                    <LoadoutGhostButton onClick={handleExportAll} disabled={loadouts.length === 0}>
                         <Upload className="w-4 h-4" />
                         Export All
-                    </button>
-                    <button
-                        onClick={() => setEditingLoadout('new')}
-                        className="px-4 py-2 bg-destiny-gold text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-white transition-colors rounded-lg flex items-center gap-2"
-                    >
+                    </LoadoutGhostButton>
+                    <LoadoutPrimaryButton onClick={() => setEditingLoadout('new')}>
                         <Plus className="w-4 h-4" />
                         New Loadout
-                    </button>
+                    </LoadoutPrimaryButton>
                 </div>
-            </div>
+            </PageHeader>
             
             {/* Class Tabs */}
-            <div className="flex gap-2 mb-6">
+            <div className="mb-6 flex gap-2">
                 {[0, 1, 2].map((classType) => (
                     <button
                         key={classType}
+                        type="button"
                         onClick={() => setSelectedClass(classType)}
                         className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all",
+                            "flex items-center gap-2 border px-4 py-2 text-sm font-medium transition-all",
                             selectedClass === classType
-                                ? "bg-destiny-gold text-slate-900"
-                                : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-white"
+                                ? "border-destiny-gold/40 bg-destiny-gold/10 text-destiny-gold"
+                                : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20 hover:text-white"
                         )}
                     >
                         <Image src={CLASS_ICONS[classType]} width={16} height={16} alt="" />
-                        {CLASS_NAMES[classType]}
+                        <span className="font-condensed uppercase tracking-wide">{CLASS_NAMES[classType]}</span>
                         <span className="ml-1 text-xs opacity-70">
                             ({loadouts.filter((l) => l.classType === classType).length})
                         </span>
@@ -2840,29 +2783,23 @@ export default function LoadoutsPage() {
             
             {/* Loadouts Grid */}
             {filteredLoadouts.length === 0 ? (
-                <div className="text-center py-16 border-2 border-dashed border-white/10 rounded-lg">
-                    <Package className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-slate-400 mb-2">No loadouts yet</h3>
-                    <p className="text-sm text-slate-600 mb-4">
+                <FrostedCard className="py-16 text-center">
+                    <Layers className="mx-auto mb-4 h-12 w-12 text-slate-600" />
+                    <h3 className="mb-2 text-lg font-medium text-slate-400">No loadouts yet</h3>
+                    <p className="mb-4 text-sm text-slate-600">
                         Create your first {CLASS_NAMES[selectedClass]} loadout to get started
                     </p>
                     <div className="flex items-center justify-center gap-3">
-                        <button
-                            onClick={() => setEditingLoadout('new')}
-                            className="px-4 py-2 bg-destiny-gold text-slate-900 font-bold text-sm hover:bg-white transition-colors rounded-lg inline-flex items-center gap-2"
-                        >
+                        <LoadoutPrimaryButton onClick={() => setEditingLoadout('new')}>
                             <Plus className="w-4 h-4" />
                             Create Loadout
-                        </button>
-                        <button
-                            onClick={() => setShowImportDialog(true)}
-                            className="px-4 py-2 bg-slate-800 text-white font-medium text-sm hover:bg-slate-700 transition-colors rounded-lg inline-flex items-center gap-2"
-                        >
+                        </LoadoutPrimaryButton>
+                        <LoadoutGhostButton onClick={() => setShowImportDialog(true)}>
                             <Download className="w-4 h-4" />
                             Import
-                        </button>
+                        </LoadoutGhostButton>
                     </div>
-                </div>
+                </FrostedCard>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredLoadouts.map((loadout) => (

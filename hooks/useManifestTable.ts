@@ -1,5 +1,7 @@
-import useSWR from "swr";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { fetchManifestDefinitions } from "@/lib/manifestTableClient";
+import { getManifestTable } from "@/lib/manifestRepository";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -30,14 +32,19 @@ export function useManifestTable<T = any>(
     return `/api/manifest-table/${definitionType}${query ? `?${query}` : ""}`;
   }, [definitionType, options?.view]);
 
-  const { data, error, isLoading } = useSWR<Record<string, T>>(
-    tableUrl,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 24 * 60 * 60 * 1000,
-    }
-  );
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["manifestTable", definitionType, options?.view ?? "full"],
+    queryFn: async () => {
+      try {
+        return await getManifestTable<T>(definitionType, { view: options?.view });
+      } catch (error) {
+        console.warn("[Manifest] IndexedDB table lookup failed, falling back to API", error);
+        return fetcher(tableUrl) as Promise<Record<string, T>>;
+      }
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
 
   return {
     table: data,
@@ -50,11 +57,17 @@ export function useManifestDefinition<T = any>(
   definitionType: string,
   hash: number | undefined
 ) {
-  const { table, isLoading, isError } = useManifestTable<T>(definitionType);
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["manifestDefinition", definitionType, hash],
+    queryFn: () => fetchManifestDefinitions<T>(definitionType, [hash!]),
+    enabled: Number.isFinite(hash),
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
 
   return {
-    definition: hash && table ? table[String(hash)] : undefined,
+    definition: hash && data ? data[String(hash)] : undefined,
     isLoading,
-    isError,
+    isError: error,
   };
 }

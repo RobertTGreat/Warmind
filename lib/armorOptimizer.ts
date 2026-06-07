@@ -32,6 +32,7 @@ export interface ArmorPiece {
     itemHash: number;
     itemInstanceId: string;
     bucketHash: number;
+    equipableItemSetHash?: number;
     name: string;
     icon: string;
     classType: number;
@@ -93,9 +94,24 @@ export interface ArmorSet {
     artificeSlots: number;
 }
 
+export type ExoticArmorSlot = 'helmet' | 'gauntlets' | 'chest' | 'legs' | 'classItem';
+
+export interface ExoticFilterSelection {
+    itemHash: number;
+    itemInstanceId?: string;
+    slot: ExoticArmorSlot;
+}
+
 export interface ExoticFilter {
     itemHash: number | null;
-    slot: 'helmet' | 'gauntlets' | 'chest' | 'legs' | 'any' | 'none';
+    itemInstanceId?: string | null;
+    slot: ExoticArmorSlot | 'any' | 'none';
+    selectedExotics?: ExoticFilterSelection[];
+}
+
+export interface ArmorSetBonusTarget {
+    setHash: number | null;
+    requiredSetCount: 2 | 4;
 }
 
 export interface OptimizerSettings {
@@ -110,6 +126,7 @@ export interface OptimizerSettings {
     onlyMasterworked: boolean;
     ignoreSunset: boolean;
     exoticFilter: ExoticFilter;
+    armorSetBonusTarget: ArmorSetBonusTarget;
     subclassConfig: SubclassConfig | null;
 }
 
@@ -150,7 +167,8 @@ export const DEFAULT_SETTINGS: OptimizerSettings = {
     minimizeWaste: true,
     onlyMasterworked: false,
     ignoreSunset: true,
-    exoticFilter: { itemHash: null, slot: 'any' },
+    exoticFilter: { itemHash: null, itemInstanceId: null, slot: 'any', selectedExotics: [] },
+    armorSetBonusTarget: { setHash: null, requiredSetCount: 2 },
     subclassConfig: null,
 };
 
@@ -489,6 +507,7 @@ export function extractArmorPiece(
         itemHash: item.itemHash,
         itemInstanceId: item.itemInstanceId,
         bucketHash,
+        equipableItemSetHash: itemDef.equippingBlock?.equipableItemSetHash,
         name: itemDef.displayProperties?.name || 'Unknown',
         icon: itemDef.displayProperties?.icon || '',
         classType: itemDef.classType ?? 3,
@@ -515,6 +534,70 @@ export function filterArmorBySlot(
             piece.bucketHash === bucketHash &&
             (piece.classType === classType || piece.classType === 3)
     );
+}
+
+export function getExoticSelectionKey(selection: Pick<ExoticFilterSelection, 'itemHash' | 'itemInstanceId'>): string {
+    return selection.itemInstanceId || `hash:${selection.itemHash}`;
+}
+
+export function getArmorPieceExoticSelection(piece: ArmorPiece, slot: ExoticArmorSlot): ExoticFilterSelection {
+    return {
+        itemHash: piece.itemHash,
+        itemInstanceId: piece.itemInstanceId || undefined,
+        slot,
+    };
+}
+
+export function getSelectedExoticFilters(exoticFilter: ExoticFilter): ExoticFilterSelection[] {
+    if (exoticFilter.selectedExotics?.length) {
+        return exoticFilter.selectedExotics;
+    }
+
+    if (
+        !exoticFilter.itemHash ||
+        !exoticFilter.itemInstanceId ||
+        exoticFilter.slot === 'any' ||
+        exoticFilter.slot === 'none'
+    ) {
+        return [];
+    }
+
+    return [{
+        itemHash: exoticFilter.itemHash,
+        itemInstanceId: exoticFilter.itemInstanceId || undefined,
+        slot: exoticFilter.slot,
+    }];
+}
+
+function exoticSelectionMatchesPiece(selection: ExoticFilterSelection, piece: ArmorPiece): boolean {
+    if (selection.itemInstanceId) {
+        return piece.itemInstanceId === selection.itemInstanceId;
+    }
+
+    return piece.itemHash === selection.itemHash;
+}
+
+export function isSelectedExoticArmorPiece(piece: ArmorPiece, selectedExotics: ExoticFilterSelection[]): boolean {
+    return selectedExotics.some((selection) => exoticSelectionMatchesPiece(selection, piece));
+}
+
+export function filterArmorPiecesForExoticSelection(
+    armorPieces: ArmorPiece[],
+    settings: Pick<OptimizerSettings, 'allowExotics' | 'exoticFilter'>
+): ArmorPiece[] {
+    const selectedExotics = getSelectedExoticFilters(settings.exoticFilter);
+
+    if (settings.exoticFilter.slot === 'none' || !settings.allowExotics) {
+        return armorPieces.filter((piece) => !piece.isExotic);
+    }
+
+    if (selectedExotics.length === 0) {
+        return armorPieces;
+    }
+
+    return armorPieces.filter((piece) => {
+        return !piece.isExotic || isSelectedExoticArmorPiece(piece, selectedExotics);
+    });
 }
 
 /**
@@ -685,38 +768,20 @@ export function findOptimalArmorSets(
     const legs = filterArmorBySlot(armorPieces, BUCKETS.LEG_ARMOR, classType);
     const classItems = filterArmorBySlot(armorPieces, BUCKETS.CLASS_ARMOR, classType);
     
-    // Determine which slot has the required exotic (if any)
-    const requiredExoticHash = settings.exoticFilter.itemHash;
-    const requiredExoticSlot = settings.exoticFilter.slot;
-    const noExotics = requiredExoticSlot === 'none';
+    const selectedExotics = getSelectedExoticFilters(settings.exoticFilter);
+    const noExotics = settings.exoticFilter.slot === 'none';
     
-    // Find the required exotic piece if one is specified
-    let requiredExoticPiece: ArmorPiece | null = null;
-    if (requiredExoticHash) {
-        requiredExoticPiece = armorPieces.find(p => p.itemHash === requiredExoticHash) || null;
-    }
-    
-    // Filter function: For the slot with required exotic, ONLY include that exotic
-    // For other slots, exclude ALL exotics (can only wear 1)
     const filterByExotic = (pieces: ArmorPiece[], slot: string): ArmorPiece[] => {
-        // No exotics mode - remove all exotics
         if (noExotics) {
             return pieces.filter(p => !p.isExotic);
         }
-        
-        // If a specific exotic is required
-        if (requiredExoticHash && requiredExoticPiece) {
-            // This is the slot that MUST have the required exotic
-            if (requiredExoticSlot === slot) {
-                // ONLY return the required exotic for this slot
-                return pieces.filter(p => p.itemHash === requiredExoticHash);
-            } else {
-                // Other slots: NO exotics allowed (only 1 exotic per loadout)
-                return pieces.filter(p => !p.isExotic);
-            }
+
+        if (selectedExotics.length > 0) {
+            return pieces.filter((piece) => {
+                return !piece.isExotic || isSelectedExoticArmorPiece(piece, selectedExotics);
+            });
         }
-        
-        // "Any exotic" mode - allow exotics but still only 1 per set (handled in loop)
+
         if (!settings.allowExotics) {
             return pieces.filter(p => !p.isExotic);
         }
@@ -740,13 +805,7 @@ export function findOptimalArmorSets(
     const filteredGauntlets = filterByMasterwork(filterByExotic(gauntlets, 'gauntlets')).sort(sortByTotal).slice(0, topN);
     const filteredChests = filterByMasterwork(filterByExotic(chests, 'chest')).sort(sortByTotal).slice(0, topN);
     const filteredLegs = filterByMasterwork(filterByExotic(legs, 'legs')).sort(sortByTotal).slice(0, topN);
-    const filteredClassItems = filterByMasterwork(classItems).sort(sortByTotal).slice(0, Math.min(topN, classItems.length));
-    
-    // If a specific exotic is required but not found, return empty
-    if (requiredExoticHash && !requiredExoticPiece) {
-        console.warn('Required exotic not found in inventory');
-        return [];
-    }
+    const filteredClassItems = filterByMasterwork(filterByExotic(classItems, 'classItem')).sort(sortByTotal).slice(0, Math.min(topN, classItems.length));
     
     if (filteredClassItems.length === 0) {
         filteredClassItems.push({
@@ -766,6 +825,19 @@ export function findOptimalArmorSets(
     }
     
     const fragmentStats = settings.subclassConfig?.totalBonus || createEmptyStats();
+    const armorSetBonusTarget = settings.armorSetBonusTarget;
+
+    const meetsArmorSetBonusTarget = (pieces: ArmorPiece[]) => {
+        if (!armorSetBonusTarget?.setHash) {
+            return true;
+        }
+
+        const matchingPieceCount = pieces.filter((piece) => {
+            return piece.equipableItemSetHash === armorSetBonusTarget.setHash;
+        }).length;
+
+        return matchingPieceCount >= armorSetBonusTarget.requiredSetCount;
+    };
     
     for (const helmet of filteredHelmets) {
         for (const gauntlet of filteredGauntlets) {
@@ -777,11 +849,26 @@ export function findOptimalArmorSets(
                 if (exoticCount > settings.maxExotics) continue;
                 
                 for (const leg of filteredLegs) {
-                    exoticCount = (helmet.isExotic ? 1 : 0) + (gauntlet.isExotic ? 1 : 0) + 
-                                  (chest.isExotic ? 1 : 0) + (leg.isExotic ? 1 : 0);
-                    if (exoticCount > settings.maxExotics) continue;
+                    const armorExoticCount = (helmet.isExotic ? 1 : 0) + (gauntlet.isExotic ? 1 : 0) + 
+                                             (chest.isExotic ? 1 : 0) + (leg.isExotic ? 1 : 0);
+                    if (armorExoticCount > settings.maxExotics) continue;
                     
                     for (const classItem of filteredClassItems) {
+                        const pieces = [helmet, gauntlet, chest, leg, classItem];
+                        exoticCount = armorExoticCount + (classItem.isExotic ? 1 : 0);
+                        if (exoticCount > settings.maxExotics) continue;
+
+                        if (
+                            selectedExotics.length > 0 &&
+                            !pieces.some((piece) => piece.isExotic && isSelectedExoticArmorPiece(piece, selectedExotics))
+                        ) {
+                            continue;
+                        }
+
+                        if (!meetsArmorSetBonusTarget(pieces)) {
+                            continue;
+                        }
+
                         const baseStats = sumStats(
                             helmet.baseStats,
                             gauntlet.baseStats,
@@ -794,8 +881,7 @@ export function findOptimalArmorSets(
                             .filter(p => p.isArtifice).length;
                         
                         const mwStats = createEmptyStats();
-                        const pieces = [helmet, gauntlet, chest, leg];
-                        pieces.forEach(piece => {
+                        [helmet, gauntlet, chest, leg].forEach(piece => {
                             const bonus = (piece.isMasterworked || settings.assumeMasterwork) ? 2 : 0;
                             ALL_STAT_KEYS.forEach(stat => {
                                 mwStats[stat] += bonus;
@@ -893,6 +979,7 @@ export function getExoticsBySlot(
         gauntlets: exotics.filter(p => p.bucketHash === BUCKETS.GAUNTLETS),
         chest: exotics.filter(p => p.bucketHash === BUCKETS.CHEST_ARMOR),
         legs: exotics.filter(p => p.bucketHash === BUCKETS.LEG_ARMOR),
+        classItem: exotics.filter(p => p.bucketHash === BUCKETS.CLASS_ARMOR),
     };
 }
 

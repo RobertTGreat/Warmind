@@ -1,4 +1,4 @@
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import { bungieApi, endpoints } from '@/lib/bungie';
 
 export interface SearchUserResult {
@@ -110,27 +110,23 @@ function filterSearchResultsByCode(
 }
 
 export function useUserSearch(query: string) {
-    const fetcher = async () => {
-        const searchResults = await searchUsers(query);
+    const normalizedQuery = query.trim();
+    const { data, error, isLoading } = useQuery({
+        queryKey: ['userSearch', normalizedQuery],
+        queryFn: async () => {
+            const searchResults = await searchUsers(normalizedQuery);
 
-        return {
-            Response: {
-                searchResults,
-            },
-            ErrorCode: 1
-        };
-    };
-
-    const { data, error, isLoading } = useSWR(
-        query && query.length >= 3 ? `user-search-${query}` : null,
-        fetcher,
-        { 
-            revalidateOnFocus: false,
-            onError: (err) => {
-                console.error('SWR error in user search:', err);
-            }
-        }
-    );
+            return {
+                Response: {
+                    searchResults,
+                },
+                ErrorCode: 1
+            };
+        },
+        enabled: normalizedQuery.length >= 3,
+        staleTime: 5 * 60 * 1000,
+        gcTime: 30 * 60 * 1000,
+    });
 
     const results: SearchUserResult[] = data?.Response?.searchResults || [];
 

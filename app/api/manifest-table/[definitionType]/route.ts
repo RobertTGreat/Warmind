@@ -48,6 +48,7 @@ function pickInventoryCardFields(table: Record<string, any>) {
       equippingBlock: def.equippingBlock
         ? {
             equipableItemSetHash: def.equippingBlock.equipableItemSetHash,
+            ammoType: def.equippingBlock.ammoType,
           }
         : undefined,
       plug: def.plug

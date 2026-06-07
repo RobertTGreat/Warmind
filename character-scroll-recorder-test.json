@@ -1,0 +1,64 @@
+{
+  "title": "Warmind Character Scroll Perf Test",
+  "steps": [
+    {
+      "type": "setViewport",
+      "width": 1440,
+      "height": 1100,
+      "deviceScaleFactor": 1,
+      "isMobile": false,
+      "hasTouch": false,
+      "isLandscape": false
+    },
+    {
+      "type": "waitForElement",
+      "selectors": [["div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar"]]
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "(() => { const el = document.querySelector('div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar'); return Boolean(el && el.scrollHeight > el.clientHeight); })()",
+      "timeout": 30000
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "(() => { const el = document.querySelector('div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar'); if (!el) return false; el.scrollTop = 800; el.dispatchEvent(new Event('scroll', { bubbles: true })); return el.scrollTop > 0; })()",
+      "timeout": 30000
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "new Promise(resolve => setTimeout(resolve, 800))"
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "(() => { const el = document.querySelector('div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar'); if (!el) return false; el.scrollTop = 1600; el.dispatchEvent(new Event('scroll', { bubbles: true })); return el.scrollTop >= 800; })()",
+      "timeout": 30000
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "new Promise(resolve => setTimeout(resolve, 800))"
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "(() => { const el = document.querySelector('div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar'); if (!el) return false; el.scrollTop = 2400; el.dispatchEvent(new Event('scroll', { bubbles: true })); return el.scrollTop >= 1200; })()",
+      "timeout": 30000
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "new Promise(resolve => setTimeout(resolve, 800))"
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "(() => { const el = document.querySelector('div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar'); if (!el) return false; el.scrollTop = 1200; el.dispatchEvent(new Event('scroll', { bubbles: true })); return el.scrollTop >= 800; })()",
+      "timeout": 30000
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "new Promise(resolve => setTimeout(resolve, 800))"
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "(() => { const el = document.querySelector('div.min-h-0.flex-1.overflow-x-hidden.overflow-y-auto.overscroll-contain.custom-scrollbar'); if (!el) return false; el.scrollTop = 0; el.dispatchEvent(new Event('scroll', { bubbles: true })); return el.scrollTop === 0; })()",
+      "timeout": 30000
+    }
+  ]
+}

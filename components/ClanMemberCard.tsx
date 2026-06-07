@@ -4,7 +4,7 @@ import { bungieApi, endpoints, getBungieImage as getImg } from "@/lib/bungie";
 import { useSettingsStore } from "@/store/settingsStore";
 import { cn } from "@/lib/utils";
 import { Star } from "lucide-react";
-import useSWR from "swr";
+import { useQuery } from "@tanstack/react-query";
 import { ScrollingText } from "@/components/ScrollingText";
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
@@ -27,7 +27,8 @@ const SPECIAL_TAGS: Record<string, { label: string, className: string }[]> = {
 
 export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: any, isOnline: boolean, preloadedStats?: MemberStats }) {
     const user = member.destinyUserInfo;
-    const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
+    const favoriteMembers = useSettingsStore((state) => state.favoriteMembers);
+    const toggleFavoriteMember = useSettingsStore((state) => state.toggleFavoriteMember);
     
     const fullBungieName = `${user.bungieGlobalDisplayName}#${user.bungieGlobalDisplayNameCode}`;
     const specialTags = SPECIAL_TAGS[fullBungieName];
@@ -36,14 +37,13 @@ export function ClanMemberCard({ member, isOnline, preloadedStats }: { member: a
     
     // Fetch minimal profile data (100 = Profile, 200 = Characters)
     // Only fetch if we don't have preloadedStats
-    const { data: profileData, isLoading: profileLoading } = useSWR(
-        !preloadedStats ? endpoints.getProfile(user.membershipType, user.membershipId, [100, 200]) : null,
-        fetcher,
-        {
-            revalidateOnFocus: false,
-            dedupingInterval: 60000 // Cache for 1 minute
-        }
-    );
+    const { data: profileData, isLoading: profileLoading } = useQuery({
+        queryKey: ['clanMemberProfile', user.membershipType, user.membershipId],
+        queryFn: () => fetcher(endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])),
+        enabled: !preloadedStats,
+        staleTime: 10 * 60 * 1000,
+        gcTime: 60 * 60 * 1000,
+    });
 
     let power = preloadedStats?.power;
     let guardianRank = preloadedStats?.guardianRank;

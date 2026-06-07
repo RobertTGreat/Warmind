@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ActivityHistoryItem, fetchHistoryForMode } from './useActivityHistory';
 
 interface OtherUserActivityHistoryOptions {
@@ -15,78 +16,62 @@ export function useOtherUserActivityHistory(
     characterIds: string[],
     options: OtherUserActivityHistoryOptions = {}
 ) {
-    const [raidHistory, setRaidHistory] = useState<ActivityHistoryItem[]>([]);
-    const [dungeonHistory, setDungeonHistory] = useState<ActivityHistoryItem[]>([]);
-    const [allHistory, setAllHistory] = useState<ActivityHistoryItem[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [loadingAllHistory, setLoadingAllHistory] = useState(false);
     const includeAllActivities = options.includeAllActivities ?? false;
+    const sortedCharacterIds = useMemo(
+        () => [...characterIds].sort(),
+        [characterIds.join(',')]
+    );
+    const isEnabled = Boolean(
+        membershipType && destinyMembershipId && sortedCharacterIds.length > 0
+    );
 
-    useEffect(() => {
-        if (!membershipType || !destinyMembershipId || characterIds.length === 0) {
-            setRaidHistory([]);
-            setDungeonHistory([]);
-            setAllHistory([]);
-            return;
-        }
+    const { data: baseHistory, isLoading: loading } = useQuery({
+        queryKey: [
+            'otherUserActivityHistory',
+            membershipType,
+            destinyMembershipId,
+            sortedCharacterIds.join(','),
+            'base',
+        ],
+        queryFn: async () => {
+            const [raids, dungeons] = await Promise.all([
+                fetchHistoryForMode(membershipType!, destinyMembershipId!, sortedCharacterIds, RAID_ACTIVITY_MODE),
+                fetchHistoryForMode(membershipType!, destinyMembershipId!, sortedCharacterIds, DUNGEON_ACTIVITY_MODE),
+            ]);
 
-        const fetchHistory = async () => {
-            setLoading(true);
-            try {
-                const sortedCharacterIds = [...characterIds].sort();
-                const [raids, dungeons] = await Promise.all([
-                    fetchHistoryForMode(membershipType, destinyMembershipId, sortedCharacterIds, RAID_ACTIVITY_MODE),
-                    fetchHistoryForMode(membershipType, destinyMembershipId, sortedCharacterIds, DUNGEON_ACTIVITY_MODE),
-                ]);
+            return { raids, dungeons };
+        },
+        enabled: isEnabled,
+        staleTime: 10 * 60 * 1000,
+        gcTime: 60 * 60 * 1000,
+    });
 
-                setRaidHistory(raids);
-                setDungeonHistory(dungeons);
-            } catch (err) {
-                console.error("Error fetching activity history", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchHistory();
-    }, [membershipType, destinyMembershipId, characterIds.join(',')]);
-
-    useEffect(() => {
-        if (!includeAllActivities || !membershipType || !destinyMembershipId || characterIds.length === 0) {
-            if (!includeAllActivities) {
-                setAllHistory([]);
-            }
-            return;
-        }
-
-        const fetchAllHistory = async () => {
-            setLoadingAllHistory(true);
-
-            try {
-                const allActivities = await fetchHistoryForMode(
-                    membershipType,
-                    destinyMembershipId,
-                    [...characterIds].sort(),
-                    ALL_ACTIVITY_MODE
-                );
-
-                setAllHistory(allActivities);
-            } catch (error) {
-                console.error("Error fetching all activity history", error);
-            } finally {
-                setLoadingAllHistory(false);
-            }
-        };
-
-        fetchAllHistory();
-    }, [includeAllActivities, membershipType, destinyMembershipId, characterIds.join(',')]);
+    const { data: allHistory = [], isLoading: loadingAllHistory } = useQuery({
+        queryKey: [
+            'otherUserActivityHistory',
+            membershipType,
+            destinyMembershipId,
+            sortedCharacterIds.join(','),
+            'all',
+        ],
+        queryFn: () =>
+            fetchHistoryForMode(
+                membershipType!,
+                destinyMembershipId!,
+                sortedCharacterIds,
+                ALL_ACTIVITY_MODE
+            ),
+        enabled: includeAllActivities && isEnabled,
+        staleTime: 10 * 60 * 1000,
+        gcTime: 60 * 60 * 1000,
+    });
 
     return {
-        raidHistory,
-        dungeonHistory,
-        allHistory,
+        raidHistory: baseHistory?.raids ?? [],
+        dungeonHistory: baseHistory?.dungeons ?? [],
+        allHistory: includeAllActivities ? allHistory : [],
         isLoadingHistory: loading,
-        isLoadingAllHistory: loadingAllHistory,
+        isLoadingAllHistory: includeAllActivities && loadingAllHistory,
     };
 }
 

@@ -82,21 +82,23 @@ const navItems: {
 export function Header() {
   const pathname = usePathname();
   const { stats, displayName, isLoggedIn, allCharacters, selectCharacter } = useDestinyProfileContext();
-  const {
-    headerSearchQuery,
-    headerSearchVisible,
-    headerSearchPlaceholder,
-    setHeaderSearchQuery,
-  } = useUIStore();
+  const headerSearchQuery = useUIStore((state) => state.headerSearchQuery);
+  const headerSearchVisible = useUIStore((state) => state.headerSearchVisible);
+  const headerSearchPlaceholder = useUIStore((state) => state.headerSearchPlaceholder);
+  const setHeaderSearchQuery = useUIStore((state) => state.setHeaderSearchQuery);
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [characterSelectorOpen, setCharacterSelectorOpen] = useState(false);
+  const [searchPopoverOpen, setSearchPopoverOpen] = useState(false);
   const characterSelectorRef = useRef<HTMLDivElement>(null);
+  const searchPopoverRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Close menu when route changes
   useEffect(() => {
     setMenuOpen(false);
     setCharacterSelectorOpen(false);
+    setSearchPopoverOpen(false);
   }, [pathname]);
 
   // Close character selector on click outside
@@ -112,6 +114,35 @@ export function Header() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [characterSelectorOpen]);
+
+  useEffect(() => {
+    if (!searchPopoverOpen) return;
+
+    searchInputRef.current?.focus();
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchPopoverRef.current &&
+        !searchPopoverRef.current.contains(event.target as Node)
+      ) {
+        setSearchPopoverOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSearchPopoverOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [searchPopoverOpen]);
 
   // Fetch emblem definition to get secondaryOverlay
   const emblemHash = stats?.emblemHash;
@@ -259,9 +290,9 @@ export function Header() {
 
             {/* Center: Navigation (Desktop, only when menu closed) */}
               {!menuOpen && (
-                <nav className="flex-1 justify-center mx-4 overflow-hidden hidden lg:flex animate-in fade-in duration-150">
+                <nav className="mx-2 flex min-w-0 flex-1 justify-center overflow-hidden animate-in fade-in duration-150 sm:mx-4">
                   {isLoggedIn && (
-                    <ul className="flex items-center gap-1 sm:gap-4 flex-nowrap">
+                    <ul className="no-scrollbar flex items-center gap-1 overflow-x-auto flex-nowrap">
                       {navItems.map((item) => {
                         const isActive =
                           pathname === item.href ||
@@ -277,7 +308,7 @@ export function Header() {
                                 className="relative flex items-center gap-2 px-3 py-2 text-sm font-medium uppercase tracking-wider text-slate-600 cursor-not-allowed"
                                 title="Coming Soon"
                               >
-                                <Icon className="w-4 h-4" />
+                                <Icon className="h-4 w-4 shrink-0" />
                                 <span className="hidden xl:inline">{item.name}</span>
                               </span>
                             </li>
@@ -295,7 +326,7 @@ export function Header() {
                                   : "text-slate-400 hover:text-white hover:bg-white/5"
                               )}
                             >
-                              <Icon className="w-4 h-4" />
+                              <Icon className="h-4 w-4 shrink-0" />
                               <span className="hidden xl:inline">{item.name}</span>
                               
                               {isActive && (
@@ -340,17 +371,50 @@ export function Header() {
               )}
 
             {/* Right: Hamburger Menu Button */}
-            <div className="flex items-center justify-end min-w-[48px] gap-2">
+            <div className="flex shrink-0 items-center justify-end min-w-[48px] gap-2">
               {!menuOpen && headerSearchVisible && (
-                <div className="relative hidden w-80 max-w-[26vw] lg:block">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder={headerSearchPlaceholder}
-                    className="w-full border border-white/10 bg-black/45 py-2 pl-9 pr-4 text-sm text-white outline-none transition-colors focus:border-destiny-gold/60"
-                    value={headerSearchQuery}
-                    onChange={(event) => setHeaderSearchQuery(event.target.value)}
-                  />
+                <div className="relative" ref={searchPopoverRef}>
+                  <button
+                    type="button"
+                    onClick={() => setSearchPopoverOpen((isOpen) => !isOpen)}
+                    className={cn(
+                      "flex p-2 transition-colors",
+                      searchPopoverOpen
+                        ? "bg-white/10 text-destiny-gold"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    )}
+                    title="Search"
+                    aria-expanded={searchPopoverOpen}
+                    aria-label="Search inventory"
+                  >
+                    <Search className="h-5 w-5" />
+                  </button>
+
+                  {searchPopoverOpen && (
+                    <div className="absolute right-0 top-full z-100 mt-3 w-[min(24rem,calc(100vw-2rem))] border border-white/10 bg-[#0b0f14]/95 p-3 shadow-2xl shadow-black/70 backdrop-blur-xl">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          placeholder={headerSearchPlaceholder}
+                          className="w-full border border-white/10 bg-black/45 py-2.5 pl-9 pr-9 text-sm text-white outline-none transition-colors focus:border-destiny-gold/60"
+                          value={headerSearchQuery}
+                          onChange={(event) => setHeaderSearchQuery(event.target.value)}
+                        />
+                        {headerSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setHeaderSearchQuery("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 transition-colors hover:text-white"
+                            aria-label="Clear search"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -359,7 +423,7 @@ export function Header() {
                 <Link
                   href="/settings"
                   className={cn(
-                    "hidden lg:flex p-2 transition-colors",
+                    "flex p-2 transition-colors",
                     pathname === '/settings'
                       ? "text-destiny-gold bg-white/5"
                       : "text-slate-400 hover:text-white hover:bg-white/5"

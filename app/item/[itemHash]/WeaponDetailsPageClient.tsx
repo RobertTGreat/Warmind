@@ -42,10 +42,6 @@ import {
 import { cn } from "@/lib/utils";
 import { STAT_NAMES_BY_HASH, StatHashes } from "@/lib/dim-stats";
 import { STAT_HASHES } from "@/lib/destinyUtils";
-import {
-  getItemSourceInfo,
-  type ItemSourceInfo,
-} from "@/lib/itemSourceInfo";
 import type { ClarityDescription } from "@/lib/clarityDescriptions";
 
 interface WeaponDetailsPageClientProps {
@@ -66,6 +62,11 @@ interface OwnedWeaponCopy {
 
 type TooltipAlignment = "left" | "center" | "right";
 type TooltipVerticalPlacement = "top" | "bottom";
+type TooltipLayout = {
+  alignment: TooltipAlignment;
+  placement: TooltipVerticalPlacement;
+  maxHeight: number;
+};
 
 interface DetailStatRow {
   statHash: number;
@@ -112,6 +113,9 @@ const hiddenDetailStatHashes = new Set([
   1885944937,
   3209419233,
 ]);
+
+const tooltipViewportPaddingPx = 16;
+const tooltipTargetGapPx = 8;
 
 const fallbackElementIconsByDamageTypeHash: Record<number, string> = {
   1847026933:
@@ -494,12 +498,53 @@ function getDefaultTooltipPlacement(
   return optionIndex < midpoint ? "bottom" : "top";
 }
 
+function getViewportBoundedTooltipLayout(
+  targetRect: DOMRect,
+  tooltipRect: DOMRect,
+  fallbackAlignment: TooltipAlignment
+): TooltipLayout {
+  const tooltipCenter = targetRect.left + targetRect.width / 2;
+  const centeredLeft = tooltipCenter - tooltipRect.width / 2;
+  const centeredRight = tooltipCenter + tooltipRect.width / 2;
+  const viewportRight = window.innerWidth - tooltipViewportPaddingPx;
+  let alignment = fallbackAlignment;
+
+  if (
+    centeredLeft >= tooltipViewportPaddingPx &&
+    centeredRight <= viewportRight
+  ) {
+    alignment = "center";
+  } else if (targetRect.left + tooltipRect.width <= viewportRight) {
+    alignment = "left";
+  } else if (targetRect.right - tooltipRect.width >= tooltipViewportPaddingPx) {
+    alignment = "right";
+  }
+
+  const topSpace = Math.max(0, targetRect.top - tooltipViewportPaddingPx);
+  const bottomSpace = Math.max(
+    0,
+    window.innerHeight - targetRect.bottom - tooltipViewportPaddingPx
+  );
+  const tooltipHeightWithGap = tooltipRect.height + tooltipTargetGapPx;
+  const placement =
+    topSpace >= tooltipHeightWithGap || topSpace >= bottomSpace
+      ? "top"
+      : "bottom";
+  const maxHeight = Math.max(
+    0,
+    (placement === "top" ? topSpace : bottomSpace) - tooltipTargetGapPx
+  );
+
+  return { alignment, placement, maxHeight };
+}
+
 function PlugOptionTooltip({
   option,
   socketTitle,
   clarityDescription,
   tooltipAlignment,
   tooltipPlacement,
+  tooltipMaxHeight,
   tooltipRef,
 }: {
   option: WeaponPlugOption;
@@ -507,6 +552,7 @@ function PlugOptionTooltip({
   clarityDescription?: ClarityDescription;
   tooltipAlignment: TooltipAlignment;
   tooltipPlacement: TooltipVerticalPlacement;
+  tooltipMaxHeight?: number;
   tooltipRef: RefObject<HTMLDivElement | null>;
 }) {
   const icon = getOptionIcon(option);
@@ -545,7 +591,10 @@ function PlugOptionTooltip({
         tooltipVerticalClass
       )}
     >
-      <div className="rounded border border-white/20 bg-[#0f0f0f]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur-md">
+      <div
+        className="overflow-y-auto rounded border border-white/20 bg-[#0f0f0f]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur-md custom-scrollbar"
+        style={{ maxHeight: tooltipMaxHeight }}
+      >
         <div className="flex items-start gap-2">
           <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border border-white/20 bg-black/40">
             {icon ? (
@@ -657,6 +706,7 @@ function PossiblePerkOption({
   const [tooltipAlignment, setTooltipAlignment] = useState(defaultTooltipAlignment);
   const [tooltipPlacement, setTooltipPlacement] =
     useState<TooltipVerticalPlacement>(defaultTooltipPlacement);
+  const [tooltipMaxHeight, setTooltipMaxHeight] = useState<number | undefined>();
   const icon = getOptionIcon(option);
   const name = option.definition?.displayProperties?.name ?? String(option.plugHash);
 
@@ -666,31 +716,17 @@ function PossiblePerkOption({
 
     if (!iconElement || !tooltipElement) return;
 
-    const viewportPadding = 16;
     const iconRect = iconElement.getBoundingClientRect();
     const tooltipRect = tooltipElement.getBoundingClientRect();
-    const tooltipCenter = iconRect.left + iconRect.width / 2;
-    const centeredLeft = tooltipCenter - tooltipRect.width / 2;
-    const centeredRight = tooltipCenter + tooltipRect.width / 2;
-    const viewportRight = window.innerWidth - viewportPadding;
+    const tooltipLayout = getViewportBoundedTooltipLayout(
+      iconRect,
+      tooltipRect,
+      defaultTooltipAlignment
+    );
 
-    if (centeredLeft >= viewportPadding && centeredRight <= viewportRight) {
-      setTooltipAlignment("center");
-    } else if (iconRect.left + tooltipRect.width <= viewportRight) {
-      setTooltipAlignment("left");
-    } else if (iconRect.right - tooltipRect.width >= viewportPadding) {
-      setTooltipAlignment("right");
-    } else {
-      setTooltipAlignment(defaultTooltipAlignment);
-    }
-
-    const topSpace = iconRect.top - viewportPadding;
-    const bottomSpace = window.innerHeight - iconRect.bottom - viewportPadding;
-    const tooltipNeeds = tooltipRect.height + 8;
-    const placement =
-      topSpace >= tooltipNeeds || topSpace >= bottomSpace ? "top" : "bottom";
-
-    setTooltipPlacement(placement);
+    setTooltipAlignment(tooltipLayout.alignment);
+    setTooltipPlacement(tooltipLayout.placement);
+    setTooltipMaxHeight(tooltipLayout.maxHeight);
   }
 
   return (
@@ -745,6 +781,7 @@ function PossiblePerkOption({
         clarityDescription={clarityDescription}
         tooltipAlignment={tooltipAlignment}
         tooltipPlacement={tooltipPlacement}
+        tooltipMaxHeight={tooltipMaxHeight}
         tooltipRef={tooltipRef}
       />
     </div>
@@ -993,6 +1030,7 @@ function ActivePlugIcon({
   const [tooltipAlignment, setTooltipAlignment] = useState<TooltipAlignment>("center");
   const [tooltipPlacement, setTooltipPlacement] =
     useState<TooltipVerticalPlacement>("top");
+  const [tooltipMaxHeight, setTooltipMaxHeight] = useState<number | undefined>();
   const icon = getOptionIcon(option);
   const name = option.definition?.displayProperties?.name ?? String(option.plugHash);
 
@@ -1002,29 +1040,17 @@ function ActivePlugIcon({
 
     if (!iconElement || !tooltipElement) return;
 
-    const viewportPadding = 16;
     const iconRect = iconElement.getBoundingClientRect();
     const tooltipRect = tooltipElement.getBoundingClientRect();
-    const tooltipCenter = iconRect.left + iconRect.width / 2;
-    const centeredLeft = tooltipCenter - tooltipRect.width / 2;
-    const centeredRight = tooltipCenter + tooltipRect.width / 2;
-    const viewportRight = window.innerWidth - viewportPadding;
-
-    if (centeredLeft >= viewportPadding && centeredRight <= viewportRight) {
-      setTooltipAlignment("center");
-    } else if (iconRect.left + tooltipRect.width <= viewportRight) {
-      setTooltipAlignment("left");
-    } else {
-      setTooltipAlignment("right");
-    }
-
-    const topSpace = iconRect.top - viewportPadding;
-    const bottomSpace = window.innerHeight - iconRect.bottom - viewportPadding;
-    const tooltipNeeds = tooltipRect.height + 8;
-
-    setTooltipPlacement(
-      topSpace >= tooltipNeeds || topSpace >= bottomSpace ? "top" : "bottom"
+    const tooltipLayout = getViewportBoundedTooltipLayout(
+      iconRect,
+      tooltipRect,
+      "center"
     );
+
+    setTooltipAlignment(tooltipLayout.alignment);
+    setTooltipPlacement(tooltipLayout.placement);
+    setTooltipMaxHeight(tooltipLayout.maxHeight);
   }
 
   return (
@@ -1052,6 +1078,7 @@ function ActivePlugIcon({
         clarityDescription={clarityDescription}
         tooltipAlignment={tooltipAlignment}
         tooltipPlacement={tooltipPlacement}
+        tooltipMaxHeight={tooltipMaxHeight}
         tooltipRef={tooltipRef}
       />
     </div>
@@ -1254,30 +1281,6 @@ function PowerSummary({
   );
 }
 
-function DropSourcePanel({ sourceInfo }: { sourceInfo: ItemSourceInfo | null }) {
-  if (!sourceInfo?.sourceText && !sourceInfo?.requirementText) return null;
-
-  return (
-    <section className="max-w-xl overflow-hidden border-y border-white/10 py-4">
-      {sourceInfo.sourceText && (
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-destiny-gold">
-            Drop Source
-          </p>
-          <p className="mt-1 break-words text-sm leading-relaxed text-slate-200">
-            {sourceInfo.sourceText}
-          </p>
-        </div>
-      )}
-      {sourceInfo.requirementText && (
-        <p className="mt-1 break-words text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {sourceInfo.requirementText}
-        </p>
-      )}
-    </section>
-  );
-}
-
 function OwnedCopiesPanel({
   isLoggedIn,
   ownedCopies,
@@ -1461,8 +1464,6 @@ export function WeaponDetailsPageClient({
     useManifestTable<any>("DestinySandboxPerkDefinition");
   const { table: damageTypeDefinitions } =
     useManifestTable<any>("DestinyDamageTypeDefinition");
-  const { table: collectibleDefinitions } =
-    useManifestTable<any>("DestinyCollectibleDefinition");
   const itemDefinition = definitions[itemHash];
   const ownedCopies = useMemo(
     () => getOwnedWeaponCopies(profile, itemHash),
@@ -1569,14 +1570,6 @@ export function WeaponDetailsPageClient({
     [armorSetBonusClarityHashes, exoticArmorTraitHashes, plugHashes]
   );
   const { descriptions: clarityDescriptions } = useClarityDescriptions(clarityHashes);
-  const itemSourceInfo = useMemo(
-    () =>
-      getItemSourceInfo({
-        itemDefinition,
-        collectibleTable: collectibleDefinitions,
-      }),
-    [itemDefinition, collectibleDefinitions]
-  );
   const icon = itemDefinition?.displayProperties?.icon
     ? getBungieImage(itemDefinition.displayProperties.icon)
     : null;
@@ -1635,8 +1628,35 @@ export function WeaponDetailsPageClient({
   const contentClassName = cn(
     "relative z-10",
     isOverlay
-      ? "min-h-full p-6 lg:p-10 xl:p-12"
+      ? "min-h-full p-4 pt-5 sm:p-6 lg:p-8 xl:p-10"
       : "min-h-[calc(100vh-4rem)] p-6 md:pl-32 lg:p-10 lg:pl-36 xl:p-12 xl:pl-40"
+  );
+  const heroSectionClassName = cn(
+    "space-y-6",
+    isOverlay ? "mb-6 sm:mb-8 sm:space-y-5" : "mb-10"
+  );
+  const itemIconClassName = cn(
+    "relative shrink-0 overflow-hidden border border-white/25 bg-black/30 shadow-2xl shadow-black/40",
+    isOverlay ? "h-16 w-16 sm:h-[4.5rem] sm:w-[4.5rem] lg:h-20 lg:w-20" : "h-20 w-20"
+  );
+  const titleClassName = cn(
+    "break-words font-bold uppercase leading-none tracking-widest text-white",
+    isOverlay
+      ? "text-[clamp(1.9rem,5.2vw,3.75rem)]"
+      : "text-4xl sm:text-5xl lg:text-6xl"
+  );
+  const detailsGridClassName = cn(
+    "grid gap-6 lg:gap-8",
+    isOverlay
+      ? "full-item-overlay-grid"
+      : "xl:grid-cols-[minmax(520px,640px)_minmax(120px,1fr)_minmax(320px,390px)]"
+  );
+  const spacerClassName = isOverlay
+    ? "full-item-overlay-spacer"
+    : "relative hidden min-h-[28rem] xl:block";
+  const asideClassName = cn(
+    "space-y-5",
+    isOverlay ? "full-item-overlay-aside" : "p-5 xl:self-end"
   );
 
   return (
@@ -1652,6 +1672,51 @@ export function WeaponDetailsPageClient({
           .perk-option:focus-within .perk-tooltip {
             visibility: visible;
             opacity: 1 !important;
+          }
+
+          .full-item-overlay-grid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .full-item-overlay-spacer {
+            display: none;
+          }
+
+          .full-item-overlay-aside {
+            min-width: 0;
+          }
+
+          @media (min-width: 900px) {
+            .full-item-overlay-grid {
+              grid-template-columns:
+                minmax(26rem, min(56vw, 39rem))
+                minmax(1rem, 1fr)
+                minmax(16rem, clamp(17rem, 26vw, 24rem));
+              align-items: start;
+            }
+
+            .full-item-overlay-spacer {
+              display: block;
+              min-height: 18rem;
+            }
+
+            .full-item-overlay-aside {
+              align-self: end;
+              padding: 1rem;
+            }
+          }
+
+          @media (min-width: 1200px) {
+            .full-item-overlay-grid {
+              grid-template-columns:
+                minmax(32rem, 40rem)
+                minmax(6rem, 1fr)
+                minmax(20rem, 24.5rem);
+            }
+
+            .full-item-overlay-spacer {
+              min-height: 26rem;
+            }
           }
 
         `}
@@ -1672,10 +1737,10 @@ export function WeaponDetailsPageClient({
       </div>
 
       <div className={contentClassName}>
-        <section className="mb-10 space-y-6">
+        <section className={heroSectionClassName}>
           <div className="flex min-w-0 items-start gap-5">
             {icon && (
-              <div className="relative h-20 w-20 shrink-0 overflow-hidden border border-white/25 bg-black/30 shadow-2xl shadow-black/40">
+              <div className={itemIconClassName}>
                 <Image
                   src={icon}
                   alt=""
@@ -1695,15 +1760,9 @@ export function WeaponDetailsPageClient({
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold uppercase tracking-wide text-destiny-gold">
-                {itemDefinition.inventory?.tierTypeName} {itemDefinition.itemTypeDisplayName}
-              </p>
-              <h1 className="break-words text-5xl font-bold uppercase leading-none tracking-widest text-white sm:text-6xl lg:text-7xl">
+              <h1 className={titleClassName}>
                 {title}
               </h1>
-              <p className="mt-1 text-2xl font-semibold text-slate-300">
-                {itemDefinition.itemTypeDisplayName}
-              </p>
             </div>
           </div>
 
@@ -1717,10 +1776,9 @@ export function WeaponDetailsPageClient({
               {description}
             </p>
           )}
-          <DropSourcePanel sourceInfo={itemSourceInfo} />
         </section>
 
-        <div className="grid gap-8 xl:grid-cols-[minmax(520px,640px)_minmax(120px,1fr)_minmax(320px,390px)]">
+        <div className={detailsGridClassName}>
           <main className="flex min-w-0 flex-col gap-8">
 
           {!isWeapon && !isArmor && (
@@ -1810,9 +1868,9 @@ export function WeaponDetailsPageClient({
           )}
         </main>
 
-        <div className="relative hidden min-h-[28rem] xl:block" />
+        <div className={spacerClassName} />
 
-        <aside className="space-y-5 p-5 xl:self-end">
+        <aside className={asideClassName}>
           <PowerSummary
             primaryStatValue={primaryStatValue}
             damageTypeIcon={damageTypeIcon}

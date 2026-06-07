@@ -2,8 +2,9 @@
 
 import { VirtuosoGrid, GridComponents, GridScrollSeekPlaceholderProps } from 'react-virtuoso';
 import { ItemTile, type ItemTileModel } from '@/components/ItemTile';
+import { DestinyItemCard } from '@/components/DestinyItemCard';
 import { cn } from '@/lib/utils';
-import { forwardRef, useMemo, useCallback, memo, HTMLAttributes } from 'react';
+import { forwardRef, useMemo, useCallback, memo, HTMLAttributes, useState } from 'react';
 import { ITEM_ICON_CSS_PX, itemIconDecodeBudgetPx } from '@/lib/itemIconImage';
 import {
     buildBungieIconUrl,
@@ -119,6 +120,8 @@ const ItemRenderer = memo(({
     ownerId,
     isHighlighted
 }: ItemRendererProps) => {
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const baseTileModel = item.tileModel ?? buildFallbackTileModel(item, iconSize);
     const tileModel = isHighlighted
         ? baseTileModel
@@ -145,14 +148,49 @@ const ItemRenderer = memo(({
     };
 
     return (
-        <ItemTile
-            item={tileModel}
-            sizePx={ITEM_ICON_CSS_PX[iconSize]}
-            className={tileWidthClass}
-            fetchPriority={index < 18 ? 'auto' : 'low'}
-            draggable={!!item.itemInstanceId}
-            onDragStart={handleDragStart}
-        />
+        <div
+            onMouseEnter={(event) => {
+                if (!contextMenuPosition) {
+                    setTooltipPosition({ x: event.clientX, y: event.clientY });
+                }
+            }}
+            onMouseLeave={() => setTooltipPosition(null)}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                setTooltipPosition(null);
+                setContextMenuPosition({ x: event.clientX, y: event.clientY });
+            }}
+        >
+            <ItemTile
+                item={tileModel}
+                sizePx={ITEM_ICON_CSS_PX[iconSize]}
+                className={tileWidthClass}
+                fetchPriority={index < 18 ? 'auto' : 'low'}
+                draggable={!!item.itemInstanceId}
+                onDragStart={handleDragStart}
+            />
+
+            {(tooltipPosition || contextMenuPosition) && (
+                <DestinyItemCard
+                    itemHash={item.itemHash}
+                    itemInstanceId={item.itemInstanceId}
+                    ownerId={ownerId}
+                    quantity={item.quantity}
+                    definition={item.definition}
+                    instanceData={item.instanceData}
+                    socketsData={item.socketsData}
+                    reusablePlugs={item.reusablePlugs}
+                    renderTile={false}
+                    deferDetails
+                    forcedTooltipPosition={tooltipPosition ?? undefined}
+                    forcedContextMenuPosition={contextMenuPosition ?? undefined}
+                    onCloseForcedContextMenu={() => setContextMenuPosition(null)}
+                    size={iconSize}
+                    imageFetchPriority="low"
+                    definitionIsPartial
+                />
+            )}
+        </div>
     );
 });
 ItemRenderer.displayName = 'ItemRenderer';

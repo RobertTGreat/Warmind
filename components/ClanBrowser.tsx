@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { useDestinyProfileContext } from "@/components/DestinyProfileProvider";
 import { bungieApi, endpoints, getBungieImage as getImg } from "@/lib/bungie";
-import useSWR from "swr";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Shield, Search, Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -15,11 +15,13 @@ const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 const ITEMS_PER_PAGE = 12;
 
 export function ClanBrowser() {
+  const queryClient = useQueryClient();
   const { membershipInfo, isLoggedIn } = useDestinyProfileContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const { favoriteMembers, toggleFavoriteMember } = useSettingsStore();
+  const favoriteMembers = useSettingsStore((state) => state.favoriteMembers);
+  const toggleFavoriteMember = useSettingsStore((state) => state.toggleFavoriteMember);
   const [memberStats, setMemberStats] = useState<Record<string, MemberStats>>({});
   const [isLoadingStats, setIsLoadingStats] = useState(false);
 
@@ -29,20 +31,32 @@ export function ClanBrowser() {
   }, [searchQuery, showFavoritesOnly]);
 
   // 1. Get Clan Info for User
-  const { data: groupsData, isLoading: groupsLoading } = useSWR(
-    membershipInfo ? endpoints.getGroupsForMember(membershipInfo.membershipType, membershipInfo.membershipId) : null,
-    fetcher
-  );
+  const { data: groupsData, isLoading: groupsLoading } = useQuery({
+    queryKey: ['clanGroups', membershipInfo?.membershipType, membershipInfo?.membershipId],
+    queryFn: () =>
+      fetcher(
+        endpoints.getGroupsForMember(
+          membershipInfo!.membershipType,
+          membershipInfo!.membershipId
+        )
+      ),
+    enabled: Boolean(membershipInfo),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   const group = groupsData?.Response?.results?.[0]?.group;
   const groupId = group?.groupId;
 
 
   // 2. Get Clan Members
-  const { data: membersData, isLoading: membersLoading } = useSWR(
-    groupId ? endpoints.getMembersOfGroup(groupId) : null,
-    fetcher
-  );
+  const { data: membersData, isLoading: membersLoading } = useQuery({
+    queryKey: ['clanMembers', groupId],
+    queryFn: () => fetcher(endpoints.getMembersOfGroup(groupId!)),
+    enabled: Boolean(groupId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   const members = membersData?.Response?.results;
 
@@ -101,10 +115,16 @@ export function ClanBrowser() {
                       const user = member.destinyUserInfo;
 
                       try {
-                          const res = await bungieApi.get(
-                              endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])
-                          );
-                          const profile = res.data.Response;
+                          const profileResponse = await queryClient.fetchQuery({
+                              queryKey: ['clanMemberProfile', user.membershipType, user.membershipId],
+                              queryFn: () =>
+                                  fetcher(
+                                      endpoints.getProfile(user.membershipType, user.membershipId, [100, 200])
+                                  ),
+                              staleTime: 10 * 60 * 1000,
+                              gcTime: 60 * 60 * 1000,
+                          });
+                          const profile = profileResponse.Response;
                           const characters = profile?.characters?.data;
                           const guardianRank = profile?.profile?.data?.currentGuardianRank || 0;
 
@@ -158,7 +178,7 @@ export function ClanBrowser() {
       return () => {
           cancelled = true;
       };
-  }, [paginatedMembers, memberStats]);
+  }, [paginatedMembers, memberStats, queryClient]);
 
   if (!isLoggedIn) return <div className="p-8 text-center text-slate-400">Please login to view clan.</div>;
   if (groupsLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-destiny-gold" /></div>;

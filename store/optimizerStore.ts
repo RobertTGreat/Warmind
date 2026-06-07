@@ -229,6 +229,32 @@ export const useOptimizerStore = create<OptimizerState>()(
                 if (state) {
                     // Migrate constraints from old stat names
                     state.constraints = migrateConstraints(state.constraints);
+                    const storedExoticFilter = state.settings?.exoticFilter;
+                    const hasInstanceBasedExoticSelection =
+                        Boolean(storedExoticFilter?.selectedExotics?.length) ||
+                        Boolean(storedExoticFilter?.itemInstanceId);
+                    state.settings = {
+                        ...DEFAULT_SETTINGS,
+                        ...state.settings,
+                        exoticFilter: {
+                            ...DEFAULT_SETTINGS.exoticFilter,
+                            ...state.settings?.exoticFilter,
+                            itemHash: hasInstanceBasedExoticSelection
+                                ? storedExoticFilter?.itemHash ?? null
+                                : null,
+                            itemInstanceId: hasInstanceBasedExoticSelection
+                                ? storedExoticFilter?.itemInstanceId ?? null
+                                : null,
+                            slot: hasInstanceBasedExoticSelection
+                                ? storedExoticFilter?.slot ?? 'any'
+                                : 'any',
+                            selectedExotics: storedExoticFilter?.selectedExotics ?? [],
+                        },
+                        armorSetBonusTarget: {
+                            ...DEFAULT_SETTINGS.armorSetBonusTarget,
+                            ...state.settings?.armorSetBonusTarget,
+                        },
+                    };
                     // Migrate priority stats if present
                     if (state.settings?.priorityStats) {
                         state.settings.priorityStats = migratePriorityStats(state.settings.priorityStats as any);

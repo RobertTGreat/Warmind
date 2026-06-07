@@ -103,10 +103,6 @@ export const ItemTile = memo(function ItemTile({
           />
         )}
 
-        {item.isLocked && (
-          <div className="absolute right-0.5 top-0.5 z-20 h-2 w-2 rounded-full bg-yellow-500 shadow-sm" />
-        )}
-
         {item.isTrash && (
           <div
             className={cn(

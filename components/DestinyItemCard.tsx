@@ -1,4 +1,4 @@
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import { bungieApi, endpoints, getBungieImage } from '@/lib/bungie';
 import { displayPixelsForCssEdge, itemIconDecodeBudgetPx, ITEM_ICON_CSS_PX } from '@/lib/itemIconImage';
@@ -20,6 +20,7 @@ import { getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils'
 import { useWishListStore } from '@/store/wishlistStore';
 import { RefreshCw } from 'lucide-react';
 import { FastBungieIcon } from '@/components/FastBungieIcon';
+import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -127,6 +128,8 @@ export function DestinyItemCard({
   const [isHovered, setIsHovered] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{x: number, y: number} | null>(null);
   const [initialTooltipPos, setInitialTooltipPos] = useState<{x: number, y: number} | undefined>(undefined);
+  const [socketPlugOverrides, setSocketPlugOverrides] = useState<Record<number, number>>({});
+  const { updateItemSocketPlug } = useDestinyProfileContext();
   const activeContextMenuPosition = forcedContextMenuPosition ?? contextMenuPos;
   const activeTooltipPosition = forcedTooltipPosition ?? initialTooltipPos;
   const shouldResolveFullDetails =
@@ -142,14 +145,13 @@ export function DestinyItemCard({
           forcedContextMenuPosition)))
   );
 
-  const { data: defResponse, error } = useSWR(
-    shouldFetchFullDefinition ? endpoints.getItemDefinition(itemHash) : null,
-    fetcher,
-    {
-        revalidateOnFocus: false,
-        dedupingInterval: 600000, 
-    }
-  );
+  const { data: defResponse, error } = useQuery({
+    queryKey: ['manifestDefinition', 'DestinyInventoryItemDefinition', itemHash],
+    queryFn: () => fetcher(endpoints.getItemDefinition(itemHash)),
+    enabled: shouldFetchFullDefinition,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
   
   // Watch store for this item's transfer status
   const transferStatus = useTransferStore(
@@ -175,6 +177,42 @@ export function DestinyItemCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const def = defResponse?.Response || definition;
+  const visualSocketsData = useMemo(() => {
+      if (!socketsData?.sockets) return socketsData;
+      if (Object.keys(socketPlugOverrides).length === 0) return socketsData;
+
+      return {
+          ...socketsData,
+          sockets: socketsData.sockets.map((socket: any, socketIndex: number) => {
+              const overridePlugHash = socketPlugOverrides[socketIndex];
+
+              return overridePlugHash
+                  ? {
+                      ...socket,
+                      plugHash: overridePlugHash,
+                  }
+                  : socket;
+          }),
+      };
+  }, [socketPlugOverrides, socketsData]);
+
+  useEffect(() => {
+      setSocketPlugOverrides({});
+  }, [itemInstanceId]);
+
+  const handleSocketPlugChange = useCallback(
+      (socketIndex: number, plugItemHash: number) => {
+          if (itemInstanceId) {
+              updateItemSocketPlug(itemInstanceId, socketIndex, plugItemHash);
+          }
+
+          setSocketPlugOverrides((currentOverrides) => ({
+              ...currentOverrides,
+              [socketIndex]: plugItemHash,
+          }));
+      },
+      [itemInstanceId, updateItemSocketPlug]
+  );
 
   // Check if item is a subclass
   const isSubclass = def?.inventory?.bucketTypeHash === BUCKETS.SUBCLASS;
@@ -184,8 +222,8 @@ export function DestinyItemCard({
   const hashesToFetch = useMemo(() => {
       const allHashes: number[] = [];
       
-      if (socketsData?.sockets) {
-          socketsData.sockets.forEach((s: any, index: number) => {
+      if (visualSocketsData?.sockets) {
+          visualSocketsData.sockets.forEach((s: any, index: number) => {
               // Active plug
               if (s.plugHash) allHashes.push(s.plugHash);
 
@@ -201,7 +239,7 @@ export function DestinyItemCard({
           });
       }
       
-      const intrinsic = socketsData?.sockets?.[0]?.plugHash;
+      const intrinsic = visualSocketsData?.sockets?.[0]?.plugHash;
       if (intrinsic) allHashes.push(intrinsic);
 
       if (shouldResolveFullDetails && def?.sockets?.socketEntries) {
@@ -213,7 +251,7 @@ export function DestinyItemCard({
       }
       
       return Array.from(new Set(allHashes));
-  }, [def, socketsData, reusablePlugs, shouldResolveFullDetails]);
+  }, [def, visualSocketsData, reusablePlugs, shouldResolveFullDetails]);
 
   const { definitions: plugDefs } = useItemDefinitions(hashesToFetch);
 
@@ -227,10 +265,10 @@ export function DestinyItemCard({
 
       // 2. Fallback Heuristic Logic
       if (!def || def.itemType !== 3 || def.inventory?.tierTypeName !== 'Legendary') return false;
-      if (!socketsData?.sockets || !plugDefs) return false;
+      if (!visualSocketsData?.sockets || !plugDefs) return false;
 
       let multiPerkColumns = 0;
-      socketsData.sockets.forEach((socket: any) => {
+      visualSocketsData.sockets.forEach((socket: any) => {
           if (!socket.plugHash) return;
           const plug = plugDefs[socket.plugHash];
           if (!plug) return;
@@ -246,7 +284,7 @@ export function DestinyItemCard({
            const options = getReusablePlugsForSocket(
                reusablePlugs,
                socket,
-               socketsData.sockets.indexOf(socket)
+               visualSocketsData.sockets.indexOf(socket)
            );
            if (isGameplaySocket && options?.length > 1) {
                multiPerkColumns++;
@@ -255,7 +293,7 @@ export function DestinyItemCard({
 
       // BRAVE Shiny weapons have double perks in at least 2 columns (usually 3 and 4)
       return multiPerkColumns >= 2;
-  }, [def, socketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
+  }, [def, visualSocketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
 
   // Calculate detailed perks for tooltip
   const detailedPerks = useMemo(() => {
@@ -324,8 +362,8 @@ export function DestinyItemCard({
         });
     };
 
-    if (socketsData?.sockets) {
-      socketsData.sockets.forEach((s: any, idx: number) => {
+    if (visualSocketsData?.sockets) {
+      visualSocketsData.sockets.forEach((s: any, idx: number) => {
         if (!s.plugHash) return;
         const activePlug = plugDefs[s.plugHash];
         if (!activePlug) return;
@@ -347,7 +385,7 @@ export function DestinyItemCard({
     }
     
     return perksList.length > 0 ? perksList : undefined;
-  }, [def, socketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
+  }, [def, visualSocketsData, plugDefs, reusablePlugs, shouldResolveFullDetails]);
 
   useEffect(() => {
       if (def && onDefinitionLoaded) {
@@ -424,8 +462,8 @@ export function DestinyItemCard({
       const kt: any[] = [];
       let et: number | null = null;
 
-      if (shouldResolveFullDetails && socketsData?.sockets && plugDefs) {
-          socketsData.sockets.forEach((socket: any) => {
+      if (shouldResolveFullDetails && visualSocketsData?.sockets && plugDefs) {
+          visualSocketsData.sockets.forEach((socket: any) => {
               if (!socket.plugHash) return;
               const plug = plugDefs[socket.plugHash];
               if (!plug) return;
@@ -474,7 +512,7 @@ export function DestinyItemCard({
           });
       }
       return { perks: p, mods: m, shaders: s, ornaments: o, killEffects: ke, killTrackers: kt, enhancementTierDerived: et };
-  }, [socketsData, plugDefs, shouldResolveFullDetails]);
+  }, [visualSocketsData, plugDefs, shouldResolveFullDetails]);
 
   // Derived properties
   const isMasterwork = (instanceData ? (instanceData.state & 4) === 4 : false) || (enhancementTierDerived === 10);
@@ -524,8 +562,8 @@ export function DestinyItemCard({
       if (def?.itemType !== 2 || !instanceData?.stats) return null;
        // We need activePlugs for base stat calculation
       const activePlugs: any[] = [];
-      if (socketsData?.sockets && plugDefs) {
-          socketsData.sockets.forEach((socket: any) => {
+      if (visualSocketsData?.sockets && plugDefs) {
+          visualSocketsData.sockets.forEach((socket: any) => {
               if (socket.plugHash && plugDefs[socket.plugHash]) {
                   activePlugs.push(plugDefs[socket.plugHash]);
               }
@@ -534,7 +572,7 @@ export function DestinyItemCard({
       const isMw = (instanceData.state & 4) === 4;
       const baseStats = getArmorBaseStats(instanceData.stats, activePlugs, isMw);
       return getArmorQuality(baseStats, def);
-  }, [def, instanceData, socketsData, plugDefs, shouldResolveFullDetails]);
+  }, [def, instanceData, visualSocketsData, plugDefs, shouldResolveFullDetails]);
 
   // Extract perk hashes for wish list matching
   // Include ALL available perks (reusable plugs), not just currently selected ones
@@ -543,8 +581,8 @@ export function DestinyItemCard({
 
       const hashes: number[] = [];
       
-      if (socketsData?.sockets) {
-          socketsData.sockets.forEach((socket: any, index: number) => {
+      if (visualSocketsData?.sockets) {
+          visualSocketsData.sockets.forEach((socket: any, index: number) => {
               // Add currently selected plug
               if (socket.plugHash) {
                   hashes.push(socket.plugHash);
@@ -608,7 +646,7 @@ export function DestinyItemCard({
       }
       
       return hashes;
-  }, [socketsData, reusablePlugs, shouldResolveFullDetails]);
+  }, [visualSocketsData, reusablePlugs, shouldResolveFullDetails]);
 
   // Wish List Integration
   const getWishListInfo = useWishListStore(state => state.getWishListInfo);
@@ -766,6 +804,137 @@ export function DestinyItemCard({
     </div>
   );
 
+  const shouldShowTooltip =
+    Boolean(def) &&
+    Boolean(activeTooltipPosition) &&
+    (Boolean(forcedTooltipPosition) || isHovered) &&
+    !isDimmed &&
+    !activeContextMenuPosition;
+  const closeContextMenu = () => {
+      setContextMenuPos(null);
+      onCloseForcedContextMenu?.();
+  };
+  const tooltipProps = useMemo(() => ({
+      name,
+      itemType,
+      rarity,
+      icon: itemIconSrc || undefined,
+      power: hideTooltipPower ? undefined : instanceData?.primaryStat?.value,
+      flavorText: def?.flavorText,
+      seasonBadge: getBungieImage(def?.iconWatermark || def?.iconWatermarkShelved) || undefined,
+      elementIcon,
+      stats,
+      itemHash,
+      perks,
+      mods,
+      shaders,
+      ornaments,
+      killEffects,
+      killTrackers,
+      enhancementTier,
+      tier: tier || undefined,
+      initialPosition: activeTooltipPosition,
+      objectives,
+      itemDef: def,
+      isShiny,
+      detailedPerks,
+      armorQuality,
+      socketsData: visualSocketsData,
+      plugDefs,
+      wishListInfo,
+      patternUnlockProgress,
+      isLocked,
+  }), [
+      name,
+      itemType,
+      rarity,
+      itemIconSrc,
+      hideTooltipPower,
+      instanceData?.primaryStat?.value,
+      def,
+      elementIcon,
+      stats,
+      itemHash,
+      perks,
+      mods,
+      shaders,
+      ornaments,
+      killEffects,
+      killTrackers,
+      enhancementTier,
+      tier,
+      activeTooltipPosition,
+      objectives,
+      isShiny,
+      detailedPerks,
+      armorQuality,
+      visualSocketsData,
+      plugDefs,
+      wishListInfo,
+      patternUnlockProgress,
+      isLocked,
+  ]);
+  const contextMenuProps = useMemo(() => activeContextMenuPosition && def ? ({
+      x: activeContextMenuPosition.x,
+      y: activeContextMenuPosition.y,
+      onClose: closeContextMenu,
+      itemHash,
+      itemInstanceId,
+      ownerId,
+      isLocked,
+      itemDef: def,
+      instanceData,
+      perks,
+      mods,
+      shaders,
+      ornaments,
+      killEffects,
+      killTrackers,
+      objectives,
+      detailedPerks,
+      wishListInfo,
+      socketsData: visualSocketsData,
+      plugDefs,
+      onSocketPlugChange: handleSocketPlugChange,
+      tooltipSeasonBadge: getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined,
+      tooltipElementIcon: elementIcon,
+      tooltipTier: tier,
+      tooltipEnhancementTier: enhancementTier,
+      tooltipIsShiny: isShiny,
+      tooltipArmorQuality: armorQuality,
+  }) : null, [
+      activeContextMenuPosition,
+      itemHash,
+      itemInstanceId,
+      ownerId,
+      isLocked,
+      def,
+      instanceData,
+      perks,
+      mods,
+      shaders,
+      ornaments,
+      killEffects,
+      killTrackers,
+      objectives,
+      detailedPerks,
+      wishListInfo,
+      visualSocketsData,
+      plugDefs,
+      handleSocketPlugChange,
+      elementIcon,
+      tier,
+      enhancementTier,
+      isShiny,
+      armorQuality,
+  ]);
+  const tooltipNode = shouldShowTooltip ? (
+      <ItemTooltip {...tooltipProps} />
+  ) : null;
+  const contextMenuNode = contextMenuProps ? (
+      <ItemContextMenu {...contextMenuProps} />
+  ) : null;
+
   // RENDER LOGIC START
 
   if (shouldHideItem) return null;
@@ -803,77 +972,6 @@ export function DestinyItemCard({
 
   const isLcpImage = imagePriority === true;
   const iconFetchPriority = isLcpImage ? "high" : imageFetchPriority ?? "low";
-  const shouldShowTooltip =
-    Boolean(activeTooltipPosition) &&
-    (Boolean(forcedTooltipPosition) || isHovered) &&
-    !isDimmed &&
-    !activeContextMenuPosition;
-  const closeContextMenu = () => {
-      setContextMenuPos(null);
-      onCloseForcedContextMenu?.();
-  };
-  const tooltipNode = shouldShowTooltip ? (
-      <ItemTooltip
-          name={name}
-          itemType={itemType}
-          rarity={rarity}
-          icon={itemIconSrc || undefined}
-          power={hideTooltipPower ? undefined : instanceData?.primaryStat?.value}
-          flavorText={def.flavorText}
-          seasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
-          elementIcon={elementIcon}
-          stats={stats}
-          itemHash={itemHash}
-          perks={perks}
-          mods={mods}
-          shaders={shaders}
-          ornaments={ornaments}
-          killEffects={killEffects}
-          killTrackers={killTrackers}
-          enhancementTier={enhancementTier}
-          tier={tier || undefined}
-          initialPosition={activeTooltipPosition}
-          objectives={objectives}
-          itemDef={def}
-          isShiny={isShiny}
-          detailedPerks={detailedPerks}
-          armorQuality={armorQuality}
-          socketsData={socketsData}
-          plugDefs={plugDefs}
-          wishListInfo={wishListInfo}
-          patternUnlockProgress={patternUnlockProgress}
-      />
-  ) : null;
-  const contextMenuNode = activeContextMenuPosition ? (
-      <ItemContextMenu
-          x={activeContextMenuPosition.x}
-          y={activeContextMenuPosition.y}
-          onClose={closeContextMenu}
-          itemHash={itemHash}
-          itemInstanceId={itemInstanceId}
-          ownerId={ownerId}
-          isLocked={isLocked}
-          itemDef={def}
-          instanceData={instanceData}
-          perks={perks}
-          mods={mods}
-          shaders={shaders}
-          ornaments={ornaments}
-          killEffects={killEffects}
-          killTrackers={killTrackers}
-          objectives={objectives}
-          detailedPerks={detailedPerks}
-          wishListInfo={wishListInfo}
-          socketsData={socketsData}
-          plugDefs={plugDefs}
-          tooltipSeasonBadge={getBungieImage(def.iconWatermark || def.iconWatermarkShelved) || undefined}
-          tooltipElementIcon={elementIcon}
-          tooltipTier={tier}
-          tooltipEnhancementTier={enhancementTier}
-          tooltipIsShiny={isShiny}
-          tooltipArmorQuality={armorQuality}
-      />
-  ) : null;
 
   if (!renderTile) {
       return (
@@ -936,13 +1034,6 @@ export function DestinyItemCard({
                     </div>
                 )}
 
-                {/* Lock Icon Overlay */}
-                {isLocked && !isSyncing && (
-                    <div className="absolute top-0.5 right-0.5 z-20">
-                        <div className="w-2 h-2 bg-yellow-500 rounded-full shadow-sm" />
-                    </div>
-                )}
-                
                 {/* Sync Icon Overlay - Shows during optimistic transfer */}
                 {isSyncing && (
                     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">

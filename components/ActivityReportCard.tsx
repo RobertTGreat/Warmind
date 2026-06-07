@@ -1,4 +1,4 @@
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import {
     AlertTriangle,
     ArrowLeft,
@@ -70,11 +70,13 @@ export function ActivityReportCard({
     const [backFaceMode, setBackFaceMode] = useState<BackFaceMode>(null);
     const [selectedCardTag, setSelectedCardTag] = useState<string | null>(null);
 
-    const { data: activityDefinitionData } = useSWR(
-        endpoints.getActivityDefinition(activity.activityHash),
-        fetcher,
-        { revalidateOnFocus: false }
-    );
+    const { data: activityDefinitionData } = useQuery({
+        queryKey: ['manifestDefinition', 'DestinyActivityDefinition', activity.activityHash],
+        queryFn: () => fetcher(endpoints.getActivityDefinition(activity.activityHash)),
+        enabled: Boolean(activity.activityHash),
+        staleTime: 24 * 60 * 60 * 1000,
+        gcTime: 7 * 24 * 60 * 60 * 1000,
+    });
 
     const activityDefinition = activityDefinitionData?.Response;
     const activityName = activity.name;
