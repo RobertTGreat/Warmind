@@ -22,6 +22,8 @@ export type TransferOperation = {
 
 interface TransferStore {
     pendingOperations: TransferOperation[];
+    // O(1) lookup of a single item's transfer status, kept in sync with the array.
+    operationStatusByItemId: Map<string, TransferStatus>;
     addOperation: (op: Omit<TransferOperation, 'status' | 'startTime' | 'originalPosition'>) => void;
     updateOperationStatus: (itemInstanceId: string, status: TransferStatus) => void;
     removeOperation: (itemInstanceId: string) => void;
@@ -29,11 +31,22 @@ interface TransferStore {
     isItemTransferring: (itemInstanceId: string) => boolean;
 }
 
+function buildOperationStatusIndex(
+    pendingOperations: TransferOperation[],
+): Map<string, TransferStatus> {
+    const statusByItemId = new Map<string, TransferStatus>();
+    for (const operation of pendingOperations) {
+        statusByItemId.set(operation.itemInstanceId, operation.status);
+    }
+    return statusByItemId;
+}
+
 export const useTransferStore = create<TransferStore>((set, get) => ({
     pendingOperations: [],
-    
-    addOperation: (op) => set((state) => ({ 
-        pendingOperations: [...state.pendingOperations, {
+    operationStatusByItemId: new Map<string, TransferStatus>(),
+
+    addOperation: (op) => set((state) => {
+        const pendingOperations = [...state.pendingOperations, {
             ...op,
             status: 'syncing' as TransferStatus,
             startTime: Date.now(),
@@ -41,27 +54,40 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
                 ownerId: op.fromOwnerId,
                 bucketHash: op.bucketHash
             }
-        }] 
-    })),
-    
-    updateOperationStatus: (id, status) => set((state) => ({
-        pendingOperations: state.pendingOperations.map(op => 
-            op.itemInstanceId === id 
-                ? { ...op, status } 
+        }];
+        return {
+            pendingOperations,
+            operationStatusByItemId: buildOperationStatusIndex(pendingOperations),
+        };
+    }),
+
+    updateOperationStatus: (id, status) => set((state) => {
+        const pendingOperations = state.pendingOperations.map(op =>
+            op.itemInstanceId === id
+                ? { ...op, status }
                 : op
-        )
-    })),
-    
-    removeOperation: (id) => set((state) => ({ 
-        pendingOperations: state.pendingOperations.filter(op => op.itemInstanceId !== id) 
-    })),
-    
+        );
+        return {
+            pendingOperations,
+            operationStatusByItemId: buildOperationStatusIndex(pendingOperations),
+        };
+    }),
+
+    removeOperation: (id) => set((state) => {
+        const pendingOperations = state.pendingOperations.filter(
+            op => op.itemInstanceId !== id
+        );
+        return {
+            pendingOperations,
+            operationStatusByItemId: buildOperationStatusIndex(pendingOperations),
+        };
+    }),
+
     getOperationStatus: (id) => {
-        const op = get().pendingOperations.find(op => op.itemInstanceId === id);
-        return op?.status ?? null;
+        return get().operationStatusByItemId.get(id) ?? null;
     },
-    
+
     isItemTransferring: (id) => {
-        return get().pendingOperations.some(op => op.itemInstanceId === id);
+        return get().operationStatusByItemId.has(id);
     }
 }));

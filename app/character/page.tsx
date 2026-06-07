@@ -6,17 +6,35 @@ import { DestinyItemCard } from "@/components/DestinyItemCard";
 import { ItemTile, type ItemTileModel } from "@/components/ItemTile";
 import { ProfileInventoryPanel } from "@/components/ProfileInventoryPanel";
 import { useInventoryItemDefinitionsFromTable } from "@/hooks/useInventoryItemDefinitionsFromTable";
-import { useInventorySearchMatches } from "@/hooks/useInventoryViewModels";
+import {
+  useInventoryLayoutOrder,
+  useInventorySearchMatches,
+} from "@/hooks/useInventoryViewModels";
+import type {
+  InventoryCardSnapshot,
+  InventoryLayoutItem,
+  InventoryLayoutOrderRequest,
+} from "@/lib/inventoryLayout";
 import { useManifestTable } from "@/hooks/useManifestTable";
+import { useQuery } from "@tanstack/react-query";
+import { fetchManifestDefinitions } from "@/lib/manifestTableClient";
 import { BUCKETS, CURRENCIES, MATERIALS } from "@/lib/destinyUtils";
 import {
   buildDimItemMini,
   type DimDefinitionTables,
   type DimItemMini,
 } from "@/lib/dimItemMini";
-import { ITEM_ICON_CSS_PX, type ItemIconSize } from "@/lib/itemIconImage";
+import {
+  ITEM_ICON_CSS_PX,
+  itemIconDecodeBudgetPx,
+  type ItemIconSize,
+} from "@/lib/itemIconImage";
 import { getBungieImage, loginWithBungie, moveItem } from "@/lib/bungie";
-import { normalizeBungieAssetPath } from "@/lib/bungieImageProxy";
+import {
+  buildBungieIconUrl,
+  getClientManifestVersionCacheKey,
+  normalizeBungieAssetPath,
+} from "@/lib/bungieImageProxy";
 import { parseSearchQuery } from "@/lib/searchUtils";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, type VaultGroupingOptions } from "@/store/settingsStore";
@@ -32,8 +50,8 @@ import {
 } from "lucide-react";
 import {
   memo,
+  startTransition,
   useCallback,
-  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -467,9 +485,15 @@ function getCurrencyIconPath(definitions: Record<number, any>, hash: number) {
   return definitions[hash]?.displayProperties?.icon;
 }
 
-function getBungieIconFromPath(iconPath: string | undefined | null) {
+function getBungieIconFromPath(
+  iconPath: string | undefined | null,
+  decodeWidthPx: number,
+  manifestVersionKey?: string,
+) {
   const normalizedPath = normalizeBungieAssetPath(iconPath);
-  return normalizedPath ? getBungieImage(normalizedPath) : null;
+  return normalizedPath
+    ? buildBungieIconUrl(normalizedPath, decodeWidthPx, manifestVersionKey)
+    : null;
 }
 
 function getRarityClassName(definition: any, isMasterwork: boolean) {
@@ -1003,6 +1027,8 @@ function createTileRenderData({
   getWishListInfo,
   getNormalizedItem,
   pendingOperationByItemId,
+  iconDecodeWidthPx,
+  manifestVersionKey,
 }: {
   item: InventoryItem;
   ownerId: string;
@@ -1016,6 +1042,8 @@ function createTileRenderData({
   ) => TileWishListInfo;
   getNormalizedItem: (item: InventoryItem) => DimItemMini | undefined;
   pendingOperationByItemId: Map<string, string>;
+  iconDecodeWidthPx: number;
+  manifestVersionKey?: string;
 }): TileRenderData {
   const definition = definitions[item.itemHash];
   const instance = getInstanceDataWithStats(profile, item.itemInstanceId);
@@ -1065,9 +1093,15 @@ function createTileRenderData({
       itemHash: item.itemHash,
       itemInstanceId: item.itemInstanceId,
       name: definition?.displayProperties?.name ?? `Item ${item.itemHash}`,
-      iconSrc: getBungieIconFromPath(definition?.displayProperties?.icon),
+      iconSrc: getBungieIconFromPath(
+        definition?.displayProperties?.icon,
+        iconDecodeWidthPx,
+        manifestVersionKey,
+      ),
       watermarkSrc: getBungieIconFromPath(
         definition?.iconWatermark || definition?.iconWatermarkShelved,
+        iconDecodeWidthPx,
+        manifestVersionKey,
       ),
       elementIconSrc: getElementIconSrc(definition, instance),
       primaryStat,
@@ -1652,7 +1686,7 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
               <InteractiveInventoryTile
                 tile={renderTile(visibleEquippedItemRef)}
                 iconSize={iconSize}
-                fetchPriority="auto"
+                fetchPriority={suppressDetails ? "low" : "auto"}
                 suppressDetails={suppressDetails}
               />
             ) : (
@@ -1668,7 +1702,11 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
                 key={tileRef.key}
                 tile={renderTile(tileRef)}
                 iconSize={iconSize}
-                fetchPriority={sliceIndex === 0 && index < 3 ? "auto" : "low"}
+                fetchPriority={
+                  !suppressDetails && sliceIndex === 0 && index < 3
+                    ? "auto"
+                    : "low"
+                }
                 suppressDetails={suppressDetails}
               />
             ) : (
@@ -1752,7 +1790,7 @@ const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
               key={tileRef.key}
               tile={renderTile(tileRef)}
               iconSize={iconSize}
-              fetchPriority={index < 18 ? "auto" : "low"}
+              fetchPriority={!suppressDetails && index < 18 ? "auto" : "low"}
               suppressDetails={suppressDetails}
             />
           ))}
@@ -1870,7 +1908,6 @@ export default function CharacterPage() {
   const setIconSize = useSettingsStore((state) => state.setIconSize);
   const setSortMethod = useSettingsStore((state) => state.setSortMethod);
   const setVaultGrouping = useSettingsStore((state) => state.setVaultGrouping);
-  const searchQuery = useUIStore((state) => state.headerSearchQuery);
   const setSearchQuery = useUIStore((state) => state.setHeaderSearchQuery);
   const setHeaderSearchVisible = useUIStore(
     (state) => state.setHeaderSearchVisible,
@@ -1882,9 +1919,6 @@ export default function CharacterPage() {
   const wishListLookup = useWishListStore((state) => state.wishListLookup);
   const trashListLookup = useWishListStore((state) => state.trashListLookup);
   const activeSortMethod = sortMethod === "rarity" ? "power" : sortMethod;
-  const { table: recordDefinitions } = useManifestTable<any>(
-    "DestinyRecordDefinition",
-  );
   const { table: equipableItemSetDefinitions } = useManifestTable<any>(
     "DestinyEquipableItemSetDefinition",
   );
@@ -1920,7 +1954,28 @@ export default function CharacterPage() {
   const [layoutViewportWidth, setLayoutViewportWidth] = useState(
     () => getInitialScrollMetrics().viewportWidth,
   );
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  // The search input lives in <Header /> and writes to the UI store. Rather than
+  // subscribing this large page to every keystroke (which would force an urgent
+  // full re-render before useDeferredValue could bail), we subscribe imperatively
+  // and apply query changes as low-priority transitions. The page then re-renders
+  // at most once per keystroke, at non-urgent priority.
+  const [deferredSearchQuery, setDeferredSearchQuery] = useState(
+    () => useUIStore.getState().headerSearchQuery,
+  );
+  useEffect(() => {
+    const applyQuery = (nextQuery: string) => {
+      startTransition(() => setDeferredSearchQuery(nextQuery));
+    };
+
+    applyQuery(useUIStore.getState().headerSearchQuery);
+
+    return useUIStore.subscribe((state, previousState) => {
+      if (state.headerSearchQuery !== previousState.headerSearchQuery) {
+        applyQuery(state.headerSearchQuery);
+      }
+    });
+  }, []);
+
   const parsedSearch = useMemo(
     () => parseSearchQuery(deferredSearchQuery),
     [deferredSearchQuery],
@@ -1973,6 +2028,28 @@ export default function CharacterPage() {
       },
     );
   }, [profile]);
+
+  const titleRecordHashes = useMemo(() => {
+    const recordHashes = new Set<number>();
+    for (const character of characters as any[]) {
+      if (character?.titleRecordHash) {
+        recordHashes.add(Number(character.titleRecordHash));
+      }
+    }
+    return Array.from(recordHashes).sort((first, second) => first - second);
+  }, [characters]);
+
+  const { data: recordDefinitions } = useQuery({
+    queryKey: ["titleRecordDefinitions", titleRecordHashes.join(",")],
+    queryFn: () =>
+      fetchManifestDefinitions<any>(
+        "DestinyRecordDefinition",
+        titleRecordHashes,
+      ),
+    enabled: titleRecordHashes.length > 0,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+  });
 
   const activeCharacterId =
     selectedCharacterId ??
@@ -2188,6 +2265,17 @@ export default function CharacterPage() {
     [definitions, equipableItemSetDefinitions, statDefinitions],
   );
 
+  const iconDecodeWidthPx = useMemo(
+    () => itemIconDecodeBudgetPx(iconSize, 2),
+    [iconSize],
+  );
+  const manifestVersionKey = useMemo(
+    () => getClientManifestVersionCacheKey(),
+    // Re-read the cache-busting key when definitions reload (manifest update).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [definitions],
+  );
+
   const normalizedItemCacheRef = useRef(
     new Map<string, DimItemMini | undefined>(),
   );
@@ -2279,6 +2367,124 @@ export default function CharacterPage() {
     return itemMap;
   }, [profile]);
 
+  const cardByItemHash = useMemo<Record<number, InventoryCardSnapshot>>(() => {
+    const cardMap: Record<number, InventoryCardSnapshot> = {};
+
+    for (const bucketItems of inventoryByOwnerBucket.values()) {
+      for (const item of bucketItems) {
+        if (cardMap[item.itemHash]) continue;
+
+        const definition = definitions[item.itemHash];
+        cardMap[item.itemHash] = {
+          name: definition?.displayProperties?.name ?? "",
+          tierType: definition?.inventory?.tierType ?? 0,
+          tierTypeName: definition?.inventory?.tierTypeName ?? "Unknown Rarity",
+          bucketTypeHash: Number(definition?.inventory?.bucketTypeHash ?? 0),
+          ammoType: definition?.equippingBlock?.ammoType ?? null,
+        };
+      }
+    }
+
+    return cardMap;
+  }, [definitions, inventoryByOwnerBucket]);
+
+  const primaryStatByInstanceId = useMemo<Record<string, number>>(() => {
+    const statByInstanceId: Record<string, number> = {};
+    const instances = profile?.itemComponents?.instances?.data ?? {};
+
+    for (const [instanceId, instance] of Object.entries(instances)) {
+      const primaryStatValue = (instance as any)?.primaryStat?.value;
+
+      if (typeof primaryStatValue === "number") {
+        statByInstanceId[instanceId] = primaryStatValue;
+      }
+    }
+
+    return statByInstanceId;
+  }, [profile]);
+
+  const itemsByOwnerBucketSnapshot = useMemo<
+    Record<string, InventoryLayoutItem[]>
+  >(() => {
+    const snapshot: Record<string, InventoryLayoutItem[]> = {};
+
+    for (const [ownerBucketKey, bucketItems] of inventoryByOwnerBucket.entries()) {
+      snapshot[ownerBucketKey] = bucketItems.map((item) => ({
+        itemHash: item.itemHash,
+        itemInstanceId: item.itemInstanceId,
+        quantity: item.quantity,
+      }));
+    }
+
+    return snapshot;
+  }, [inventoryByOwnerBucket]);
+
+  const vaultGroupingSnapshot = useMemo(
+    () => ({
+      byClass: Boolean(vaultGrouping.byClass),
+      byRarity: Boolean(vaultGrouping.byRarity),
+      byAmmoType: Boolean(vaultGrouping.byAmmoType),
+      byTier: Boolean(vaultGrouping.byTier),
+    }),
+    [
+      vaultGrouping.byAmmoType,
+      vaultGrouping.byClass,
+      vaultGrouping.byRarity,
+      vaultGrouping.byTier,
+    ],
+  );
+
+  const inventoryLayoutRevision = useMemo(() => {
+    return JSON.stringify({
+      sortMethod: activeSortMethod,
+      vaultGrouping: vaultGroupingSnapshot,
+      profileToken:
+        profile?.responseMintedTimestamp ??
+        profile?.profile?.data?.dateLastPlayed ??
+        "",
+      bucketCount: Object.keys(itemsByOwnerBucketSnapshot).length,
+      cardCount: Object.keys(cardByItemHash).length,
+      primaryStatCount: Object.keys(primaryStatByInstanceId).length,
+    });
+  }, [
+    activeSortMethod,
+    cardByItemHash,
+    itemsByOwnerBucketSnapshot,
+    primaryStatByInstanceId,
+    profile,
+    vaultGroupingSnapshot,
+  ]);
+
+  const inventoryLayoutRequest = useMemo<InventoryLayoutOrderRequest | null>(() => {
+    if (Object.keys(itemsByOwnerBucketSnapshot).length === 0) {
+      return null;
+    }
+
+    return {
+      revision: inventoryLayoutRevision,
+      vaultOwnerId: VAULT_OWNER_ID,
+      sortMethod: activeSortMethod,
+      vaultGrouping: vaultGroupingSnapshot,
+      itemsByOwnerBucket: itemsByOwnerBucketSnapshot,
+      cardByItemHash,
+      primaryStatByInstanceId,
+    };
+  }, [
+    activeSortMethod,
+    cardByItemHash,
+    inventoryLayoutRevision,
+    itemsByOwnerBucketSnapshot,
+    primaryStatByInstanceId,
+    vaultGroupingSnapshot,
+  ]);
+
+  const inventoryLayoutOrder = useInventoryLayoutOrder(inventoryLayoutRequest);
+  const freshInventoryLayoutOrder =
+    inventoryLayoutOrder &&
+    inventoryLayoutOrder.revision === inventoryLayoutRevision
+      ? inventoryLayoutOrder
+      : null;
+
   const inventorySearchRequest = useMemo(() => {
     if (!deferredSearchQuery.trim()) {
       return null;
@@ -2352,12 +2558,17 @@ export default function CharacterPage() {
 
   const getItemsForOwnerBucket = useCallback(
     (ownerId: string, bucketHash: number) => {
-      const baseItems = [
-        ...(inventoryByOwnerBucket.get(
-          makeOwnerBucketKey(ownerId, bucketHash),
-        ) ?? []),
-      ];
-      const withoutDepartingItems = baseItems.filter((item) => {
+      const ownerBucketKey = makeOwnerBucketKey(ownerId, bucketHash);
+      const baseItems = inventoryByOwnerBucket.get(ownerBucketKey) ?? [];
+      const workerSortedIndices =
+        freshInventoryLayoutOrder?.sortedIndicesByOwnerBucket[ownerBucketKey];
+      const sortedBaseItems =
+        workerSortedIndices &&
+        workerSortedIndices.length === baseItems.length
+          ? workerSortedIndices.map((itemIndex) => baseItems[itemIndex])
+          : getSortedItems(baseItems, definitions, profile, activeSortMethod);
+
+      const withoutDepartingItems = sortedBaseItems.filter((item) => {
         return !(
           item.itemInstanceId &&
           pendingTransferIndex.departingItemKeys.has(
@@ -2367,9 +2578,7 @@ export default function CharacterPage() {
       });
 
       const arrivingItems = (
-        pendingTransferIndex.arrivalsByOwnerBucket.get(
-          makeOwnerBucketKey(ownerId, bucketHash),
-        ) ?? []
+        pendingTransferIndex.arrivalsByOwnerBucket.get(ownerBucketKey) ?? []
       )
         .filter(
           (operation) =>
@@ -2384,6 +2593,10 @@ export default function CharacterPage() {
           bucketHash,
         }));
 
+      if (arrivingItems.length === 0) {
+        return withoutDepartingItems;
+      }
+
       return getSortedItems(
         [...withoutDepartingItems, ...arrivingItems],
         definitions,
@@ -2394,6 +2607,7 @@ export default function CharacterPage() {
     [
       activeSortMethod,
       definitions,
+      freshInventoryLayoutOrder,
       inventoryByOwnerBucket,
       pendingTransferIndex,
       profile,
@@ -2464,6 +2678,8 @@ export default function CharacterPage() {
           getWishListInfo,
           getNormalizedItem,
           pendingOperationByItemId,
+          iconDecodeWidthPx,
+          manifestVersionKey,
         }),
       );
 
@@ -2477,6 +2693,8 @@ export default function CharacterPage() {
     getItemsForOwnerBucket,
     getNormalizedItem,
     getWishListInfo,
+    iconDecodeWidthPx,
+    manifestVersionKey,
     pendingOperationByItemId,
     profile,
     trashListLookup,
@@ -2586,6 +2804,96 @@ export default function CharacterPage() {
     return getVaultColumnCount(boardLayout.visibleVaultGridWidth, iconSize);
   }, [boardLayout.visibleVaultGridWidth, iconSize]);
 
+  const shouldShowItem = useCallback(
+    (item: InventoryItem) => {
+      if (!searchState.hasQuery || !searchState.hideNonMatches) {
+        return true;
+      }
+
+      return searchState.isMatch(item);
+    },
+    [searchState],
+  );
+
+  const getVaultDisplayRowsForBucket = useCallback(
+    (bucketHash: number): VaultDisplayRow[] => {
+      const ownerBucketKey = makeOwnerBucketKey(VAULT_OWNER_ID, bucketHash);
+      const baseItems = inventoryByOwnerBucket.get(ownerBucketKey) ?? [];
+      const hasArrivingItems =
+        pendingTransferIndex.arrivalsByOwnerBucket.has(ownerBucketKey);
+      const workerVaultGroups =
+        freshInventoryLayoutOrder?.vaultGroupOrderByOwnerBucket[ownerBucketKey];
+
+      if (workerVaultGroups && !hasArrivingItems) {
+        const rows: VaultDisplayRow[] = [];
+
+        for (const group of workerVaultGroups) {
+          const visibleItems = group.indices
+            .map((itemIndex) => baseItems[itemIndex])
+            .filter(
+              (item): item is InventoryItem =>
+                Boolean(item) &&
+                !(
+                  item.itemInstanceId &&
+                  pendingTransferIndex.departingItemKeys.has(
+                    `${VAULT_OWNER_ID}:${item.itemInstanceId}`,
+                  )
+                ) &&
+                shouldShowItem(item),
+            );
+
+          if (visibleItems.length === 0) continue;
+
+          const keyPrefix = group.groupLabel
+            ? group.groupLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+            : "vault";
+
+          rows.push(
+            ...chunkVaultItems(
+              visibleItems,
+              vaultColumnCount,
+              keyPrefix,
+              group.groupLabel,
+            ),
+          );
+        }
+
+        return rows;
+      }
+
+      const vaultItems = getItemsForOwnerBucket(
+        VAULT_OWNER_ID,
+        bucketHash,
+      ).filter(shouldShowItem);
+
+      return getVaultDisplayRows({
+        items: vaultItems,
+        definitions,
+        profile,
+        sortMethod: activeSortMethod,
+        vaultGrouping: {
+          byClass: Boolean(vaultGrouping.byClass),
+          byRarity: Boolean(vaultGrouping.byRarity),
+          byAmmoType: Boolean(vaultGrouping.byAmmoType),
+          byTier: Boolean(vaultGrouping.byTier),
+        },
+        vaultColumnCount,
+      });
+    },
+    [
+      activeSortMethod,
+      definitions,
+      freshInventoryLayoutOrder,
+      getItemsForOwnerBucket,
+      inventoryByOwnerBucket,
+      pendingTransferIndex,
+      profile,
+      shouldShowItem,
+      vaultColumnCount,
+      vaultGrouping,
+    ],
+  );
+
   const inventoryRows = useMemo<CharacterInventoryRow[]>(() => {
     const { rowHeightPx } = getVaultGridMeasurements(iconSize);
     const rows: CharacterInventoryRow[] = [];
@@ -2602,14 +2910,6 @@ export default function CharacterPage() {
         fallbackIndex,
         isDimmed,
       });
-    };
-
-    const shouldShowItem = (item: InventoryItem) => {
-      if (!searchState.hasQuery || !searchState.hideNonMatches) {
-        return true;
-      }
-
-      return searchState.isMatch(item);
     };
 
     for (const section of visibleInventorySections) {
@@ -2662,26 +2962,10 @@ export default function CharacterPage() {
             sliceCount,
           };
         });
-        const vaultItems =
+        const vaultDisplayRows =
           bucketRow.key === "postmaster"
             ? []
-            : getItemsForOwnerBucket(
-                VAULT_OWNER_ID,
-                bucketRow.bucketHash,
-              ).filter(shouldShowItem);
-        const vaultDisplayRows = getVaultDisplayRows({
-          items: vaultItems,
-          definitions,
-          profile,
-          sortMethod: activeSortMethod,
-          vaultGrouping: {
-            byClass: Boolean(vaultGrouping.byClass),
-            byRarity: Boolean(vaultGrouping.byRarity),
-            byAmmoType: Boolean(vaultGrouping.byAmmoType),
-            byTier: Boolean(vaultGrouping.byTier),
-          },
-          vaultColumnCount,
-        });
+            : getVaultDisplayRowsForBucket(bucketRow.bucketHash);
         const characterSliceCount = Math.max(
           ...characterColumns.map(
             (characterColumn) => characterColumn.sliceCount,
@@ -2797,15 +3081,12 @@ export default function CharacterPage() {
     return rows;
   }, [
     collapsedSections,
-    definitions,
     getEquippedItemForBucket,
     getItemsForOwnerBucket,
+    getVaultDisplayRowsForBucket,
     iconSize,
-    profile,
     searchState,
-    activeSortMethod,
-    vaultColumnCount,
-    vaultGrouping,
+    shouldShowItem,
     visibleCharacters,
     visibleInventorySections,
   ]);
@@ -2859,9 +3140,60 @@ export default function CharacterPage() {
     };
   }, [visibleRowWindow, virtualRows]);
 
+  const tileRenderDataCacheRef = useRef(new Map<string, TileRenderData>());
+  const tileRenderDataCacheScopeRef = useRef<{
+    definitions: Record<number, any> | null;
+    profile: any;
+    dimDefinitions: DimDefinitionTables | null;
+    wishListLookup: unknown;
+    trashListLookup: unknown;
+    pendingOperationByItemId: Map<string, string> | null;
+    iconDecodeWidthPx: number;
+    manifestVersionKey: string | undefined;
+  }>({
+    definitions: null,
+    profile: null,
+    dimDefinitions: null,
+    wishListLookup: null,
+    trashListLookup: null,
+    pendingOperationByItemId: null,
+    iconDecodeWidthPx: 0,
+    manifestVersionKey: undefined,
+  });
+
   const renderTile = useCallback(
-    (tileRef: TileItemRef) =>
-      createTileRenderData({
+    (tileRef: TileItemRef) => {
+      const cacheScope = tileRenderDataCacheScopeRef.current;
+      const cacheScopeIsStale =
+        cacheScope.definitions !== definitions ||
+        cacheScope.profile !== profile ||
+        cacheScope.dimDefinitions !== dimDefinitions ||
+        cacheScope.wishListLookup !== wishListLookup ||
+        cacheScope.trashListLookup !== trashListLookup ||
+        cacheScope.pendingOperationByItemId !== pendingOperationByItemId ||
+        cacheScope.iconDecodeWidthPx !== iconDecodeWidthPx ||
+        cacheScope.manifestVersionKey !== manifestVersionKey;
+
+      if (cacheScopeIsStale) {
+        tileRenderDataCacheRef.current.clear();
+        cacheScope.definitions = definitions;
+        cacheScope.profile = profile;
+        cacheScope.dimDefinitions = dimDefinitions;
+        cacheScope.wishListLookup = wishListLookup;
+        cacheScope.trashListLookup = trashListLookup;
+        cacheScope.pendingOperationByItemId = pendingOperationByItemId;
+        cacheScope.iconDecodeWidthPx = iconDecodeWidthPx;
+        cacheScope.manifestVersionKey = manifestVersionKey;
+      }
+
+      const cache = tileRenderDataCacheRef.current;
+      const cacheKey = `${tileRef.key}|${tileRef.isDimmed ? "1" : "0"}`;
+      const cachedTileRenderData = cache.get(cacheKey);
+      if (cachedTileRenderData) {
+        return cachedTileRenderData;
+      }
+
+      const tileRenderData = createTileRenderData({
         item: tileRef.item,
         ownerId: tileRef.ownerId,
         fallbackIndex: tileRef.fallbackIndex,
@@ -2871,13 +3203,23 @@ export default function CharacterPage() {
         getWishListInfo,
         getNormalizedItem,
         pendingOperationByItemId,
-      }),
+        iconDecodeWidthPx,
+        manifestVersionKey,
+      });
+      cache.set(cacheKey, tileRenderData);
+      return tileRenderData;
+    },
     [
       definitions,
+      dimDefinitions,
       getNormalizedItem,
       getWishListInfo,
+      iconDecodeWidthPx,
+      manifestVersionKey,
       pendingOperationByItemId,
       profile,
+      trashListLookup,
+      wishListLookup,
     ],
   );
 

@@ -10,6 +10,27 @@ import {
   isArtifice,
 } from "./dimItemMini";
 
+/**
+ * Caches an itemHash -> count map per `allInventory` array reference so that
+ * `is:dupe` runs in O(n) per search instead of O(n) per item (O(n^2) total).
+ */
+const itemHashCountByInventory = new WeakMap<object, Map<number, number>>();
+
+function getItemHashCountMap(allInventory: any[]): Map<number, number> {
+  const cachedCounts = itemHashCountByInventory.get(allInventory);
+  if (cachedCounts) {
+    return cachedCounts;
+  }
+
+  const itemHashCounts = new Map<number, number>();
+  for (const inventoryItem of allInventory) {
+    const itemHash = inventoryItem.itemHash;
+    itemHashCounts.set(itemHash, (itemHashCounts.get(itemHash) ?? 0) + 1);
+  }
+  itemHashCountByInventory.set(allInventory, itemHashCounts);
+  return itemHashCounts;
+}
+
 export interface ParsedSearch {
   text: string;
   filters: SearchFilter[];
@@ -677,10 +698,7 @@ function checkIsFilter(
       return Boolean(item.__isEquipped);
     case "dupe":
       if (!allInventory) return false;
-      return (
-        allInventory.filter((inventoryItem) => inventoryItem.itemHash === item.itemHash)
-          .length > 1
-      );
+      return (getItemHashCountMap(allInventory).get(item.itemHash) ?? 0) > 1;
     default:
       if (ITEM_CATEGORY_FILTERS[value]) {
         return checkItemCategoryFilter(value, def, normalizedItem);

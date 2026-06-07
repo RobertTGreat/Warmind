@@ -20,7 +20,7 @@ import { getArmorBaseStats, getArmorQuality, BUCKETS } from '@/lib/destinyUtils'
 import { useWishListStore } from '@/store/wishlistStore';
 import { RefreshCw } from 'lucide-react';
 import { FastBungieIcon } from '@/components/FastBungieIcon';
-import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
+import { useDestinyProfileActions } from '@/components/DestinyProfileProvider';
 
 const fetcher = (url: string) => bungieApi.get(url).then((res) => res.data);
 
@@ -129,7 +129,7 @@ export function DestinyItemCard({
   const [contextMenuPos, setContextMenuPos] = useState<{x: number, y: number} | null>(null);
   const [initialTooltipPos, setInitialTooltipPos] = useState<{x: number, y: number} | undefined>(undefined);
   const [socketPlugOverrides, setSocketPlugOverrides] = useState<Record<number, number>>({});
-  const { updateItemSocketPlug } = useDestinyProfileContext();
+  const { updateItemSocketPlug } = useDestinyProfileActions();
   const activeContextMenuPosition = forcedContextMenuPosition ?? contextMenuPos;
   const activeTooltipPosition = forcedTooltipPosition ?? initialTooltipPos;
   const shouldResolveFullDetails =
@@ -159,11 +159,7 @@ export function DestinyItemCard({
       (state) => {
         if (!itemInstanceId) return null;
 
-        return (
-          state.pendingOperations.find(
-            (operation) => operation.itemInstanceId === itemInstanceId
-          )?.status ?? null
-        );
+        return state.operationStatusByItemId.get(itemInstanceId) ?? null;
       },
       [itemInstanceId]
     )

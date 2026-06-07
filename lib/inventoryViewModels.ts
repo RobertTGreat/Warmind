@@ -20,6 +20,18 @@ export type InventorySearchMatchRequest = {
   dimDefinitions: DimDefinitionTables;
 };
 
+/**
+ * The heavy, slow-changing inputs needed to evaluate any search query. This is
+ * sent to the worker once per profile/definition load instead of on every
+ * keystroke, so that typing only transfers the lightweight parsed query.
+ */
+export type InventorySearchDataset = {
+  items: InventoryItem[];
+  definitions: Record<number, any>;
+  profile: any;
+  dimDefinitions: DimDefinitionTables;
+};
+
 export type InventorySearchMatchResponse = {
   matchByItemKey: Record<string, boolean>;
 };
@@ -53,6 +65,60 @@ export function buildNormalizedInventoryItem(
   return buildDimItemMini(item, profile?.itemComponents ?? {}, dimDefinitions);
 }
 
+/**
+ * Creates a reusable search matcher bound to one dataset that caches the
+ * expensive normalized item models so repeated queries only re-run the cheap
+ * predicate evaluation rather than rebuilding every item from definitions.
+ */
+export function createInventorySearchMatcher(dataset: InventorySearchDataset) {
+  const { items, definitions, profile, dimDefinitions } = dataset;
+  const normalizedItemBySearchKey = new Map<string, DimItemMini | undefined>();
+
+  const getNormalizedItemForSearch = (item: InventoryItem) => {
+    const searchKey = getInventoryItemSearchKey(item);
+
+    if (normalizedItemBySearchKey.has(searchKey)) {
+      return normalizedItemBySearchKey.get(searchKey);
+    }
+
+    const normalizedItem = buildNormalizedInventoryItem(
+      item,
+      profile,
+      dimDefinitions,
+    );
+    normalizedItemBySearchKey.set(searchKey, normalizedItem);
+    return normalizedItem;
+  };
+
+  const matchParsedSearch = (
+    parsedSearch: ParsedSearch,
+  ): InventorySearchMatchResponse => {
+    const matchByItemKey: Record<string, boolean> = {};
+
+    for (const item of items) {
+      const definition = definitions[item.itemHash];
+      const instance = getInventoryItemInstanceData(
+        profile,
+        item.itemInstanceId,
+      );
+      const normalizedItem = getNormalizedItemForSearch(item);
+
+      matchByItemKey[getInventoryItemSearchKey(item)] = checkItemMatch(
+        item,
+        definition,
+        parsedSearch,
+        instance,
+        items,
+        normalizedItem,
+      );
+    }
+
+    return { matchByItemKey };
+  };
+
+  return { matchParsedSearch };
+}
+
 export function buildInventorySearchMatchRecord({
   items,
   definitions,
@@ -60,22 +126,10 @@ export function buildInventorySearchMatchRecord({
   parsedSearch,
   dimDefinitions,
 }: InventorySearchMatchRequest): InventorySearchMatchResponse {
-  const matchByItemKey: Record<string, boolean> = {};
-
-  for (const item of items) {
-    const definition = definitions[item.itemHash];
-    const instance = getInventoryItemInstanceData(profile, item.itemInstanceId);
-    const normalizedItem = buildNormalizedInventoryItem(item, profile, dimDefinitions);
-
-    matchByItemKey[getInventoryItemSearchKey(item)] = checkItemMatch(
-      item,
-      definition,
-      parsedSearch,
-      instance,
-      items,
-      normalizedItem,
-    );
-  }
-
-  return { matchByItemKey };
+  return createInventorySearchMatcher({
+    items,
+    definitions,
+    profile,
+    dimDefinitions,
+  }).matchParsedSearch(parsedSearch);
 }

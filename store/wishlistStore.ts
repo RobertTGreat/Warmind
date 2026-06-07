@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import { getFromDB, setInDB, deleteFromDB } from '@/lib/indexedDB';
 
 // ===== Type Definitions =====
@@ -884,12 +885,15 @@ export const useWishListStore = create<WishListStore>()(
 
 // ===== Helper Hooks =====
 
-export const useWishListSettings = () => useWishListStore(state => ({
-    showWishListIndicators: state.showWishListIndicators,
-    showTrashIndicators: state.showTrashIndicators,
-    setShowWishListIndicators: state.setShowWishListIndicators,
-    setShowTrashIndicators: state.setShowTrashIndicators,
-}));
+export const useWishListSettings = () =>
+    useWishListStore(
+        useShallow((state) => ({
+            showWishListIndicators: state.showWishListIndicators,
+            showTrashIndicators: state.showTrashIndicators,
+            setShowWishListIndicators: state.setShowWishListIndicators,
+            setShowTrashIndicators: state.setShowTrashIndicators,
+        })),
+    );
 
 export const useWishListInfo = (itemHash: number, perkHashes?: number[]) => {
     const getWishListInfo = useWishListStore(state => state.getWishListInfo);
