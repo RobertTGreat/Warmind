@@ -10,6 +10,13 @@ import {
   useInventoryLayoutOrder,
   useInventorySearchMatches,
 } from "@/hooks/useInventoryViewModels";
+import {
+  BoardPointerDragProvider,
+  useBoardPointerDrag,
+  useStartBoardPointerDrag,
+  type BoardDragPayload,
+  type BoardDropTarget,
+} from "@/hooks/useBoardPointerDrag";
 import type {
   InventoryCardSnapshot,
   InventoryLayoutItem,
@@ -91,7 +98,53 @@ const AMMO_TYPE_GROUPS = {
   OTHER: 99,
 } as const;
 
-function ignoreDragLeave() {}
+/**
+ * Tracks the item currently being dragged on the board. Stored outside React
+ * so drag-over/drop handlers can validate targets without triggering renders
+ * on every pointer move across the virtualized inventory grid.
+ */
+type ActiveDragItem = {
+  itemInstanceId: string;
+  fromOwnerId: string;
+  bucketHash: number | null;
+};
+
+let activeDragItem: ActiveDragItem | null = null;
+
+const DROP_ZONE_HIGHLIGHT_STYLE = {
+  outline: "2px solid rgba(244, 196, 72, 0.75)",
+  outlineOffset: "-2px",
+  backgroundColor: "rgba(244, 196, 72, 0.08)",
+} as const;
+
+function applyDropZoneHighlight(element: HTMLElement) {
+  element.style.outline = DROP_ZONE_HIGHLIGHT_STYLE.outline;
+  element.style.outlineOffset = DROP_ZONE_HIGHLIGHT_STYLE.outlineOffset;
+  element.style.backgroundColor = DROP_ZONE_HIGHLIGHT_STYLE.backgroundColor;
+}
+
+function clearDropZoneHighlight(element: HTMLElement) {
+  element.style.outline = "";
+  element.style.outlineOffset = "";
+  element.style.backgroundColor = "";
+}
+
+/** A drop is valid when moving to a different owner within the same bucket. */
+function isValidDropTarget(targetOwnerId: string, bucketHash: number): boolean {
+  if (!activeDragItem) return false;
+  if (activeDragItem.fromOwnerId === targetOwnerId) return false;
+  // Only enforce a bucket match when we positively know the dragged item's
+  // category bucket; otherwise allow the transfer rather than blocking it.
+  const draggedBucketHash = activeDragItem.bucketHash;
+  if (
+    draggedBucketHash !== null &&
+    draggedBucketHash > 0 &&
+    draggedBucketHash !== bucketHash
+  ) {
+    return false;
+  }
+  return true;
+}
 
 function getInitialScrollMetrics() {
   if (typeof window === "undefined") {
@@ -1140,7 +1193,28 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
   } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const tileRef = useRef<HTMLDivElement>(null);
-  const isPending = tile.transferStatus !== null;
+  const isPending =
+    tile.transferStatus === "pending" || tile.transferStatus === "syncing";
+  const startBoardPointerDrag = useStartBoardPointerDrag();
+
+  const handlePointerDown = (event: React.PointerEvent) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (!tile.item.itemInstanceId || isPending) return;
+
+    setTooltipPosition(null);
+    setContextMenuPosition(null);
+    startBoardPointerDrag?.(event, {
+      itemHash: tile.item.itemHash,
+      itemInstanceId: tile.item.itemInstanceId,
+      fromOwnerId: tile.ownerId,
+      bucketHash:
+        tile.definition?.inventory?.bucketTypeHash ??
+        tile.item.bucketHash ??
+        null,
+      iconSrc: tile.model.iconSrc,
+      iconSizePx: ITEM_ICON_CSS_PX[iconSize],
+    });
+  };
 
   const handleMouseEnter = (event: React.MouseEvent) => {
     if (suppressDetails) return;
@@ -1163,6 +1237,19 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
 
     setIsDragging(true);
     setTooltipPosition(null);
+
+    activeDragItem = {
+      itemInstanceId: tile.item.itemInstanceId,
+      fromOwnerId: tile.ownerId,
+      // Use the gear-category bucket (matches each drop row); the item's stored
+      // bucketHash is the general vault bucket for vaulted items, which would
+      // never match a character row's category bucket.
+      bucketHash:
+        tile.definition?.inventory?.bucketTypeHash ??
+        tile.item.bucketHash ??
+        null,
+    };
+    event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(
       "application/json",
       JSON.stringify({
@@ -1186,6 +1273,7 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    activeDragItem = null;
   };
 
   useEffect(() => {
@@ -1202,7 +1290,8 @@ const InteractiveInventoryTile = memo(function InteractiveInventoryTile({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setTooltipPosition(null)}
       onContextMenu={handleContextMenu}
-      draggable={Boolean(tile.item.itemInstanceId && !isPending)}
+      onPointerDown={handlePointerDown}
+      draggable={false}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
@@ -1657,15 +1746,18 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
   rowHeightPx: number;
   renderTile: (tileRef: TileItemRef) => TileRenderData;
   suppressDetails: boolean;
-  onDragOver: (event: React.DragEvent, targetId: string) => void;
-  onDragLeave: () => void;
+  onDragOver: (
+    event: React.DragEvent,
+    targetOwnerId: string,
+    bucketHash: number,
+  ) => void;
+  onDragLeave: (event: React.DragEvent) => void;
   onDrop: (
     event: React.DragEvent,
     targetOwnerId: string,
     bucketHash: number,
   ) => void;
 }) {
-  const dropZoneId = `${characterColumn.characterId}-${bucketRow.bucketHash}`;
   const visibleEquippedItemRef =
     sliceIndex === 0 ? characterColumn.equippedItemRef : null;
 
@@ -1673,7 +1765,11 @@ const CharacterBucketRowSlice = memo(function CharacterBucketRowSlice({
     <div
       className="w-full p-1 transition-colors hover:bg-white/[0.025]"
       style={{ height: rowHeightPx }}
-      onDragOver={(event) => onDragOver(event, dropZoneId)}
+      data-drop-owner={characterColumn.characterId}
+      data-drop-bucket={bucketRow.bucketHash}
+      onDragOver={(event) =>
+        onDragOver(event, characterColumn.characterId, bucketRow.bucketHash)
+      }
       onDragLeave={onDragLeave}
       onDrop={(event) =>
         onDrop(event, characterColumn.characterId, bucketRow.bucketHash)
@@ -1743,8 +1839,12 @@ const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
   rowHeightPx: number;
   renderTile: (tileRef: TileItemRef) => TileRenderData;
   suppressDetails: boolean;
-  onDragOver: (event: React.DragEvent, targetId: string) => void;
-  onDragLeave: () => void;
+  onDragOver: (
+    event: React.DragEvent,
+    targetOwnerId: string,
+    bucketHash: number,
+  ) => void;
+  onDragLeave: (event: React.DragEvent) => void;
   onDrop: (
     event: React.DragEvent,
     targetOwnerId: string,
@@ -1752,14 +1852,15 @@ const VaultBucketRowSlice = memo(function VaultBucketRowSlice({
   ) => void;
 }) {
   const { gapPx, iconSizePx } = getVaultGridMeasurements(iconSize);
-  const dropZoneId = `${VAULT_OWNER_ID}-${bucketRow.bucketHash}`;
   const vaultGroupAmmoIconPath = getVaultGroupAmmoIconPath(vaultGroupLabel);
 
   return (
     <div
       className="p-1 transition-colors hover:bg-white/[0.025]"
       style={{ height: rowHeightPx }}
-      onDragOver={(event) => onDragOver(event, dropZoneId)}
+      data-drop-owner={VAULT_OWNER_ID}
+      data-drop-bucket={bucketRow.bucketHash}
+      onDragOver={(event) => onDragOver(event, VAULT_OWNER_ID, bucketRow.bucketHash)}
       onDragLeave={onDragLeave}
       onDrop={(event) => onDrop(event, VAULT_OWNER_ID, bucketRow.bucketHash)}
     >
@@ -1821,8 +1922,12 @@ const CharacterVirtualRow = memo(function CharacterVirtualRow({
   renderTile: (tileRef: TileItemRef) => TileRenderData;
   suppressDetails: boolean;
   onToggleSection: (sectionKey: string) => void;
-  onDragOver: (event: React.DragEvent, targetId: string) => void;
-  onDragLeave: () => void;
+  onDragOver: (
+    event: React.DragEvent,
+    targetOwnerId: string,
+    bucketHash: number,
+  ) => void;
+  onDragLeave: (event: React.DragEvent) => void;
   onDrop: (
     event: React.DragEvent,
     targetOwnerId: string,
@@ -2634,6 +2739,42 @@ export default function CharacterPage() {
     [equipmentByOwnerBucket, pendingTransferIndex],
   );
 
+  useEffect(() => {
+    const reconciledOperationIds: string[] = [];
+
+    for (const operation of pendingOperations) {
+      if (operation.status !== "success" || !operation.bucketHash) {
+        continue;
+      }
+
+      const targetOwnerBucketKey = makeOwnerBucketKey(
+        operation.toOwnerId,
+        operation.bucketHash,
+      );
+      const targetInventoryItems =
+        inventoryByOwnerBucket.get(targetOwnerBucketKey) ?? [];
+      const profileShowsDestination =
+        targetInventoryItems.some(
+          (item) => item.itemInstanceId === operation.itemInstanceId,
+        ) ||
+        equipmentByOwnerBucket.get(targetOwnerBucketKey)?.itemInstanceId ===
+          operation.itemInstanceId;
+
+      if (profileShowsDestination) {
+        reconciledOperationIds.push(operation.itemInstanceId);
+      }
+    }
+
+    for (const itemInstanceId of reconciledOperationIds) {
+      removeOperation(itemInstanceId);
+    }
+  }, [
+    equipmentByOwnerBucket,
+    inventoryByOwnerBucket,
+    pendingOperations,
+    removeOperation,
+  ]);
+
   const vaultCount = useMemo(() => {
     return (profile?.profileInventory?.data?.items ?? []).filter(
       (item: InventoryItem) => item.bucketHash === VAULT_BUCKET_HASH,
@@ -2701,23 +2842,26 @@ export default function CharacterPage() {
     wishListLookup,
   ]);
 
-  const handleDrop = useCallback(async (
-    event: React.DragEvent,
-    targetOwnerId: string,
-    bucketHash: number,
-  ) => {
-    event.preventDefault();
+  const highlightedDropZoneRef = useRef<HTMLElement | null>(null);
 
-    const data = event.dataTransfer.getData("application/json");
-    if (!data || !membershipInfo) return;
+  const clearActiveDropHighlight = useCallback(() => {
+    if (highlightedDropZoneRef.current) {
+      clearDropZoneHighlight(highlightedDropZoneRef.current);
+      highlightedDropZoneRef.current = null;
+    }
+  }, []);
 
-    try {
-      const {
-        itemHash,
-        itemInstanceId,
-        ownerId: fromOwnerId,
-      } = JSON.parse(data);
-      if (!itemInstanceId || fromOwnerId === targetOwnerId) return;
+  const performItemTransfer = useCallback(
+    (
+      itemHash: number,
+      itemInstanceId: string,
+      fromOwnerId: string,
+      targetOwnerId: string,
+      bucketHash: number,
+    ) => {
+      if (!membershipInfo || !itemInstanceId || fromOwnerId === targetOwnerId) {
+        return;
+      }
 
       const fullItem = inventoryItemByInstanceId.get(itemInstanceId);
 
@@ -2750,7 +2894,6 @@ export default function CharacterPage() {
             membershipInfo.membershipType,
           );
           updateOperationStatus(itemInstanceId, "success");
-          setTimeout(() => removeOperation(itemInstanceId), 1500);
         } catch (error) {
           updateOperationStatus(itemInstanceId, "error");
           setTimeout(() => removeOperation(itemInstanceId), 800);
@@ -2763,22 +2906,115 @@ export default function CharacterPage() {
         success: `Moved to ${targetName}`,
         error: "Transfer failed - item returned",
       });
-    } catch (error) {
-      console.error("Drop parsing error", error);
-    }
-  }, [
-    addOperation,
-    characters,
-    inventoryItemByInstanceId,
-    membershipInfo,
-    removeOperation,
-    updateOperationStatus,
-  ]);
+    },
+    [
+      addOperation,
+      characters,
+      inventoryItemByInstanceId,
+      membershipInfo,
+      removeOperation,
+      updateOperationStatus,
+    ],
+  );
 
-  const handleDragOver = useCallback((event: React.DragEvent, _targetId: string) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  }, []);
+  const handleDrop = useCallback(
+    (event: React.DragEvent, targetOwnerId: string, bucketHash: number) => {
+      event.preventDefault();
+      clearActiveDropHighlight();
+      activeDragItem = null;
+
+      const data = event.dataTransfer.getData("application/json");
+      if (!data) return;
+
+      try {
+        const {
+          itemHash,
+          itemInstanceId,
+          ownerId: fromOwnerId,
+        } = JSON.parse(data);
+        performItemTransfer(
+          itemHash,
+          itemInstanceId,
+          fromOwnerId,
+          targetOwnerId,
+          bucketHash,
+        );
+      } catch (error) {
+        console.error("Drop parsing error", error);
+      }
+    },
+    [clearActiveDropHighlight, performItemTransfer],
+  );
+
+  // Touch/pen drag-and-drop (native HTML5 DnD is mouse-only). Mouse input keeps
+  // using the native handlers above; this covers touchscreen laptops/tablets.
+  const isValidPointerDropTarget = useCallback(
+    (payload: BoardDragPayload, target: BoardDropTarget) => {
+      if (payload.fromOwnerId === target.ownerId) return false;
+      if (
+        payload.bucketHash !== null &&
+        payload.bucketHash > 0 &&
+        payload.bucketHash !== target.bucketHash
+      ) {
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
+
+  const handlePointerDrop = useCallback(
+    (payload: BoardDragPayload, target: BoardDropTarget) => {
+      performItemTransfer(
+        payload.itemHash,
+        payload.itemInstanceId,
+        payload.fromOwnerId,
+        target.ownerId,
+        target.bucketHash,
+      );
+    },
+    [performItemTransfer],
+  );
+
+  const startBoardPointerDrag = useBoardPointerDrag({
+    onDrop: handlePointerDrop,
+    isValidTarget: isValidPointerDropTarget,
+  });
+
+  const handleDragOver = useCallback(
+    (event: React.DragEvent, targetOwnerId: string, bucketHash: number) => {
+      if (!isValidDropTarget(targetOwnerId, bucketHash)) {
+        event.dataTransfer.dropEffect = "none";
+        return;
+      }
+
+      // Only valid targets call preventDefault, so invalid drops are blocked.
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+
+      const dropZoneElement = event.currentTarget as HTMLElement;
+      if (highlightedDropZoneRef.current !== dropZoneElement) {
+        clearActiveDropHighlight();
+        applyDropZoneHighlight(dropZoneElement);
+        highlightedDropZoneRef.current = dropZoneElement;
+      }
+    },
+    [clearActiveDropHighlight],
+  );
+
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    const dropZoneElement = event.currentTarget as HTMLElement;
+    const nextTarget = event.relatedTarget as Node | null;
+
+    // Ignore moves into child tiles; only clear when truly leaving the zone.
+    if (nextTarget && dropZoneElement.contains(nextTarget)) {
+      return;
+    }
+
+    if (highlightedDropZoneRef.current === dropZoneElement) {
+      clearActiveDropHighlight();
+    }
+  }, [clearActiveDropHighlight]);
 
   const visibleInventorySections = useMemo(() => {
     return INVENTORY_SECTIONS.filter((section) => {
@@ -3346,6 +3582,7 @@ export default function CharacterPage() {
   }
 
   return (
+    <BoardPointerDragProvider value={startBoardPointerDrag}>
     <div className="text-slate-100">
       <div className="flex h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden bg-transparent">
       <div
@@ -3510,7 +3747,11 @@ export default function CharacterPage() {
             />
           </div>
 
-          <div ref={virtualListRef} className="p-2">
+          <div
+            ref={virtualListRef}
+            className="p-2"
+            onDragEnd={clearActiveDropHighlight}
+          >
             <div
               className="relative w-full"
               style={{ height: totalInventoryHeight }}
@@ -3537,7 +3778,7 @@ export default function CharacterPage() {
                     suppressDetails={isInventoryScrolling}
                     onToggleSection={toggleSection}
                     onDragOver={handleDragOver}
-                    onDragLeave={ignoreDragLeave}
+                    onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                   />
                 ))}
@@ -3557,5 +3798,6 @@ export default function CharacterPage() {
       <ItemDetailsOverlay />
       </div>
     </div>
+    </BoardPointerDragProvider>
   );
 }
