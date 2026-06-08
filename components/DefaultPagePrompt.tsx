@@ -12,6 +12,7 @@ import {
   Scroll,
   Shield,
   Sparkles,
+  Store,
   Target,
   User,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const pageIconMap: Record<DefaultPage, ElementType> = {
   "/collections": Book,
   "/triumphs": Medal,
   "/quests": Scroll,
+  "/vendors": Store,
   "/activity": Activity,
   "/activity/wrapped": Sparkles,
 };

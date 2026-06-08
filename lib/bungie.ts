@@ -126,6 +126,17 @@ export const endpoints = {
   // Activity Modifier definition (for bonus drops, daily focus, etc.)
   getActivityModifierDefinition: (hash: number | string) =>
     `/Destiny2/Manifest/DestinyActivityModifierDefinition/${hash}/`,
+  getVendorDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyVendorDefinition/${hash}/`,
+  getVendorGroupDefinition: (hash: number | string) =>
+    `/Destiny2/Manifest/DestinyVendorGroupDefinition/${hash}/`,
+  getVendors: (
+    membershipType: number,
+    destinyMembershipId: string,
+    characterId: string,
+    components: readonly number[] = [400, 402, 600]
+  ) =>
+    `/Destiny2/${membershipType}/Profile/${destinyMembershipId}/Character/${characterId}/Vendors/?components=${components.join(",")}`,
 };
 
 

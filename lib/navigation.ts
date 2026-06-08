@@ -8,6 +8,7 @@ import {
   Scroll,
   ShieldCheck,
   Sparkles,
+  Store,
   Swords,
   Target,
   Trophy,
@@ -60,6 +61,7 @@ export const headerNavigationItems: HeaderNavigationItem[] = [
     ],
   },
   { name: 'Quests', href: '/quests', icon: Scroll, description: 'Active Quests' },
+  { name: 'Vendors', href: '/vendors', icon: Store, description: 'Tower & Rotating Stock' },
   {
     name: 'Activities',
     href: '/activity',
@@ -78,6 +80,7 @@ export const defaultFavouriteHeaderNavHrefs = [
   '/triumphs',
   '/character',
   '/quests',
+  '/vendors',
   '/activity',
 ] as const;
 
@@ -97,6 +100,9 @@ export const sidebarSubNavigationItems: Record<string, SubNavigationItem[]> = {
   ],
   '/quests': [
     { name: 'Quests', href: '/quests', icon: Swords },
+  ],
+  '/vendors': [
+    { name: 'Vendors', href: '/vendors', icon: Store },
   ],
   '/activity': [
     { name: 'Activity', href: '/activity', icon: Activity },

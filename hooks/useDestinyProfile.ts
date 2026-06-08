@@ -177,6 +177,10 @@ export function getProfileComponentsForPathname(pathname: string | null) {
     return PROFILE_COMPONENTS.records;
   }
 
+  if (pathname?.startsWith('/vendors')) {
+    return PROFILE_COMPONENTS.inventory;
+  }
+
   return PROFILE_COMPONENTS.full;
 }
 

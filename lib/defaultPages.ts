@@ -35,6 +35,11 @@ export const DEFAULT_PAGE_OPTIONS = [
     description: "Active quests and pursuits",
   },
   {
+    value: "/vendors",
+    label: "Vendors",
+    description: "Tower vendors and rotating inventory",
+  },
+  {
     value: "/activity",
     label: "Activities",
     description: "Recent activity reports",
