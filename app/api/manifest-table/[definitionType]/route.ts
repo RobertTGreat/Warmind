@@ -17,6 +17,7 @@ function pickInventoryCardFields(table: Record<string, any>) {
 
     out[hash] = {
       hash: def.hash,
+      index: def.index,
       displayProperties: {
         name: def.displayProperties?.name ?? "",
         icon: def.displayProperties?.icon ?? "",
@@ -29,6 +30,12 @@ function pickInventoryCardFields(table: Record<string, any>) {
         bucketTypeHash: def.inventory?.bucketTypeHash,
         recipeItemHash: def.inventory?.recipeItemHash,
       },
+      quality: def.quality
+        ? {
+            displayVersionWatermarkIcons: def.quality.displayVersionWatermarkIcons,
+            versions: def.quality.versions,
+          }
+        : undefined,
       collectibleHash: def.collectibleHash,
       crafting: def.crafting
         ? {
@@ -61,7 +68,7 @@ function pickInventoryCardFields(table: Record<string, any>) {
         : undefined,
       iconWatermark: def.iconWatermark,
       iconWatermarkShelved: def.iconWatermarkShelved,
-      itemCategoryHashes: isPlugDefinition ? def.itemCategoryHashes : undefined,
+      itemCategoryHashes: def.itemCategoryHashes,
       isAdept: def.isAdept,
       isHolofoil: def.isHolofoil,
     };

@@ -866,7 +866,6 @@ function FilterPanel({
                     <div className="mt-2 flex flex-wrap gap-2">
                         {ACTIVITY_SPECIAL_TAGS.map((tag) => {
                             const selected = selectedTags.includes(tag);
-                            const dayOneTag = tag === 'Day One';
 
                             return (
                                 <button
@@ -874,14 +873,9 @@ function FilterPanel({
                                     type="button"
                                     onClick={() => onTagToggle(tag)}
                                     className={cn(
-                                        'rounded-sm border px-2.5 py-1 text-xs font-semibold transition-colors',
-                                        selected
-                                            ? dayOneTag
-                                                ? 'border-destiny-gold bg-destiny-gold text-black'
-                                                : 'border-destiny-gold bg-destiny-gold/15 text-destiny-gold'
-                                            : dayOneTag
-                                                ? 'border-destiny-gold/70 bg-destiny-gold text-black hover:border-destiny-gold'
-                                                : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white'
+                                        'activity-achievement-tag rounded-sm border px-2.5 py-1 text-xs font-semibold transition-colors',
+                                        getSpecialTagFilterClassName(tag),
+                                        !selected && 'opacity-70 hover:opacity-100'
                                     )}
                                 >
                                     {tag}
@@ -1096,6 +1090,34 @@ function SegmentButton({
             {label}
         </button>
     );
+}
+
+function getSpecialTagFilterClassName(tag: string): string {
+    if (tag === 'Day One') {
+        return 'activity-achievement-tag--holofoil';
+    }
+
+    if (tag === 'Contest') {
+        return 'activity-achievement-tag--contest';
+    }
+
+    if (tag === 'Trio' || tag === 'Trio Flawless') {
+        return 'activity-achievement-tag--trio';
+    }
+
+    if (tag === 'Duo' || tag === 'Duo Flawless') {
+        return 'activity-achievement-tag--duo';
+    }
+
+    if (tag === 'Solo' || tag === 'Solo Flawless') {
+        return 'activity-achievement-tag--solo';
+    }
+
+    if (tag.includes('Flawless')) {
+        return 'activity-achievement-tag--shiny activity-achievement-tag--flawless';
+    }
+
+    return 'border-white/10 bg-black/30 text-slate-400 hover:border-white/20 hover:text-white';
 }
 
 function SortPanel({

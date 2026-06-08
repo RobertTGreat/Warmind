@@ -39,6 +39,8 @@ export interface ManifestMeta {
     view: string;
     manifestVersion: string;
     schemaVersion: string;
+    isFullTable?: boolean;
+    rowCount?: number;
     updatedAt: number;
 }
 

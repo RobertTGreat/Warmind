@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { VirtuosoGrid, type GridComponents } from 'react-virtuoso';
 import { usePresentationNode } from '@/hooks/useDefinitions';
-import { ChevronLeft, ChevronRight, Search, Lock, Eye, EyeOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Lock, Eye, EyeOff, Layers } from 'lucide-react';
 import { getBungieImage } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ import { buildBungieIconUrl, getClientManifestVersionCacheKey, normalizeBungieAs
 import { getCollectionIconSizePx, getIconWidthClassName } from "@/lib/collectionIconSizing";
 import { PRESENTATION_NODES } from "@/lib/destinyUtils";
 import { useSettingsStore } from "@/store/settingsStore";
+import { D2SeasonInfo } from "@/data/d2/d2-season-info";
 
 interface CollectionsBrowserProps {
     rootHash: number;
@@ -31,13 +32,67 @@ type CollectionGroupModel = {
     items: CollectionTileModel[];
 };
 
+type CollectionVisibilityOptions = {
+    hideAcquiredItems: boolean;
+    hideInvisibleItems: boolean;
+};
+
+type ReleaseSeasonGroupModel = {
+    key: string;
+    name: string;
+    sortOrder: number;
+    iconPath?: string;
+    items: CollectionTileModel[];
+};
+
 const ARMOR_SET_GROUP_NAME_MIN_WIDTH_PX = 112;
 const ARMOR_SET_GROUP_ITEM_COUNT = 5;
 const ARMOR_SET_GROUP_GRID_COLUMN_GAP_PX = 16;
 const ARMOR_SET_GROUP_GRID_ROW_GAP_PX = 6;
 const ARMOR_SET_GROUP_TILE_GAP_PX = 4;
-const ARMOR_SET_GROUP_BOTTOM_PADDING_PX = 18;
+const ARMOR_SET_GROUP_BOTTOM_PADDING_PX = 92;
 const ARMOR_SET_GROUP_MAX_COLUMNS = 4;
+const COLLECTION_SELECTION_STORAGE_KEY = "warmind-collections-selection";
+const UNKNOWN_RELEASE_GROUP_SORT_ORDER = 9999;
+
+const RELEASE_WATERMARK_GROUPS: Record<string, { season?: number; label?: string; sortOrder?: number }> = {
+    "/common/destiny2_content/icons/4f28dc0f39238fe25d298a894ea71389.png": { season: 1 },
+    "/common/destiny2_content/icons/7ba9d804508dd083ec20fcdb8ba0869d.png": { season: 2 },
+    "/common/destiny2_content/icons/da5f961ef97b78293cc498978c10e178.png": { season: 3 },
+    "/common/destiny2_content/icons/aeb95eb1abe8e45e1fe2573d6b3ab3c5.png": { season: 4 },
+    "/common/destiny2_content/icons/e0c16042274fd7d9cbffc4489e340c5d.png": { season: 5 },
+    "/common/destiny2_content/icons/2c022e452f395db7b1daec1cb44631fc.png": { season: 6 },
+    "/common/destiny2_content/icons/58d3ec8338cc9746a2e0cf901fbcec0e.png": { season: 7 },
+    "/common/destiny2_content/icons/a15754752f40aaf7b1b00aadb70a8f35.png": { season: 8 },
+    "/common/destiny2_content/icons/0b212b58a961f150708bca95095e0ecb.png": { season: 8 },
+    "/common/destiny2_content/icons/ede19a0e1a54564243b0e5e8a18bde84.png": { season: 9 },
+    "/common/destiny2_content/icons/247715dd42abef457b52ef37280c0e42.png": { season: 10 },
+    "/common/destiny2_content/icons/d105aa342f2d0c53a90a28477552f61f.png": { season: 11 },
+    "/common/destiny2_content/icons/bce51cf90464e28026140df77c4eb6ce.png": { season: 12 },
+    "/common/destiny2_content/icons/a5e27dc822aa72787f388bd1fc115803.png": { season: 12 },
+    "/common/destiny2_content/icons/7b48b09fbb50634680168d5880b16bc9.png": { season: 13 },
+    "/common/destiny2_content/icons/36418dde751148bd3b95a023d491ea73.png": { season: 14 },
+    "/common/destiny2_content/icons/914322d11262322c839a5388db2a4943.png": { season: 15 },
+    "/common/destiny2_content/icons/bcc26708e314306fb2fc8cb98fcbf47e.png": { label: "Bungie 30th Anniversary", sortOrder: 15.5 },
+    "/common/destiny2_content/icons/0b441021fbc328e6d0e2abc895f5c96e.png": { season: 16 },
+    "/common/destiny2_content/icons/7b41678824a620d4f295984862702179.png": { season: 16 },
+    "/common/destiny2_content/icons/75adde12e4e9c9fb237e492d8258eb73.png": { season: 17 },
+    "/common/destiny2_content/icons/7d815c943977fe71bbf00caf1bd9c514.png": { season: 18 },
+    "/common/destiny2_content/icons/41d05b7cb5cc0a384af07ee9b7d36dd2.png": { season: 19 },
+    "/common/destiny2_content/icons/fc02418ad2002351a3f88faa5b14eb88.png": { season: 20 },
+    "/common/destiny2_content/icons/a0556509f8825756b6b89f59f90528ec.png": { season: 20 },
+    "/common/destiny2_content/icons/ae5c7f708a36f754c2f68c65c88ab9aa.png": { season: 21 },
+    "/common/destiny2_content/icons/2dc17f123b7449b14144e76cfbeb2309.png": { season: 22 },
+    "/common/destiny2_content/icons/6f17d323d81dd683086d88a9268f8106.png": { season: 23 },
+    "/common/destiny2_content/icons/9bfaa5536772e2f3ef1252813a21c4d1.png": { season: 24 },
+    "/common/destiny2_content/icons/661c84a377389a3b8a1fc38b44189b41.png": { season: 24 },
+    "/common/destiny2_content/icons/5232219633cc4d90570bffda36caccf4.png": { season: 25 },
+    "/common/destiny2_content/icons/0ac354c1c326441716ddb15d2c158c59.png": { season: 26 },
+    "/common/destiny2_content/icons/249813e647271a8227bae0d8a39ed505.png": { season: 27 },
+    "/common/destiny2_content/icons/6129365b4fad6754f2b8c4478fc3c4ac.png": { season: 27 },
+    "/common/destiny2_content/icons/95f7754d52d6016fdc445fb62aa7a31e.png": { label: "Renegades", sortOrder: 28 },
+    "/common/destiny2_content/icons/4376a7d734583ae347acf9732aa3bb43.png": { label: "Renegades", sortOrder: 28 },
+};
 
 function getCollectibleState(profile: any, collectibleHash: number) {
     let state = profile?.profileCollectibles?.data?.collectibles?.[collectibleHash]?.state;
@@ -69,7 +124,7 @@ function buildCollectionTileModels(
     collectibleTable: Record<string, any> | undefined,
     itemTable: Record<string, any> | undefined,
     profile: any,
-    showAll: boolean,
+    visibilityOptions: CollectionVisibilityOptions,
     iconDecodeWidth: number
 ): CollectionTileModel[] {
     if (!collectibleTable || !itemTable) return [];
@@ -87,8 +142,8 @@ function buildCollectionTileModels(
         const isAcquired = (state & 1) === 0;
         const isVisible = (state & 4) === 0;
 
-        if (!isVisible) return [];
-        if (!showAll && isAcquired) return [];
+        if (!isVisible && visibilityOptions.hideInvisibleItems) return [];
+        if (isAcquired && visibilityOptions.hideAcquiredItems) return [];
 
         const iconPath = normalizeBungieAssetPath(itemDefinition.displayProperties?.icon);
         const watermarkPath = normalizeBungieAssetPath(
@@ -113,13 +168,51 @@ function buildCollectionTileModels(
     });
 }
 
+function collectPresentationNodeCollectibles(
+    presentationNode: any,
+    presentationNodeTable: Record<string, any> | undefined,
+    visitedNodeHashes = new Set<number>(),
+    collectedHashes = new Set<number>()
+): any[] {
+    const directCollectibles = presentationNode?.children?.collectibles ?? [];
+    const collectedChildren: any[] = [];
+
+    for (const collectibleChild of directCollectibles) {
+        const collectibleHash = Number(collectibleChild.collectibleHash);
+
+        if (!Number.isSafeInteger(collectibleHash) || collectedHashes.has(collectibleHash)) continue;
+
+        collectedHashes.add(collectibleHash);
+        collectedChildren.push(collectibleChild);
+    }
+
+    for (const childNodeEntry of presentationNode?.children?.presentationNodes ?? []) {
+        const childNodeHash = Number(childNodeEntry.presentationNodeHash);
+
+        if (!Number.isSafeInteger(childNodeHash) || visitedNodeHashes.has(childNodeHash)) continue;
+
+        visitedNodeHashes.add(childNodeHash);
+        const childNode = presentationNodeTable?.[String(childNodeHash)] ?? childNodeEntry;
+        collectedChildren.push(
+            ...collectPresentationNodeCollectibles(
+                childNode,
+                presentationNodeTable,
+                visitedNodeHashes,
+                collectedHashes
+            )
+        );
+    }
+
+    return collectedChildren;
+}
+
 function buildCollectionGroupModels(
     groupChildren: any[],
     presentationNodeTable: Record<string, any> | undefined,
     collectibleTable: Record<string, any> | undefined,
     itemTable: Record<string, any> | undefined,
     profile: any,
-    showAll: boolean,
+    visibilityOptions: CollectionVisibilityOptions,
     iconDecodeWidth: number
 ): CollectionGroupModel[] {
     if (!presentationNodeTable || !collectibleTable || !itemTable) return [];
@@ -127,12 +220,13 @@ function buildCollectionGroupModels(
     return groupChildren.flatMap((child: any) => {
         const presentationNodeHash = child.presentationNodeHash;
         const groupNode = presentationNodeTable[String(presentationNodeHash)] ?? child;
+        const groupCollectibles = collectPresentationNodeCollectibles(groupNode, presentationNodeTable);
         const items = buildCollectionTileModels(
-            groupNode.children?.collectibles ?? [],
+            groupCollectibles,
             collectibleTable,
             itemTable,
             profile,
-            showAll,
+            visibilityOptions,
             iconDecodeWidth
         );
 
@@ -146,6 +240,90 @@ function buildCollectionGroupModels(
                 : undefined,
             items,
         }];
+    });
+}
+
+function getItemReleaseWatermarkPath(itemDefinition: any) {
+    return normalizeBungieAssetPath(
+        itemDefinition?.quality?.displayVersionWatermarkIcons?.[0] ||
+        itemDefinition?.iconWatermark ||
+        itemDefinition?.iconWatermarkShelved
+    ) ?? undefined;
+}
+
+function getReleaseSeasonGroupMetadata(item: CollectionTileModel) {
+    const watermarkPath = getItemReleaseWatermarkPath(item.definition);
+    const normalizedWatermarkPath = watermarkPath?.toLowerCase();
+    const configuredGroup = normalizedWatermarkPath
+        ? RELEASE_WATERMARK_GROUPS[normalizedWatermarkPath]
+        : undefined;
+
+    if (configuredGroup?.season) {
+        const seasonInfo = D2SeasonInfo[configuredGroup.season];
+        const seasonName = configuredGroup.season <= 3
+            ? seasonInfo?.DLCName
+            : seasonInfo?.seasonName;
+
+        return {
+            key: `season-${configuredGroup.season}`,
+            name: seasonName
+                ? `${seasonName}`
+                : `Season ${configuredGroup.season}`,
+            sortOrder: configuredGroup.season,
+            iconPath: watermarkPath,
+        };
+    }
+
+    if (configuredGroup?.label) {
+        return {
+            key: `release-${configuredGroup.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+            name: configuredGroup.label,
+            sortOrder: configuredGroup.sortOrder ?? UNKNOWN_RELEASE_GROUP_SORT_ORDER,
+            iconPath: watermarkPath,
+        };
+    }
+
+    if (watermarkPath) {
+        return {
+            key: `watermark-${watermarkPath}`,
+            name: "Other Releases",
+            sortOrder: UNKNOWN_RELEASE_GROUP_SORT_ORDER,
+            iconPath: watermarkPath,
+        };
+    }
+
+    return {
+        key: "unknown-release",
+        name: "Unknown Release",
+        sortOrder: UNKNOWN_RELEASE_GROUP_SORT_ORDER + 1,
+        iconPath: undefined,
+    };
+}
+
+function buildReleaseSeasonGroups(items: CollectionTileModel[]): ReleaseSeasonGroupModel[] {
+    const groupByKey = new Map<string, ReleaseSeasonGroupModel>();
+
+    for (const item of items) {
+        const groupMetadata = getReleaseSeasonGroupMetadata(item);
+        const existingGroup = groupByKey.get(groupMetadata.key);
+
+        if (existingGroup) {
+            existingGroup.items.push(item);
+            continue;
+        }
+
+        groupByKey.set(groupMetadata.key, {
+            ...groupMetadata,
+            items: [item],
+        });
+    }
+
+    return Array.from(groupByKey.values()).sort((firstGroup, secondGroup) => {
+        if (firstGroup.sortOrder !== secondGroup.sortOrder) {
+            return firstGroup.sortOrder - secondGroup.sortOrder;
+        }
+
+        return firstGroup.name.localeCompare(secondGroup.name);
     });
 }
 
@@ -258,26 +436,58 @@ function useArmorSetGroupLayout(tileSizePx: number) {
 export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
     const { node: rootNode, isLoading: isRootLoading } = usePresentationNode(rootHash);
     const characterIconSize = useSettingsStore((state) => state.iconSize);
+    const hideAcquiredCollectionItems = useSettingsStore((state) => state.hideAcquiredCollectionItems);
+    const setHideAcquiredCollectionItems = useSettingsStore((state) => state.setHideAcquiredCollectionItems);
+    const hideInvisibleCollectionItems = useSettingsStore((state) => state.hideInvisibleCollectionItems);
+    const groupCollectionItems = useSettingsStore((state) => state.groupCollectionItems);
+    const setGroupCollectionItems = useSettingsStore((state) => state.setGroupCollectionItems);
     const collectionTileSizePx = getCollectionIconSizePx(characterIconSize);
     const collectionTileDecodeWidth = collectionTileSizePx * 2;
     const [selectedTopHash, setSelectedTopHash] = useState<number | null>(null);
     const [selectedTier2Hash, setSelectedTier2Hash] = useState<number | null>(null);
     const [selectedTier3Hash, setSelectedTier3Hash] = useState<number | null>(null);
-    const [showAll, setShowAll] = useState(true);
+    const [hasRestoredSelection, setHasRestoredSelection] = useState(false);
+    const collectionVisibilityOptions = useMemo<CollectionVisibilityOptions>(() => ({
+        hideAcquiredItems: hideAcquiredCollectionItems,
+        hideInvisibleItems: hideInvisibleCollectionItems,
+    }), [hideAcquiredCollectionItems, hideInvisibleCollectionItems]);
 
-    // Initialize state from local storage on mount
     useEffect(() => {
-        const storedShowAll = localStorage.getItem('collections_show_all');
-        if (storedShowAll !== null) {
-            setShowAll(storedShowAll === 'true');
+        try {
+            const storedSelection = localStorage.getItem(COLLECTION_SELECTION_STORAGE_KEY);
+
+            if (storedSelection) {
+                const selection = JSON.parse(storedSelection);
+
+                if (Number.isSafeInteger(selection?.selectedTopHash)) {
+                    setSelectedTopHash(selection.selectedTopHash);
+                }
+                if (Number.isSafeInteger(selection?.selectedTier2Hash)) {
+                    setSelectedTier2Hash(selection.selectedTier2Hash);
+                }
+                if (Number.isSafeInteger(selection?.selectedTier3Hash)) {
+                    setSelectedTier3Hash(selection.selectedTier3Hash);
+                }
+            }
+        } catch {
+            localStorage.removeItem(COLLECTION_SELECTION_STORAGE_KEY);
+        } finally {
+            setHasRestoredSelection(true);
         }
     }, []);
 
-    const handleToggleShowAll = () => {
-        const newValue = !showAll;
-        setShowAll(newValue);
-        localStorage.setItem('collections_show_all', String(newValue));
-    };
+    useEffect(() => {
+        if (!hasRestoredSelection) return;
+
+        localStorage.setItem(
+            COLLECTION_SELECTION_STORAGE_KEY,
+            JSON.stringify({
+                selectedTopHash,
+                selectedTier2Hash,
+                selectedTier3Hash,
+            })
+        );
+    }, [hasRestoredSelection, selectedTopHash, selectedTier2Hash, selectedTier3Hash]);
 
     const topLevelNodes = useMemo(() => {
         const rawNodes = rootNode?.children?.presentationNodes || [];
@@ -305,12 +515,12 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
             (node: any) => node.presentationNodeHash === selectedTopHash
         );
 
-        if (topLevelNodes.length > 0 && !selectedTopHashIsValid) {
+        if (topLevelNodes.length > 0 && hasRestoredSelection && !selectedTopHashIsValid) {
             setSelectedTopHash(topLevelNodes[0].presentationNodeHash);
             setSelectedTier2Hash(null);
             setSelectedTier3Hash(null);
         }
-    }, [topLevelNodes, selectedTopHash]);
+    }, [hasRestoredSelection, topLevelNodes, selectedTopHash]);
 
     const handleTopLevelSelect = (hash: number) => {
         if (hash === selectedTopHash) return;
@@ -331,9 +541,9 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
         selectedTopHash === PRESENTATION_NODES.LEGENDARY_ARMOR && selectedTier3Hash !== null;
 
     return (
-        <div className="flex flex-col h-[85vh] gap-4">
+        <div className="relative flex h-[85vh] flex-col gap-4 overflow-hidden">
             {/* Header Controls */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+            <div className="flex items-center border-b border-white/5 pb-2">
                 {/* Tier 1: Top Bar */}
                 <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar">
                     {topLevelNodes.map((node: any) => (
@@ -345,20 +555,6 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                         />
                     ))}
                 </div>
-
-                {/* Not Collected Switch */}
-                <button 
-                    onClick={handleToggleShowAll}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 transition-all border whitespace-nowrap ml-4",
-                        !showAll 
-                            ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold hover:cursor-pointer" 
-                            : " border-white/10 text-slate-400 hover:border-white/70 hover:text-white hover:cursor-pointer"
-                    )}
-                >
-                    {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    <span className="uppercase tracking-wider font-bold text-sm">{showAll ? 'All Items' : 'Missing Only'}</span>
-                </button>
             </div>
 
             {/* Content Area (Sidebar + Main) */}
@@ -397,7 +593,8 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                     {selectedTier3Hash ? (
                         <MainContentArea 
                             hash={selectedTier3Hash} 
-                            showAll={showAll}
+                            visibilityOptions={collectionVisibilityOptions}
+                            groupCollectionItems={groupCollectionItems}
                             usePagedArmorSetLayout={isPagedArmorSetView}
                             collectionTileSizePx={collectionTileSizePx}
                             collectionTileDecodeWidth={collectionTileDecodeWidth}
@@ -406,7 +603,8 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                         // Fallback: If Tier 2 is selected but no Tier 3 selected (or Tier 2 is leaf)
                          <MainContentArea 
                             hash={selectedTier2Hash} 
-                            showAll={showAll}
+                            visibilityOptions={collectionVisibilityOptions}
+                            groupCollectionItems={groupCollectionItems}
                             usePagedArmorSetLayout={false}
                             collectionTileSizePx={collectionTileSizePx}
                             collectionTileDecodeWidth={collectionTileDecodeWidth}
@@ -417,6 +615,42 @@ export function CollectionsBrowser({ rootHash }: CollectionsBrowserProps) {
                              <p>Select a category.</p>
                         </div>
                     )}
+                </div>
+            </div>
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-end">
+                <div className="pointer-events-auto flex items-center gap-2 border border-white/15 bg-[#0f151b]/75 p-2 shadow-2xl backdrop-blur-md">
+                    <button
+                        type="button"
+                        onClick={() => setGroupCollectionItems(!groupCollectionItems)}
+                        className={cn(
+                            "flex items-center gap-2 border px-4 py-2 transition-all whitespace-nowrap",
+                            groupCollectionItems
+                                ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold hover:cursor-pointer"
+                                : "border-white/10 text-slate-400 hover:border-white/70 hover:text-white hover:cursor-pointer"
+                        )}
+                        aria-pressed={groupCollectionItems}
+                    >
+                        <Layers className="w-4 h-4" />
+                        <span className="uppercase tracking-wider font-bold text-sm">
+                            {groupCollectionItems ? 'Grouped' : 'Flat'}
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setHideAcquiredCollectionItems(!hideAcquiredCollectionItems)}
+                        className={cn(
+                            "flex items-center gap-2 border px-4 py-2 transition-all whitespace-nowrap",
+                            hideAcquiredCollectionItems
+                                ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold hover:cursor-pointer"
+                                : "border-white/10 text-slate-400 hover:border-white/70 hover:text-white hover:cursor-pointer"
+                        )}
+                        aria-pressed={hideAcquiredCollectionItems}
+                    >
+                        {hideAcquiredCollectionItems ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        <span className="uppercase tracking-wider font-bold text-sm">
+                            {hideAcquiredCollectionItems ? 'Missing Only' : 'All Items'}
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -604,13 +838,15 @@ function Tier3Button({ hash, isSelected, onClick }: { hash: number, isSelected: 
 
 function MainContentArea({
     hash,
-    showAll,
+    visibilityOptions,
+    groupCollectionItems,
     usePagedArmorSetLayout,
     collectionTileSizePx,
     collectionTileDecodeWidth,
 }: {
     hash: number;
-    showAll: boolean;
+    visibilityOptions: CollectionVisibilityOptions;
+    groupCollectionItems: boolean;
     usePagedArmorSetLayout: boolean;
     collectionTileSizePx: number;
     collectionTileDecodeWidth: number;
@@ -636,10 +872,10 @@ function MainContentArea({
             collectibleTable,
             itemTable,
             profile,
-            showAll,
+            visibilityOptions,
             collectionTileDecodeWidth
         ),
-        [node, collectibleTable, itemTable, profile, showAll, collectionTileDecodeWidth]
+        [node, collectibleTable, itemTable, profile, visibilityOptions, collectionTileDecodeWidth]
     );
 
     const collectionGroups = useMemo(
@@ -649,30 +885,54 @@ function MainContentArea({
             collectibleTable,
             itemTable,
             profile,
-            showAll,
+            visibilityOptions,
             collectionTileDecodeWidth
         ),
-        [node, presentationNodeTable, collectibleTable, itemTable, profile, showAll, collectionTileDecodeWidth]
+        [node, presentationNodeTable, collectibleTable, itemTable, profile, visibilityOptions, collectionTileDecodeWidth]
     );
+
+    const flattenedGroupItems = useMemo(
+        () => collectionGroups.flatMap((group) => group.items),
+        [collectionGroups]
+    );
+    const directReleaseSeasonGroups = useMemo(
+        () => buildReleaseSeasonGroups(directItems),
+        [directItems]
+    );
+    const nestedReleaseSeasonGroups = useMemo(
+        () => buildReleaseSeasonGroups(flattenedGroupItems),
+        [flattenedGroupItems]
+    );
+    const hasGroups = (node?.children?.presentationNodes?.length ?? 0) > 0;
+    const hasItems = (node?.children?.collectibles?.length ?? 0) > 0;
+    const needsGroupModels = hasGroups;
 
     const isContentLoading =
         isLoading ||
         collectibleTableLoading ||
         itemTableLoading ||
-        (usePagedArmorSetLayout && presentationNodeTableLoading);
+        (needsGroupModels && presentationNodeTableLoading);
 
     if (isContentLoading) return <div className="p-8 text-slate-500">Loading content...</div>;
     if (!node) return null;
 
     // Check if node has Presentation Nodes (Tier 4 Groups)
-    const hasGroups = node.children?.presentationNodes?.length > 0;
-    const hasItems = node.children?.collectibles?.length > 0;
     const shouldUsePagedArmorSetLayout =
-        usePagedArmorSetLayout && hasGroups && collectionGroups.length > 0;
+        groupCollectionItems && usePagedArmorSetLayout && hasGroups && collectionGroups.length > 0;
+    const shouldShowFlatGroupItems =
+        hasGroups && !groupCollectionItems && flattenedGroupItems.length > 0;
+    const shouldShowGroupedNestedItems =
+        groupCollectionItems && hasGroups && !shouldUsePagedArmorSetLayout && nestedReleaseSeasonGroups.length > 0;
+    const shouldShowGroupedDirectItems =
+        groupCollectionItems && hasItems && directReleaseSeasonGroups.length > 0;
+    const shouldShowFlatDirectItems =
+        !groupCollectionItems && hasItems && directItems.length > 0;
     const shouldShowNoItems =
         (!hasGroups && !hasItems) ||
         (hasItems && directItems.length === 0) ||
-        (usePagedArmorSetLayout && hasGroups && collectionGroups.length === 0);
+        (hasGroups && groupCollectionItems && usePagedArmorSetLayout && collectionGroups.length === 0) ||
+        (hasGroups && groupCollectionItems && !usePagedArmorSetLayout && nestedReleaseSeasonGroups.length === 0) ||
+        (hasGroups && !groupCollectionItems && flattenedGroupItems.length === 0);
 
     return (
         <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -687,21 +947,30 @@ function MainContentArea({
             {/* Case 1: Tier 4 Groups */}
             {shouldUsePagedArmorSetLayout ? (
                 <PaginatedCollectionGroups groups={collectionGroups} tileSizePx={collectionTileSizePx} />
-            ) : hasGroups && node.children.presentationNodes.map((child: any) => (
-                <CollectionGroup 
-                    key={child.presentationNodeHash} 
-                    hash={child.presentationNodeHash} 
-                    profile={profile}
-                    showAll={showAll}
-                    collectibleTable={collectibleTable}
-                    itemTable={itemTable}
+            ) : shouldShowGroupedNestedItems ? (
+                <ReleaseSeasonGroups
+                    groups={nestedReleaseSeasonGroups}
                     tileSizePx={collectionTileSizePx}
-                    iconDecodeWidth={collectionTileDecodeWidth}
                 />
-            ))}
+            ) : null}
+
+            {shouldShowFlatGroupItems && (
+                <CollectionTileGrid
+                    items={flattenedGroupItems}
+                    height="calc(85vh - 220px)"
+                    tileSizePx={collectionTileSizePx}
+                />
+            )}
 
             {/* Case 2: Direct Items (Leaf Node) */}
-            {hasItems && directItems.length > 0 && (
+            {shouldShowGroupedDirectItems && (
+                <ReleaseSeasonGroups
+                    groups={directReleaseSeasonGroups}
+                    tileSizePx={collectionTileSizePx}
+                />
+            )}
+
+            {shouldShowFlatDirectItems && (
                 <CollectionTileGrid
                     items={directItems}
                     height="calc(85vh - 220px)"
@@ -712,6 +981,48 @@ function MainContentArea({
             {shouldShowNoItems ? (
                  <div className="text-slate-500 italic p-4">No items found.</div>
             ) : null}
+        </div>
+    );
+}
+
+function ReleaseSeasonGroups({
+    groups,
+    tileSizePx,
+}: {
+    groups: ReleaseSeasonGroupModel[];
+    tileSizePx: number;
+}) {
+    return (
+        <div className="space-y-6 pb-20">
+            {groups.map((group) => {
+                return (
+                    <section key={group.key} className="space-y-2">
+                        <h3 className="flex items-center gap-2 border-b border-white/5 pb-1 text-sm font-bold uppercase tracking-wider text-destiny-gold">
+                            <span>{group.name}</span>
+                            <span className="text-xs font-medium text-slate-500">
+                                {group.items.length}
+                            </span>
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                            {group.items.map((item, index) => (
+                                <div
+                                    key={item.collectibleHash}
+                                    style={{
+                                        width: tileSizePx,
+                                        height: tileSizePx + 8,
+                                    }}
+                                >
+                                    <InteractiveCollectionTile
+                                        item={item}
+                                        fetchPriority={index < 18 ? "auto" : "low"}
+                                        tileSizePx={tileSizePx}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                );
+            })}
         </div>
     );
 }
@@ -952,7 +1263,8 @@ function CollectionTileWrap({
 function CollectionGroup({
     hash,
     profile,
-    showAll,
+    visibilityOptions,
+    presentationNodeTable,
     collectibleTable,
     itemTable,
     tileSizePx,
@@ -960,28 +1272,33 @@ function CollectionGroup({
 }: {
     hash: number;
     profile: any;
-    showAll: boolean;
+    visibilityOptions: CollectionVisibilityOptions;
+    presentationNodeTable: Record<string, any> | undefined;
     collectibleTable: Record<string, any> | undefined;
     itemTable: Record<string, any> | undefined;
     tileSizePx: number;
     iconDecodeWidth: number;
 }) {
     const { node } = usePresentationNode(hash);
+    const collectibleChildren = useMemo(
+        () => collectPresentationNodeCollectibles(node, presentationNodeTable),
+        [node, presentationNodeTable]
+    );
     const items = useMemo(
         () => buildCollectionTileModels(
-            node?.children?.collectibles ?? [],
+            collectibleChildren,
             collectibleTable,
             itemTable,
             profile,
-            showAll,
+            visibilityOptions,
             iconDecodeWidth
         ),
-        [node, collectibleTable, itemTable, profile, showAll, iconDecodeWidth]
+        [collectibleChildren, collectibleTable, itemTable, profile, visibilityOptions, iconDecodeWidth]
     );
     
     if (!node) return null;
     
-    const collectibles = node.children?.collectibles || [];
+    const collectibles = collectibleChildren;
     if (collectibles.length === 0) return null;
     if (items.length === 0) return null;
 

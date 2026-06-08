@@ -3,13 +3,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { usePresentationNode, useRecord } from '@/hooks/useDefinitions';
-import { ChevronRight, ArrowLeft, CheckCircle2, Trophy, Search, X, AlertTriangle, Settings2 } from 'lucide-react';
+import { ChevronRight, ArrowLeft, CheckCircle2, Trophy, Search, X, AlertTriangle, Settings2, Eye, EyeOff, Layers } from 'lucide-react';
 import { getBungieImage, bungieApi, endpoints } from '@/lib/bungie';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
 import { ScrollingText } from '@/components/ScrollingText';
 import { PretextLineClamp } from '@/components/PretextLineClamp';
+import { useSettingsStore } from '@/store/settingsStore';
 
 interface TriumphsBrowserProps {
     rootHash: number;
@@ -25,19 +26,39 @@ type NodeProgress = {
 type SealSortOption = 'name_asc' | 'name_desc' | 'completion_asc' | 'completion_desc';
 type SealCompletionFilter = 'all' | 'completed' | 'incomplete';
 
+type RecordVisibilityOptions = {
+    showCompleted: boolean;
+    hideInvisible: boolean;
+    hideUnobtainable: boolean;
+};
+
+const LEGACY_TITLES_NODE_HASH = 1881970629;
+
 export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowserProps) {
     const [history, setHistory] = useState<number[]>([]);
     const [currentHash, setCurrentHash] = useState<number | undefined>(rootHash);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const isSealsMode = mode === 'seals';
 
-    const [showCompleted, setShowCompleted] = useState(true);
     const [sealSortOption, setSealSortOption] = useState<SealSortOption>('name_asc');
     const [sealCompletionFilter, setSealCompletionFilter] = useState<SealCompletionFilter>('all');
+    const hideCompletedTriumphs = useSettingsStore((state) => state.hideCompletedTriumphs);
+    const setHideCompletedTriumphs = useSettingsStore((state) => state.setHideCompletedTriumphs);
+    const hideInvisibleTriumphs = useSettingsStore((state) => state.hideInvisibleTriumphs);
+    const hideUnobtainableTriumphs = useSettingsStore((state) => state.hideUnobtainableTriumphs);
+    const groupTitles = useSettingsStore((state) => state.groupTitles);
+    const setGroupTitles = useSettingsStore((state) => state.setGroupTitles);
 
     const { node, isLoading, isError } = usePresentationNode(currentHash);
+    const { node: legacyTitlesNode } = usePresentationNode(isSealsMode ? LEGACY_TITLES_NODE_HASH : undefined);
     const { profile } = useDestinyProfileContext();
+    const recordVisibilityOptions: RecordVisibilityOptions = {
+        showCompleted: !hideCompletedTriumphs,
+        hideInvisible: hideInvisibleTriumphs,
+        hideUnobtainable: hideUnobtainableTriumphs,
+    };
 
     // Reset when rootHash changes (e.g. switching tabs)
     useEffect(() => {
@@ -145,18 +166,38 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
         );
     }
 
-    const childNodes = node?.children?.presentationNodes || [];
+    const baseChildNodes = node?.children?.presentationNodes || [];
+    const childNodes = (() => {
+        if (!isSealsMode || currentHash !== rootHash) {
+            return baseChildNodes;
+        }
+
+        const childNodeByHash = new Map<number, any>();
+
+        for (const childNode of baseChildNodes) {
+            childNodeByHash.set(Number(childNode.presentationNodeHash), childNode);
+        }
+
+        for (const childNode of legacyTitlesNode?.children?.presentationNodes ?? []) {
+            childNodeByHash.set(Number(childNode.presentationNodeHash), {
+                ...childNode,
+                isLegacyTitleNode: true,
+            });
+        }
+
+        return Array.from(childNodeByHash.values());
+    })();
     const childRecords = node?.children?.records || [];
-    const isSealsMode = mode === 'seals';
     const itemLabel = isSealsMode ? 'Seals' : 'Triumphs';
     const isSealDetail = isSealsMode && history.length > 0 && childRecords.length > 0;
     const shouldShowNodeHeader = !(isSealsMode && history.length === 0);
+    const isMissingTitlesOnly = sealCompletionFilter === 'incomplete';
 
     return (
-        <div className="space-y-6">
+        <div className={cn("relative space-y-6", isSealsMode && !isSealDetail && "pb-24")}>
             {/* Header & Search */}
             {!isSealDetail && (
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center">
                <div className="flex-1 w-full">
                    <form onSubmit={performSearch} className="relative">
                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -188,15 +229,15 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                    />
                ) : (
                    <button
-                       onClick={() => setShowCompleted(!showCompleted)}
+                       onClick={() => setHideCompletedTriumphs(!hideCompletedTriumphs)}
                        className={cn(
                            "flex items-center gap-2 px-4 py-2 border transition-all rounded-none min-w-[160px] justify-center",
-                           showCompleted ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold" : "bg-black/20 border-white/10 text-slate-500 hover:text-slate-300"
+                           !hideCompletedTriumphs ? "bg-destiny-gold/10 border-destiny-gold text-destiny-gold" : "bg-black/20 border-white/10 text-slate-500 hover:text-slate-300"
                        )}
                    >
-                       <div className={cn("w-2 h-2 rounded-full", showCompleted ? "bg-destiny-gold" : "bg-slate-600")} />
+                       <div className={cn("w-2 h-2 rounded-full", !hideCompletedTriumphs ? "bg-destiny-gold" : "bg-slate-600")} />
                        <span className="text-sm font-bold uppercase tracking-wider hover:cursor-pointer">
-                           {showCompleted ? `All ${itemLabel}` : "Incomplete Only"}
+                           {!hideCompletedTriumphs ? `All ${itemLabel}` : "Incomplete Only"}
                        </span>
                    </button>
                )}
@@ -216,7 +257,7 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                                     key={result.hash}
                                     hash={result.hash}
                                     profile={profile}
-                                    showCompleted={showCompleted}
+                                    visibilityOptions={recordVisibilityOptions}
                                 />
                              ))}
                         </div>
@@ -230,7 +271,7 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                     node={node}
                     records={childRecords}
                     profile={profile}
-                    showCompleted={showCompleted}
+                    visibilityOptions={recordVisibilityOptions}
                     onBack={handleBack}
                 />
             ) : (
@@ -288,7 +329,7 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                         <div className={cn(
                             "mb-8",
                             isSealsMode
-                                ? "grid grid-cols-2 justify-center gap-x-6 gap-y-8 sm:grid-cols-[repeat(auto-fill,152px)] sm:gap-x-10"
+                                ? ""
                                 : "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
                         )}>
                             {isSealsMode ? (
@@ -298,6 +339,7 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                                     completionFilter={sealCompletionFilter}
                                     onNodeClick={handleNodeClick}
                                     profile={profile}
+                                    groupTitles={groupTitles}
                                 />
                             ) : (
                                 childNodes.map((child: any) => (
@@ -320,7 +362,7 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                                     key={child.recordHash}
                                     hash={child.recordHash}
                                     profile={profile}
-                                    showCompleted={showCompleted}
+                                    visibilityOptions={recordVisibilityOptions}
                                 />
                             ))}
                         </div>
@@ -332,6 +374,42 @@ export function TriumphsBrowser({ rootHash, mode = 'triumphs' }: TriumphsBrowser
                         </div>
                     )}
                 </>
+            )}
+            {isSealsMode && !isSealDetail && (
+                <div className="pointer-events-none sticky bottom-4 z-30 flex justify-end">
+                    <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 border border-white/15 bg-[#0f151b]/75 p-2 shadow-2xl backdrop-blur-md">
+                        <button
+                            type="button"
+                            onClick={() => setSealCompletionFilter(isMissingTitlesOnly ? 'all' : 'incomplete')}
+                            className={cn(
+                                "flex h-10 items-center gap-2 border px-3 text-xs font-bold uppercase tracking-wider transition-colors",
+                                isMissingTitlesOnly
+                                    ? "border-destiny-gold bg-destiny-gold/10 text-destiny-gold"
+                                    : "border-white/10 text-slate-400 hover:border-white/70 hover:text-white"
+                            )}
+                            aria-pressed={isMissingTitlesOnly}
+                            title={isMissingTitlesOnly ? "Show all titles" : "Hide acquired titles"}
+                        >
+                            {isMissingTitlesOnly ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            <span>{isMissingTitlesOnly ? "Missing Only" : "All Titles"}</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setGroupTitles(!groupTitles)}
+                            className={cn(
+                                "flex h-10 items-center gap-2 border px-3 text-xs font-bold uppercase tracking-wider transition-colors",
+                                groupTitles
+                                    ? "border-destiny-gold bg-destiny-gold/10 text-destiny-gold"
+                                    : "border-white/10 text-slate-400 hover:border-white/70 hover:text-white"
+                            )}
+                            aria-pressed={groupTitles}
+                            title={groupTitles ? "Ungroup titles" : "Group titles by acquired status"}
+                        >
+                            <Layers className="h-4 w-4" />
+                            <span>Grouped</span>
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -484,8 +562,8 @@ function getSealNodeHash(nodeEntry: any) {
     return Number(nodeEntry.presentationNodeHash);
 }
 
-function getSealNodeName(nodeDefinition: any) {
-    return nodeDefinition?.displayProperties?.name || '';
+function getSealNodeName(nodeDefinition: any, nodeEntry?: any) {
+    return nodeDefinition?.displayProperties?.name || nodeEntry?.displayProperties?.name || '';
 }
 
 function compareSealCompletion(firstProgress: NodeProgress, secondProgress: NodeProgress) {
@@ -500,18 +578,55 @@ function compareSealCompletion(firstProgress: NodeProgress, secondProgress: Node
     return firstProgress.total - secondProgress.total;
 }
 
+type SealNodeDisplayEntry = {
+    entry: any;
+    hash: number;
+    definition: any;
+    progress: NodeProgress;
+    isComplete: boolean;
+    isLegacy: boolean;
+};
+
+function isLegacySealNode(nodeEntry: any, nodeDefinition: any) {
+    const displayProperties = nodeDefinition?.displayProperties ?? nodeEntry?.displayProperties ?? {};
+    const searchableText = [
+        displayProperties.name,
+        displayProperties.description,
+    ]
+        .filter((value) => value !== undefined && value !== null)
+        .join(' ')
+        .toLowerCase();
+
+    return (
+        searchableText.includes('legacy') ||
+        searchableText.includes('retired') ||
+        searchableText.includes('unavailable') ||
+        searchableText.includes('no longer available')
+    );
+}
+
+function shouldShowSealForCompletionFilter(isComplete: boolean, completionFilter: SealCompletionFilter) {
+    if (completionFilter === 'completed') return isComplete;
+    if (completionFilter === 'incomplete') return !isComplete;
+    return true;
+}
+
+const sealGridClassName = "grid grid-cols-2 justify-center gap-x-6 gap-y-8 sm:grid-cols-[repeat(auto-fill,152px)] sm:gap-x-10";
+
 function SealNodeGrid({
     nodes,
     sortOption,
     completionFilter,
     onNodeClick,
     profile,
+    groupTitles,
 }: {
     nodes: any[],
     sortOption: SealSortOption,
     completionFilter: SealCompletionFilter,
     onNodeClick: (hash: number) => void,
     profile: any,
+    groupTitles: boolean,
 }) {
     const nodeHashes = useMemo(
         () => nodes.map(getSealNodeHash).filter(Boolean),
@@ -532,16 +647,26 @@ function SealNodeGrid({
         }
     );
 
-    const sortedNodes = useMemo(() => {
-        return [...nodes].sort((firstNodeEntry: any, secondNodeEntry: any) => {
-            const firstHash = getSealNodeHash(firstNodeEntry);
-            const secondHash = getSealNodeHash(secondNodeEntry);
-            const firstNodeDefinition = nodeDefinitions[firstHash];
-            const secondNodeDefinition = nodeDefinitions[secondHash];
+    const sortedNodes = useMemo<SealNodeDisplayEntry[]>(() => {
+        return nodes
+            .map((nodeEntry: any) => {
+                const hash = getSealNodeHash(nodeEntry);
+                const definition = nodeDefinitions[hash];
+                const progress = getPresentationNodeProgress(hash, definition, profile);
+                const isComplete = progress.total > 0 && progress.current >= progress.total;
+                const isLegacy = Boolean(nodeEntry.isLegacyTitleNode) || isLegacySealNode(nodeEntry, definition);
+
+                return { entry: nodeEntry, hash, definition, progress, isComplete, isLegacy };
+            })
+            .filter((nodeEntry) => nodeEntry.hash)
+            .filter((nodeEntry) => shouldShowSealForCompletionFilter(nodeEntry.isComplete, completionFilter))
+            .sort((firstNodeEntry, secondNodeEntry) => {
+            const firstNodeDefinition = firstNodeEntry.definition;
+            const secondNodeDefinition = secondNodeEntry.definition;
 
             if (sortOption === 'name_asc' || sortOption === 'name_desc') {
-                const nameComparison = getSealNodeName(firstNodeDefinition).localeCompare(
-                    getSealNodeName(secondNodeDefinition)
+                const nameComparison = getSealNodeName(firstNodeDefinition, firstNodeEntry.entry).localeCompare(
+                    getSealNodeName(secondNodeDefinition, secondNodeEntry.entry)
                 );
 
                 if (nameComparison !== 0) {
@@ -550,8 +675,8 @@ function SealNodeGrid({
             }
 
             if (sortOption === 'completion_asc' || sortOption === 'completion_desc') {
-                const firstProgress = getPresentationNodeProgress(firstHash, firstNodeDefinition, profile);
-                const secondProgress = getPresentationNodeProgress(secondHash, secondNodeDefinition, profile);
+                const firstProgress = firstNodeEntry.progress;
+                const secondProgress = secondNodeEntry.progress;
                 const progressComparison = compareSealCompletion(firstProgress, secondProgress);
 
                 if (progressComparison !== 0) {
@@ -559,27 +684,85 @@ function SealNodeGrid({
                 }
             }
 
-            return (firstNodeEntry.nodeDisplayPriority || 0) - (secondNodeEntry.nodeDisplayPriority || 0);
+            return (firstNodeEntry.entry.nodeDisplayPriority || 0) - (secondNodeEntry.entry.nodeDisplayPriority || 0);
         });
-    }, [nodes, nodeDefinitions, profile, sortOption]);
+    }, [completionFilter, nodes, nodeDefinitions, profile, sortOption]);
 
-    return (
-        <>
-            {sortedNodes.map((child: any) => {
-                const hash = getSealNodeHash(child);
-
-                return (
-                    <SealNodeCard
-                        key={hash}
-                        hash={hash}
-                        onClick={onNodeClick}
-                        profile={profile}
-                        completionFilter={completionFilter}
-                    />
-                );
-            })}
-        </>
+    const renderSealNodeCards = (entries: SealNodeDisplayEntry[]) => (
+        <div className={sealGridClassName}>
+            {entries.map((nodeEntry) => (
+                <SealNodeCard
+                    key={nodeEntry.hash}
+                    hash={nodeEntry.hash}
+                    onClick={onNodeClick}
+                    profile={profile}
+                    completionFilter="all"
+                    isLegacy={nodeEntry.isLegacy}
+                />
+            ))}
+        </div>
     );
+
+    if (sortedNodes.length === 0) {
+        return <div className="text-center text-slate-500 py-12">No titles found.</div>;
+    }
+
+    const standardTitles = sortedNodes.filter((nodeEntry) => !nodeEntry.isLegacy);
+    const legacyTitles = sortedNodes.filter((nodeEntry) => nodeEntry.isLegacy);
+
+    const renderStandardTitles = (entries: SealNodeDisplayEntry[]) => {
+        if (entries.length === 0) return null;
+
+        if (groupTitles) {
+            const acquiredTitles = entries.filter((nodeEntry) => nodeEntry.isComplete);
+            const missingTitles = entries.filter((nodeEntry) => !nodeEntry.isComplete);
+
+            return (
+                <div className="space-y-8">
+                    {acquiredTitles.length > 0 && (
+                        <section className="space-y-3">
+                            <h3 className="border-b border-white/10 pb-2 text-xs font-bold uppercase tracking-[0.22em] text-destiny-gold">
+                                Acquired Titles
+                            </h3>
+                            {renderSealNodeCards(acquiredTitles)}
+                        </section>
+                    )}
+                    {missingTitles.length > 0 && (
+                        <section className="space-y-3">
+                            <h3 className="border-b border-white/10 pb-2 text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
+                                Missing Titles
+                            </h3>
+                            {renderSealNodeCards(missingTitles)}
+                        </section>
+                    )}
+                </div>
+            );
+        }
+
+        return renderSealNodeCards(entries);
+    };
+
+    const standardTitleContent = renderStandardTitles(standardTitles);
+
+    if (legacyTitles.length > 0) {
+        return (
+            <div className="space-y-10">
+                {standardTitleContent}
+                <section className="space-y-4 border-t border-white/10 pt-6">
+                    <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-white/10" />
+                        <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
+                            Legacy Titles
+                        </h3>
+                        <div className="h-px flex-1 bg-white/10" />
+                    </div>
+                    {renderSealNodeCards(legacyTitles)}
+                </section>
+            </div>
+        );
+    }
+
+    return standardTitleContent;
 }
 
 function getRecordComponent(profile: any, recordHash: number) {
@@ -722,11 +905,13 @@ function SealNodeCard({
     onClick,
     profile,
     completionFilter,
+    isLegacy = false,
 }: {
     hash: number,
     onClick: (h: number) => void,
     profile: any,
     completionFilter: SealCompletionFilter,
+    isLegacy?: boolean,
 }) {
     const { node, isLoading } = usePresentationNode(hash);
 
@@ -744,7 +929,10 @@ function SealNodeCard({
             type="button"
             onClick={() => onClick(hash)}
             title={node.displayProperties?.name}
-            className="group flex min-w-0 flex-col items-center text-left"
+            className={cn(
+                "group flex min-w-0 flex-col items-center text-left",
+                isLegacy && "opacity-65 grayscale transition-opacity hover:opacity-90"
+            )}
         >
             <div className="relative aspect-square w-full max-w-[168px] overflow-hidden border border-transparent transition-colors duration-200 group-hover:border-white/15">
                 {progress.total > 0 && (
@@ -783,7 +971,10 @@ function SealNodeCard({
                 )}
             </div>
 
-            <div className="mt-2 min-h-8 overflow-hidden text-center text-xs font-bold uppercase tracking-wider text-slate-300 transition-colors group-hover:text-destiny-gold">
+            <div className={cn(
+                "mt-2 min-h-8 overflow-hidden text-center text-xs font-bold uppercase tracking-wider transition-colors group-hover:text-destiny-gold",
+                isLegacy ? "text-slate-500" : "text-slate-300"
+            )}>
                 <ScrollingText>{node.displayProperties?.name}</ScrollingText>
             </div>
         </button>
@@ -858,14 +1049,14 @@ function SealDetailView({
     node,
     records,
     profile,
-    showCompleted,
+    visibilityOptions,
     onBack,
 }: {
     hash: number,
     node: any,
     records: any[],
     profile: any,
-    showCompleted: boolean,
+    visibilityOptions: RecordVisibilityOptions,
     onBack: () => void,
 }) {
     const progress = getPresentationNodeProgress(hash, node, profile);
@@ -942,7 +1133,7 @@ function SealDetailView({
                         key={recordEntry.recordHash}
                         hash={recordEntry.recordHash}
                         profile={profile}
-                        showCompleted={showCompleted}
+                        visibilityOptions={visibilityOptions}
                     />
                 ))}
             </div>
@@ -950,7 +1141,31 @@ function SealDetailView({
     );
 }
 
-function SealRecordCard({ hash, profile, showCompleted }: { hash: number, profile: any, showCompleted: boolean }) {
+function shouldHideRecord(
+    state: number,
+    hasRecordComponent: boolean,
+    isCompleted: boolean,
+    visibilityOptions: RecordVisibilityOptions
+) {
+    const isInvisible = (state & 16) === 16;
+    const isUnobtainable = hasRecordComponent && !isCompleted && (state & 2) === 2;
+
+    if (isInvisible && visibilityOptions.hideInvisible) return true;
+    if (isUnobtainable && visibilityOptions.hideUnobtainable) return true;
+    if (isCompleted && !visibilityOptions.showCompleted) return true;
+
+    return false;
+}
+
+function SealRecordCard({
+    hash,
+    profile,
+    visibilityOptions,
+}: {
+    hash: number,
+    profile: any,
+    visibilityOptions: RecordVisibilityOptions,
+}) {
     const { record, isLoading } = useRecord(hash);
 
     if (isLoading) return <div className="min-h-36 border border-white/10 bg-white/5 animate-pulse" />;
@@ -959,14 +1174,12 @@ function SealRecordCard({ hash, profile, showCompleted }: { hash: number, profil
     const recordComponent = getRecordComponent(profile, hash);
     const state = recordComponent?.state ?? 6;
     const isCompleted = (state & 4) === 0;
-    const isInvisible = (state & 16) === 16;
     const isObscured = (state & 8) === 8;
     const objectiveRows = isObscured ? [] : getRecordObjectiveRows(record, recordComponent);
     const progress = getRecordProgress(record, recordComponent);
     const score = record.completionInfo?.ScoreValue || 0;
 
-    if (isInvisible) return null;
-    if (isCompleted && !showCompleted) return null;
+    if (shouldHideRecord(state, Boolean(recordComponent), isCompleted, visibilityOptions)) return null;
 
     return (
         <article className={cn(
@@ -1060,7 +1273,15 @@ function SealObjectiveRow({ objective, isCompleted }: { objective: any, isComple
     );
 }
 
-function RecordItem({ hash, profile, showCompleted }: { hash: number, profile: any, showCompleted: boolean }) {
+function RecordItem({
+    hash,
+    profile,
+    visibilityOptions,
+}: {
+    hash: number,
+    profile: any,
+    visibilityOptions: RecordVisibilityOptions,
+}) {
     const { record, isLoading } = useRecord(hash);
 
     if (isLoading) return <div className="h-20 bg-white/5 animate-pulse rounded-none" />;
@@ -1070,13 +1291,9 @@ function RecordItem({ hash, profile, showCompleted }: { hash: number, profile: a
     
     const state = recordComponent?.state ?? 6; // Default: ObjectiveNotCompleted | RewardUnavailable
     const isCompleted = (state & 4) === 0; // ObjectiveNotCompleted bit is 0
-    const isRedeemed = (state & 1) === 1;
     const isObscured = (state & 8) === 8;
-    const isInvisible = (state & 16) === 16;
-    const isEntitled = (state & 2) === 2; // Can redeem
 
-    if (isInvisible) return null;
-    if (isCompleted && !showCompleted) return null;
+    if (shouldHideRecord(state, Boolean(recordComponent), isCompleted, visibilityOptions)) return null;
 
     const objectives = recordComponent?.objectives || [];
     const score = record.completionInfo?.ScoreValue || 0;

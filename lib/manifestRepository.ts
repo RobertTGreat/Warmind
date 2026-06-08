@@ -10,7 +10,7 @@ type ManifestDefinitionTable<T> = Record<string, T>;
 
 const DEFAULT_LANGUAGE = "en";
 const DEFAULT_VIEW = "full";
-const DEFAULT_SCHEMA_VERSION = "v1";
+const DEFAULT_SCHEMA_VERSION = "v2";
 const INVENTORY_DEFINITION_TYPE = "DestinyInventoryItemDefinition";
 const CHUNK_SIZE = 1000;
 
@@ -154,6 +154,7 @@ async function writeManifestDefinitions<T>({
   view,
   language,
   schemaVersion,
+  isFullTable = false,
 }: {
   definitionType: string;
   definitions: ManifestDefinitionTable<T>;
@@ -161,6 +162,7 @@ async function writeManifestDefinitions<T>({
   view: string;
   language: string;
   schemaVersion: string;
+  isFullTable?: boolean;
 }) {
   if (!isDatabaseAvailable() || !manifestVersion) {
     return;
@@ -185,7 +187,10 @@ async function writeManifestDefinitions<T>({
     const metaKey = buildMetaKey(definitionType, view, language);
     const currentMeta = await db.manifestMeta.get(metaKey);
 
-    if (currentMeta && currentMeta.manifestVersion !== manifestVersion) {
+    if (
+      currentMeta &&
+      (currentMeta.manifestVersion !== manifestVersion || currentMeta.schemaVersion !== schemaVersion)
+    ) {
       await store.where("definitionType").equals(definitionType).delete();
 
       if (definitionType === INVENTORY_DEFINITION_TYPE) {
@@ -216,6 +221,16 @@ async function writeManifestDefinitions<T>({
       view,
       manifestVersion,
       schemaVersion,
+      isFullTable: isFullTable || (
+        currentMeta?.manifestVersion === manifestVersion &&
+        currentMeta.schemaVersion === schemaVersion &&
+        Boolean(currentMeta.isFullTable)
+      ),
+      rowCount: isFullTable
+        ? entries.length
+        : currentMeta?.manifestVersion === manifestVersion && currentMeta.schemaVersion === schemaVersion
+          ? currentMeta.rowCount
+          : undefined,
       updatedAt,
     });
   });
@@ -309,13 +324,21 @@ export async function getManifestTable<T = any>(
 
   if (isDatabaseAvailable()) {
     const store = getStore(view);
+    const metaKey = buildMetaKey(definitionType, view, language);
+    const cachedMeta = await db.manifestMeta.get(metaKey);
     const cachedRows = await store
       .where("definitionType")
       .equals(definitionType)
       .and((row) => row.view === view)
       .toArray();
 
-    if (cachedRows.length > 0) {
+    const hasCompleteCachedTable =
+      Boolean(cachedMeta?.isFullTable) &&
+      cachedMeta?.schemaVersion === schemaVersion &&
+      cachedRows.length > 0 &&
+      (!cachedMeta?.rowCount || cachedRows.length >= cachedMeta.rowCount);
+
+    if (hasCompleteCachedTable) {
       return cachedRows.reduce<ManifestDefinitionTable<T>>((definitions, row) => {
         definitions[String(row.hash)] = row.definition as T;
         return definitions;
@@ -335,6 +358,7 @@ export async function getManifestTable<T = any>(
     view,
     language,
     schemaVersion,
+    isFullTable: true,
   });
 
   return definitions;

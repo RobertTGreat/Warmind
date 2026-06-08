@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
+import { useInventoryItemDefinitionsFromTable } from '@/hooks/useInventoryItemDefinitionsFromTable';
+import { usePlugSetDefinitions } from '@/hooks/usePlugSetDefinitions';
+import { useClarityDescriptions } from '@/hooks/useClarityDescriptions';
+import { useManifestTable } from '@/hooks/useManifestTable';
+import type { ClarityDescription } from '@/lib/clarityDescriptions';
 import { 
     useLoadoutStore, 
     LOADOUT_BUCKETS, 
     LOADOUT_ICONS, 
     LOADOUT_COLORS,
-    LOADOUT_TAGS,
     DAMAGE_TYPES,
     CustomLoadout, 
     LoadoutItem,
@@ -20,7 +25,7 @@ import {
     decodeLoadoutShareCode,
     getLoadoutShareUrl,
 } from '@/store/loadoutStore';
-import { bungieApi, endpoints, getBungieImage, moveItem, equipItem, insertSocketPlugFree } from '@/lib/bungie';
+import { getBungieImage, moveItem, equipItem, insertSocketPlugFree, equipLoadout } from '@/lib/bungie';
 
 // Lazy load heavy item card component
 const DestinyItemCard = dynamic(
@@ -67,7 +72,6 @@ import {
 } from 'lucide-react';
 
 import { loginWithBungie } from '@/lib/bungie';
-import { PageHeader } from '@/components/PageHeader';
 import { FrostedCard } from '@/components/FrostedCard';
 import {
     LoadoutModal,
@@ -81,6 +85,7 @@ import {
     LoadoutIconBadge,
     BucketIcon,
     getLoadoutIconComponent,
+    resolveLoadoutIconId,
 } from '@/components/loadouts/loadoutIcons';
 import { CLASS_NAMES, CLASS_ICONS, DEFAULT_LOADOUT_ICON } from '@/components/loadouts/constants';
 
@@ -310,7 +315,6 @@ interface ItemPickerProps {
 function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemPickerProps) {
     const [searchQuery, setSearchQuery] = useState('');
     
-    // Gather all items from the bucket
     const allItems = useMemo(() => {
         const charItems = Object.values(profile?.characterInventories?.data || {}).flatMap((c: any) => c.items);
         const equipItems = Object.values(profile?.characterEquipment?.data || {}).flatMap((c: any) => c.items);
@@ -318,13 +322,21 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
         
         return [...charItems, ...equipItems, ...vaultItems];
     }, [profile]);
+
+    const bucketItems = useMemo(() => {
+        return allItems.filter((item: any) => (
+            !item.bucketHash ||
+            item.bucketHash === bucketHash ||
+            item.bucketHash === BUCKETS.VAULT
+        ));
+    }, [allItems, bucketHash]);
     
-    const itemHashes = useMemo(() => allItems.map((i: any) => i.itemHash), [allItems]);
-    const { definitions, isLoading } = useItemDefinitions(itemHashes);
+    const itemHashes = useMemo(() => bucketItems.map((item: any) => item.itemHash), [bucketItems]);
+    const { definitions, isLoading } = useInventoryItemDefinitionsFromTable(itemHashes, 'card');
     
     // Filter items by bucket and class
     const filteredItems = useMemo(() => {
-        return allItems.filter((item: any) => {
+        return bucketItems.filter((item: any) => {
             const def = definitions[item.itemHash];
             if (!def) return false;
             
@@ -349,7 +361,7 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
             
             return true;
         });
-    }, [allItems, definitions, bucketHash, classType, searchQuery]);
+    }, [bucketItems, definitions, bucketHash, classType, searchQuery]);
     
     const handleSelect = (item: any) => {
         const def = definitions[item.itemHash];
@@ -361,25 +373,25 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
     };
     
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[2px]" onClick={onClose}>
             <div 
-                className="flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden border border-white/10 bg-[#0b0f14] shadow-2xl shadow-black/70"
+                className="flex max-h-[76vh] w-full max-w-3xl flex-col overflow-hidden border-l-[3px] border-l-destiny-gold bg-[#090d13]/98 shadow-2xl shadow-black/70"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
-                    <h3 className="font-condensed text-lg font-bold uppercase tracking-wide text-white">Select Item</h3>
-                    <button type="button" onClick={onClose} className="p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
-                        <X className="w-5 h-5" />
+                <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
+                    <h3 className="font-condensed text-base font-bold uppercase tracking-wide text-white">Select Item</h3>
+                    <button type="button" onClick={onClose} className="p-1.5 text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
+                        <X className="h-4 w-4" />
                     </button>
                 </div>
                 
-                <div className="border-b border-white/10 p-4">
+                <div className="border-b border-white/5 p-3">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                         <input
                             type="text"
                             placeholder="Search items..."
-                            className="w-full border border-white/10 bg-black/40 py-2 pl-10 pr-4 text-sm text-white focus:border-destiny-gold/50 focus:outline-none"
+                            className="w-full border border-white/10 bg-slate-900 py-1.5 pl-8 pr-3 text-sm text-white placeholder:text-slate-600 focus:border-destiny-gold/50 focus:outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             autoFocus
@@ -388,7 +400,7 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
                 </div>
                 
                 {/* Items Grid */}
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
                     {isLoading ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-8 h-8 text-destiny-gold animate-spin" />
@@ -398,7 +410,7 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
                             No items found
                         </div>
                     ) : (
-                        <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 gap-y-7">
+                        <div className="grid grid-cols-6 gap-2 gap-y-7 sm:grid-cols-8 md:grid-cols-9">
                             {filteredItems.map((item: any, idx: number) => {
                                 const instanceId = item.itemInstanceId;
                                 const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
@@ -418,7 +430,6 @@ function ItemPicker({ bucketHash, classType, profile, onSelect, onClose }: ItemP
                                             className="w-full h-full"
                                             size="small"
                                             ownerId="picker"
-                                            tierAsNumber
                                         />
                                     </button>
                                 );
@@ -604,6 +615,251 @@ function FragmentRow({ fragments, maxFragments = 3, damageType }: FragmentRowPro
 
 // ===== Loadout Card =====
 
+type LoadoutSourceFilter = 'all' | 'site' | 'ingame';
+type LoadoutSortMode = 'updated' | 'name' | 'source';
+
+const LOADOUT_FILTER_STORAGE_KEY = 'warmind-loadout-source-filter';
+const LOADOUT_SORT_STORAGE_KEY = 'warmind-loadout-sort-mode';
+const LOADOUT_EDITOR_MODS_VIEW_STORAGE_KEY = 'warmind-loadout-editor-mods-view';
+const LOADOUT_SOURCE_FILTERS = ['all', 'site', 'ingame'] as const;
+const LOADOUT_SORT_MODES = ['updated', 'name', 'source'] as const;
+const ARMOR_MOD_SOCKET_CATEGORY_HASHES = new Set([
+    590099826,  // Armor Mods
+    2518356196, // Armor Cosmetics
+    3154740035, // General Mods
+]);
+
+function isLoadoutSourceFilter(value: string | null): value is LoadoutSourceFilter {
+    return LOADOUT_SOURCE_FILTERS.includes(value as LoadoutSourceFilter);
+}
+
+function isLoadoutSortMode(value: string | null): value is LoadoutSortMode {
+    return LOADOUT_SORT_MODES.includes(value as LoadoutSortMode);
+}
+
+function getReusablePlugItems(reusablePlugEntry: any): any[] {
+    if (Array.isArray(reusablePlugEntry)) return reusablePlugEntry;
+    if (Array.isArray(reusablePlugEntry?.plugs)) return reusablePlugEntry.plugs;
+    return [];
+}
+
+type DisplayedLoadoutEntry =
+    | {
+        source: 'site';
+        id: string;
+        loadout: CustomLoadout;
+        sortName: string;
+        updatedAt: string;
+      }
+    | {
+        source: 'ingame';
+        id: string;
+        loadout: any;
+        index: number;
+        sortName: string;
+      };
+
+function isNonEmptyInGameLoadout(loadout: any) {
+    const loadoutItems = Array.isArray(loadout?.items) ? loadout.items : [];
+    
+    return loadoutItems.some((loadoutItem: any) => {
+        const itemInstanceId = String(loadoutItem?.itemInstanceId ?? '');
+        
+        return itemInstanceId.length > 0 && itemInstanceId !== '0';
+    });
+}
+
+function normalizeLoadoutSearchText(values: unknown[]) {
+    return values
+        .flatMap((value) => {
+            if (Array.isArray(value)) return value;
+            return [value];
+        })
+        .filter((value) => value !== undefined && value !== null && value !== '')
+        .join(' ')
+        .toLowerCase();
+}
+
+function getDefinitionByHash(definitions: Record<number, any> | undefined, hash: number | undefined) {
+    if (!definitions || !Number.isSafeInteger(hash)) return undefined;
+    return definitions[hash!] || definitions[String(hash!) as unknown as number];
+}
+
+function collectDefinitionSearchValues(
+    definition: any,
+    itemDefinitions: Record<number, any>,
+    sandboxPerkDefinitions: Record<string, any> | Record<number, any> | undefined
+) {
+    if (!definition) return [];
+    
+    const perkHashes = (definition.perks || [])
+        .map((perk: any) => Number(perk?.perkHash))
+        .filter(Number.isSafeInteger);
+    const socketPlugHashes = (definition.sockets?.socketEntries || [])
+        .flatMap((socketEntry: any) => [
+            socketEntry?.singleInitialItemHash,
+            ...(socketEntry?.reusablePlugItems || []).map((plugItem: any) => plugItem?.plugItemHash),
+        ])
+        .map((plugHash: any) => Number(plugHash))
+        .filter(Number.isSafeInteger);
+    
+    return [
+        definition.hash,
+        definition.displayProperties?.name,
+        definition.displayProperties?.description,
+        definition.flavorText,
+        definition.itemTypeDisplayName,
+        definition.inventory?.tierTypeName,
+        definition.plug?.plugCategoryIdentifier,
+        definition.traitIds,
+        definition.itemCategoryHashes,
+        definition.defaultDamageTypeHash,
+        ...perkHashes.flatMap((perkHash: number) => {
+            const perkDefinition = getDefinitionByHash(sandboxPerkDefinitions as Record<number, any>, perkHash);
+            return [
+                perkHash,
+                perkDefinition?.displayProperties?.name,
+                perkDefinition?.displayProperties?.description,
+            ];
+        }),
+        ...socketPlugHashes.flatMap((plugHash: number) => {
+            const plugDefinition = getDefinitionByHash(itemDefinitions, plugHash);
+            return [
+                plugHash,
+                plugDefinition?.displayProperties?.name,
+                plugDefinition?.displayProperties?.description,
+                plugDefinition?.itemTypeDisplayName,
+            ];
+        }),
+    ];
+}
+
+function collectSiteLoadoutDefinitionHashes(loadout: CustomLoadout) {
+    const hashes = new Set<number>();
+    
+    loadout.items.forEach((item) => {
+        hashes.add(item.itemHash);
+        Object.values(item.socketOverrides || {}).forEach((plugHash) => hashes.add(plugHash));
+    });
+    loadout.armorMods?.forEach((armorMod) => {
+        armorMod.mods.forEach((mod) => hashes.add(mod.plugHash));
+    });
+    loadout.fashion?.forEach((fashion) => {
+        if (fashion.shaderHash) hashes.add(fashion.shaderHash);
+        if (fashion.ornamentHash) hashes.add(fashion.ornamentHash);
+    });
+    
+    const subclassConfig = loadout.subclassConfig;
+    if (subclassConfig) {
+        hashes.add(subclassConfig.itemHash);
+        if (subclassConfig.super?.plugHash) hashes.add(subclassConfig.super.plugHash);
+        Object.values(subclassConfig.abilities || {}).forEach((ability) => {
+            if (ability?.plugHash) hashes.add(ability.plugHash);
+        });
+        subclassConfig.aspects?.forEach((aspect) => hashes.add(aspect.plugHash));
+        subclassConfig.fragments?.forEach((fragment) => hashes.add(fragment.plugHash));
+    }
+    
+    return Array.from(hashes).filter(Number.isSafeInteger);
+}
+
+function collectInGameLoadoutDefinitionHashes(loadout: any, itemByInstanceId: Map<string, any>) {
+    const hashes = new Set<number>();
+    const loadoutItems = Array.isArray(loadout?.items) ? loadout.items : [];
+    
+    loadoutItems.forEach((loadoutItem: any) => {
+        const itemInstanceId = String(loadoutItem?.itemInstanceId ?? '');
+        const inventoryItem = itemInstanceId && itemInstanceId !== '0'
+            ? itemByInstanceId.get(itemInstanceId)
+            : undefined;
+        const itemHash = Number(inventoryItem?.itemHash || loadoutItem?.itemHash);
+        
+        if (Number.isSafeInteger(itemHash)) hashes.add(itemHash);
+        (loadoutItem?.plugItemHashes || []).forEach((plugHash: any) => {
+            const numericPlugHash = Number(plugHash);
+            if (Number.isSafeInteger(numericPlugHash)) hashes.add(numericPlugHash);
+        });
+    });
+    
+    return Array.from(hashes);
+}
+
+function getSiteLoadoutSearchText(
+    loadout: CustomLoadout,
+    itemDefinitions: Record<number, any>,
+    sandboxPerkDefinitions: Record<string, any> | Record<number, any> | undefined
+) {
+    const definitionHashes = collectSiteLoadoutDefinitionHashes(loadout);
+    
+    return normalizeLoadoutSearchText([
+        'in-site',
+        CLASS_NAMES[loadout.classType],
+        loadout.name,
+        loadout.description,
+        loadout.notes,
+        loadout.tags,
+        loadout.importedFrom,
+        ...definitionHashes.flatMap((hash) => collectDefinitionSearchValues(
+            getDefinitionByHash(itemDefinitions, hash),
+            itemDefinitions,
+            sandboxPerkDefinitions
+        )),
+        loadout.subclassConfig?.super?.name,
+        Object.values(loadout.subclassConfig?.abilities || {}).map((ability) => ability?.name),
+        loadout.subclassConfig?.aspects?.map((aspect) => aspect.name),
+        loadout.subclassConfig?.fragments?.map((fragment) => fragment.name),
+    ]);
+}
+
+function getInGameLoadoutSearchText({
+    loadout,
+    index,
+    activeCharacterId,
+    classType,
+    itemByInstanceId,
+    itemDefinitions,
+    loadoutNameDefinitions,
+    sandboxPerkDefinitions,
+}: {
+    loadout: any;
+    index: number;
+    activeCharacterId: string;
+    classType: number;
+    itemByInstanceId: Map<string, any>;
+    itemDefinitions: Record<number, any>;
+    loadoutNameDefinitions: Record<string, any> | Record<number, any> | undefined;
+    sandboxPerkDefinitions: Record<string, any> | Record<number, any> | undefined;
+}) {
+    const loadoutNameDefinition = getDefinitionByHash(loadoutNameDefinitions as Record<number, any>, Number(loadout.nameHash));
+    const definitionHashes = collectInGameLoadoutDefinitionHashes(loadout, itemByInstanceId);
+    
+    return normalizeLoadoutSearchText([
+        'in-game',
+        CLASS_NAMES[classType],
+        loadoutNameDefinition?.name,
+        `in-game loadout ${index + 1}`,
+        `slot ${index + 1}`,
+        `bungie:${activeCharacterId}:${index}`,
+        ...definitionHashes.flatMap((hash) => collectDefinitionSearchValues(
+            getDefinitionByHash(itemDefinitions, hash),
+            itemDefinitions,
+            sandboxPerkDefinitions
+        )),
+    ]);
+}
+
+function matchesLoadoutSearch(searchText: string, searchQuery: string) {
+    const searchTerms = searchQuery
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+    
+    if (searchTerms.length === 0) return true;
+    
+    return searchTerms.every((searchTerm) => searchText.includes(searchTerm));
+}
+
 interface LoadoutCardProps {
     loadout: CustomLoadout;
     profile: any;
@@ -613,12 +869,672 @@ interface LoadoutCardProps {
     onShare: () => void;
 }
 
+interface InGameLoadoutCardProps {
+    loadout: any;
+    index: number;
+    classType: number;
+    activeCharacterId: string;
+    membershipInfo: any;
+    profile: any;
+}
+
+interface InGameLoadoutItemTileProps {
+    definition: any;
+    item: any;
+    profile: any;
+    ownerId: string;
+    sizeClassName?: string;
+    isUnavailable?: boolean;
+}
+
+function InGameLoadoutItemTile({ definition, item, profile, ownerId, sizeClassName = 'h-12 w-12', isUnavailable = false }: InGameLoadoutItemTileProps) {
+    const itemInstanceId = item?.itemInstanceId ? String(item.itemInstanceId) : undefined;
+    const instanceData = itemInstanceId ? profile?.itemComponents?.instances?.data?.[itemInstanceId] : undefined;
+    const statsData = itemInstanceId ? profile?.itemComponents?.stats?.data?.[itemInstanceId]?.stats : undefined;
+    const instanceDataWithStats = instanceData
+        ? {
+            ...instanceData,
+            stats: statsData,
+        }
+        : undefined;
+    const socketsData = itemInstanceId ? profile?.itemComponents?.sockets?.data?.[itemInstanceId] : undefined;
+    const reusablePlugs = itemInstanceId ? profile?.itemComponents?.reusablePlugs?.data?.[itemInstanceId]?.plugs : undefined;
+    
+    return (
+        <div
+            className={cn(
+                sizeClassName,
+                "relative shrink-0 overflow-visible",
+                isUnavailable && "ring-1 ring-red-500/60"
+            )}
+            title={isUnavailable ? `${definition.displayProperties?.name || 'Item'} is no longer in inventory` : definition.displayProperties?.name}
+        >
+            <DestinyItemCard
+                itemHash={definition.hash}
+                definition={definition}
+                definitionIsPartial
+                instanceData={instanceDataWithStats}
+                socketsData={socketsData}
+                reusablePlugs={reusablePlugs}
+                itemInstanceId={itemInstanceId}
+                ownerId={ownerId}
+                quantity={item?.quantity}
+                className="h-full w-full"
+                size="small"
+                minimal
+                deferDetails
+            />
+            {isUnavailable && (
+                <>
+                    <div className="pointer-events-none absolute inset-0 bg-red-950/55 mix-blend-multiply" aria-hidden="true" />
+                    <div className="pointer-events-none absolute inset-0 bg-red-500/20 ring-1 ring-inset ring-red-400/50" aria-hidden="true" />
+                    <div className="pointer-events-none absolute right-0 top-0 h-2 w-2 bg-red-500" aria-hidden="true" />
+                </>
+            )}
+        </div>
+    );
+}
+
+interface InGameLoadoutPlugTileProps {
+    definition: any;
+    clarityDescription?: ClarityDescription;
+    perkDefinitions?: any[];
+    sizeClassName?: string;
+}
+
+function InGameLoadoutPlugTile({ definition, clarityDescription, perkDefinitions = [], sizeClassName = 'h-[30px] w-[30px]' }: InGameLoadoutPlugTileProps) {
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+    const icon = definition.displayProperties?.icon;
+    const name = definition.displayProperties?.name || String(definition.hash);
+    const description = definition.displayProperties?.description;
+    const perkDescriptions = perkDefinitions
+        .map((perkDefinition) => ({
+            name: perkDefinition?.displayProperties?.name,
+            description: perkDefinition?.displayProperties?.description,
+        }))
+        .filter((perkDefinition) => perkDefinition.name || perkDefinition.description);
+    const typeName = definition.itemTypeDisplayName || definition.plug?.plugCategoryIdentifier || 'Subclass Plug';
+    
+    return (
+        <div
+                className={cn(sizeClassName, "relative shrink-0 overflow-hidden border border-white/10 bg-transparent")}
+            title={name}
+            onMouseEnter={(event) => setTooltipPosition({ x: event.clientX, y: event.clientY })}
+            onMouseLeave={() => setTooltipPosition(null)}
+        >
+            {icon ? (
+                <Image
+                    src={getBungieImage(icon)}
+                    alt={name}
+                    fill
+                    sizes="32px"
+                    className="object-cover"
+                />
+            ) : (
+                <div className="flex h-full w-full items-center justify-center text-[9px] text-slate-600">?</div>
+            )}
+            {tooltipPosition && typeof document !== 'undefined' && createPortal(
+                <div
+                    className="fixed z-[9999] w-96 max-w-[min(24rem,calc(100vw-2rem))] pointer-events-none"
+                    style={{
+                        left: Math.min(tooltipPosition.x + 14, window.innerWidth - 400),
+                        top: Math.min(tooltipPosition.y + 14, window.innerHeight - 360),
+                    }}
+                >
+                    <div className="max-h-[min(28rem,calc(100vh-2rem))] overflow-y-auto border border-white/20 bg-[#0f0f0f]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur-md custom-scrollbar">
+                        <div className="flex items-start gap-2">
+                            <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border border-white/20 bg-black/40">
+                                {icon ? (
+                                    <Image src={getBungieImage(icon)} alt="" fill sizes="32px" className="object-cover" />
+                                ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-500">?</div>
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="break-words text-sm font-bold leading-tight text-destiny-gold">
+                                    {name}
+                                </p>
+                                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                    {typeName}
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {description && (
+                            <p className="mt-2 break-words text-xs leading-relaxed text-slate-300">
+                                {description}
+                            </p>
+                        )}
+                        
+                        {!description && perkDescriptions.length > 0 && (
+                            <div className="mt-3 space-y-2 border-t border-white/10 pt-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                    Details
+                                </p>
+                                {perkDescriptions.map((perkDefinition, perkIndex) => (
+                                    <div key={`${definition.hash}-perk-${perkIndex}`} className="text-xs leading-relaxed text-slate-300">
+                                        {perkDefinition.name && perkDefinition.name !== name && (
+                                            <p className="font-semibold text-slate-100">{perkDefinition.name}</p>
+                                        )}
+                                        {perkDefinition.description && (
+                                            <p className="break-words">{perkDefinition.description}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {clarityDescription && (
+                            <div className="mt-3 border-t border-white/10 pt-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+                                    Clarity
+                                </p>
+                                <div className="mt-1 space-y-2 text-xs leading-relaxed text-slate-200">
+                                    {clarityDescription.lines.map((line, lineIndex) => (
+                                        line ? (
+                                            <p key={`${clarityDescription.hash}-${lineIndex}`} className="break-words">
+                                                {line}
+                                            </p>
+                                        ) : (
+                                            <div key={`${clarityDescription.hash}-${lineIndex}`} className="h-1" aria-hidden="true" />
+                                        )
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+}
+
+interface SelectorHintTileProps {
+    label: string;
+    description?: string;
+    sizeClassName: string;
+    children: ReactNode;
+    disabled?: boolean;
+}
+
+function SelectorHintTile({ label, description, sizeClassName, children, disabled = false }: SelectorHintTileProps) {
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+    
+    return (
+        <span
+            className={cn(
+                sizeClassName,
+                "relative flex shrink-0 items-center justify-center border border-white/10 bg-transparent text-slate-600",
+                !disabled && "transition-colors group-hover:border-destiny-gold/50 group-hover:text-slate-300",
+                disabled && "cursor-not-allowed opacity-35"
+            )}
+            onMouseEnter={(event) => setTooltipPosition({ x: event.clientX, y: event.clientY })}
+            onMouseLeave={() => setTooltipPosition(null)}
+        >
+            {children}
+            {tooltipPosition && typeof document !== 'undefined' && createPortal(
+                <div
+                    className="pointer-events-none fixed z-[9999] w-56 border border-white/15 bg-[#0f0f0f]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-md"
+                    style={{
+                        left: Math.min(tooltipPosition.x + 14, window.innerWidth - 240),
+                        top: Math.min(tooltipPosition.y + 14, window.innerHeight - 140),
+                    }}
+                >
+                    <p className="text-xs font-bold uppercase tracking-wide text-destiny-gold">{label}</p>
+                    {description && (
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-300">{description}</p>
+                    )}
+                </div>,
+                document.body
+            )}
+        </span>
+    );
+}
+
+function InGameLoadoutCard({ loadout, index, classType, activeCharacterId, membershipInfo, profile }: InGameLoadoutCardProps) {
+    const { createLoadout, loadouts } = useLoadoutStore();
+    const [isEquipping, setIsEquipping] = useState(false);
+    const { table: loadoutNameDefinitions } = useManifestTable<any>("DestinyLoadoutNameDefinition");
+    const { table: loadoutIconDefinitions } = useManifestTable<any>("DestinyLoadoutIconDefinition");
+    const { table: sandboxPerkDefinitions } = useManifestTable<any>("DestinySandboxPerkDefinition");
+    const linkedInGameLoadoutId = `bungie:${activeCharacterId}:${index}`;
+    const linkedSiteLoadout = loadouts.find((siteLoadout) => siteLoadout.inGameId === linkedInGameLoadoutId);
+    const loadoutNameDefinition = loadoutNameDefinitions?.[loadout.nameHash] || loadoutNameDefinitions?.[String(loadout.nameHash)];
+    const loadoutIconDefinition = loadoutIconDefinitions?.[loadout.iconHash] || loadoutIconDefinitions?.[String(loadout.iconHash)];
+    const loadoutTitle = loadoutNameDefinition?.name || `In-game Loadout ${index + 1}`;
+    const loadoutIconPath = loadoutIconDefinition?.iconImagePath;
+    const { resolvedItems, definitionHashes } = useMemo(() => {
+        if (!loadout.items || !profile) {
+            return { resolvedItems: [], definitionHashes: [] };
+        }
+        
+        const itemByInstanceId = new Map<string, any>();
+        const profileItems = [
+            ...Object.values(profile.characterInventories?.data || {}).flatMap((characterInventory: any) => characterInventory.items),
+            ...Object.values(profile.characterEquipment?.data || {}).flatMap((characterEquipment: any) => characterEquipment.items),
+            ...(profile.profileInventory?.data?.items || []),
+        ];
+        
+        profileItems.forEach((item: any) => {
+            if (item.itemInstanceId) {
+                itemByInstanceId.set(String(item.itemInstanceId), item);
+            }
+        });
+        
+        const hashes = new Set<number>();
+        const items = loadout.items.map((loadoutItem: any) => {
+            const inventoryItem = loadoutItem.itemInstanceId && String(loadoutItem.itemInstanceId) !== '0'
+                ? itemByInstanceId.get(String(loadoutItem.itemInstanceId))
+                : null;
+            const itemHash = inventoryItem?.itemHash || loadoutItem.itemHash;
+            const plugItemHashes = loadoutItem.plugItemHashes || [];
+            
+            if (itemHash) {
+                hashes.add(itemHash);
+            }
+            plugItemHashes.forEach((plugHash: number) => hashes.add(plugHash));
+            
+            return {
+                itemHash,
+                bucketHash: inventoryItem?.bucketHash,
+                itemInstanceId: inventoryItem?.itemInstanceId || loadoutItem.itemInstanceId,
+                quantity: inventoryItem?.quantity || loadoutItem.quantity,
+                plugItemHashes,
+            };
+        }).filter((item: any) => item.itemHash);
+        
+        return {
+            resolvedItems: items,
+            definitionHashes: Array.from(hashes),
+        };
+    }, [loadout.items, profile]);
+    
+    const { definitions, isLoading: isLoadingDefinitions } = useItemDefinitions(definitionHashes);
+    
+    const { weapons, armor, subclassItem, subclassDefinition, subclassPlugGroups } = useMemo(() => {
+        const weaponDefinitions: any[] = [];
+        const armorDefinitions: any[] = [];
+        let activeSubclassItem: any = null;
+        let activeSubclassDefinition: any = null;
+        const plugGroups = {
+            super: [] as any[],
+            abilities: [] as any[],
+            aspects: [] as any[],
+            fragments: [] as any[],
+        };
+        
+        resolvedItems.forEach((item: any) => {
+            const definition = definitions[item.itemHash];
+            if (!definition) return;
+            
+            if (definition.itemType === 3) {
+                weaponDefinitions.push(definition);
+                return;
+            }
+            
+            if (definition.itemType === 2) {
+                armorDefinitions.push(definition);
+                return;
+            }
+            
+            if (definition.inventory?.bucketTypeHash === BUCKETS.SUBCLASS) {
+                activeSubclassItem = item;
+                activeSubclassDefinition = definition;
+                item.plugItemHashes.forEach((plugHash: number) => {
+                    const plugDefinition = definitions[plugHash];
+                    if (!plugDefinition?.displayProperties?.name) return;
+                    
+                    const category = plugDefinition.plug?.plugCategoryIdentifier || '';
+                    const typeName = plugDefinition.itemTypeDisplayName || '';
+                    
+                    if (category.includes('fragments') || typeName.includes('Fragment')) {
+                        plugGroups.fragments.push(plugDefinition);
+                    } else if (category.includes('aspects') || typeName.includes('Aspect')) {
+                        plugGroups.aspects.push(plugDefinition);
+                    } else if (category.includes('supers') || typeName.includes('Super')) {
+                        plugGroups.super.push(plugDefinition);
+                    } else if (
+                        category.includes('class_abilities') ||
+                        category.includes('movement') ||
+                        category.includes('melee') ||
+                        category.includes('grenades')
+                    ) {
+                        plugGroups.abilities.push(plugDefinition);
+                    }
+                });
+            }
+        });
+        
+        const weaponOrder = [BUCKETS.KINETIC_WEAPON, BUCKETS.ENERGY_WEAPON, BUCKETS.POWER_WEAPON];
+        const armorOrder = [BUCKETS.HELMET, BUCKETS.GAUNTLETS, BUCKETS.CHEST_ARMOR, BUCKETS.LEG_ARMOR, BUCKETS.CLASS_ARMOR];
+        const abilityOrder = ['class_abilities', 'movement', 'melee', 'grenades'];
+        
+        weaponDefinitions.sort((firstItem, secondItem) => (
+            weaponOrder.indexOf(firstItem.inventory?.bucketTypeHash) - weaponOrder.indexOf(secondItem.inventory?.bucketTypeHash)
+        ));
+        armorDefinitions.sort((firstItem, secondItem) => (
+            armorOrder.indexOf(firstItem.inventory?.bucketTypeHash) - armorOrder.indexOf(secondItem.inventory?.bucketTypeHash)
+        ));
+        plugGroups.abilities.sort((firstItem, secondItem) => {
+            const firstCategory = firstItem.plug?.plugCategoryIdentifier || '';
+            const secondCategory = secondItem.plug?.plugCategoryIdentifier || '';
+            return abilityOrder.findIndex((category) => firstCategory.includes(category)) -
+                abilityOrder.findIndex((category) => secondCategory.includes(category));
+        });
+        
+        return {
+            weapons: weaponDefinitions,
+            armor: armorDefinitions,
+            subclassItem: activeSubclassItem,
+            subclassDefinition: activeSubclassDefinition,
+            subclassPlugGroups: plugGroups,
+        };
+    }, [definitions, resolvedItems]);
+    
+    const plugDefinitions = useMemo(() => [
+        ...subclassPlugGroups.super,
+        ...subclassPlugGroups.abilities,
+        ...subclassPlugGroups.aspects,
+        ...subclassPlugGroups.fragments,
+    ], [subclassPlugGroups]);
+    const plugDefinitionHashes = useMemo(
+        () => plugDefinitions.flatMap((definition) => [
+            definition.hash,
+            ...(definition.perks || []).map((perk: any) => perk?.perkHash),
+        ]).filter((hash) => Number.isSafeInteger(hash)),
+        [plugDefinitions]
+    );
+    const { descriptions: clarityDescriptions } = useClarityDescriptions(plugDefinitionHashes);
+    
+    const renderItemIcon = (item: any, definition: any, sizeClassName = 'h-12 w-12') => {
+        const tileItem = item || { itemHash: definition.hash };
+        
+        return (
+        <InGameLoadoutItemTile
+            key={`${tileItem.itemInstanceId || tileItem.itemHash}-${definition.hash}`}
+            definition={definition}
+            item={tileItem}
+            profile={profile}
+            ownerId={activeCharacterId}
+            sizeClassName={sizeClassName}
+        />
+        );
+    };
+    
+    const renderPlugIcon = (definition: any, sizeClassName = 'h-[30px] w-[30px]') => {
+        const perkHashes = (definition.perks || [])
+            .map((perk: any) => perk?.perkHash)
+            .filter((perkHash: number) => Number.isSafeInteger(perkHash));
+        const perkDefinitions = perkHashes
+            .map((perkHash: number) => sandboxPerkDefinitions?.[perkHash] || sandboxPerkDefinitions?.[String(perkHash)])
+            .filter(Boolean);
+        const clarityDescription = clarityDescriptions[definition.hash] || perkHashes
+            .map((perkHash: number) => clarityDescriptions[perkHash])
+            .find(Boolean);
+        
+        return (
+            <InGameLoadoutPlugTile
+                key={definition.hash}
+                definition={definition}
+                clarityDescription={clarityDescription}
+                perkDefinitions={perkDefinitions}
+                sizeClassName={sizeClassName}
+            />
+        );
+    };
+    
+    const renderEmptySlot = (key: string, sizeClassName = 'h-12 w-12') => (
+        <div key={key} className={cn(sizeClassName, "shrink-0 border border-white/5 bg-transparent")} />
+    );
+    const renderLoadoutIcon = (sizeClassName = 'h-12 w-12') => (
+        <div className={cn(sizeClassName, "relative shrink-0 overflow-hidden border border-white/10 bg-black/35")}>
+            {loadoutIconPath ? (
+                <Image
+                    src={getBungieImage(loadoutIconPath)}
+                    alt=""
+                    fill
+                    sizes="48px"
+                    className="object-cover opacity-85"
+                />
+            ) : (
+                <span className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-500">
+                    L{index + 1}
+                </span>
+            )}
+        </div>
+    );
+    const hasVisibleLoadoutContent = weapons.length > 0 ||
+        armor.length > 0 ||
+        subclassPlugGroups.super.length > 0 ||
+        subclassPlugGroups.abilities.length > 0 ||
+        subclassPlugGroups.aspects.length > 0 ||
+        subclassPlugGroups.fragments.length > 0;
+    
+    const createPlugConfig = (definition: any) => ({
+        plugHash: definition.hash,
+        name: definition.displayProperties?.name,
+        icon: definition.displayProperties?.icon,
+    });
+    const getAbilityPlug = (categoryIdentifier: string) => {
+        return subclassPlugGroups.abilities.find((definition) => (
+            definition.plug?.plugCategoryIdentifier || ''
+        ).includes(categoryIdentifier));
+    };
+    const handleEquipInGameLoadout = async () => {
+        if (!membershipInfo || !activeCharacterId || isEquipping) return;
+        
+        setIsEquipping(true);
+        toast.loading(`Equipping ${loadoutTitle}...`, { id: 'equip-ingame-loadout' });
+        
+        try {
+            await equipLoadout(index, activeCharacterId, membershipInfo.membershipType);
+            toast.success(`${loadoutTitle} equipped`, { id: 'equip-ingame-loadout' });
+        } catch (error) {
+            console.error('Failed to equip in-game loadout:', error);
+            toast.error('Failed to equip in-game loadout', { id: 'equip-ingame-loadout' });
+        } finally {
+            setIsEquipping(false);
+        }
+    };
+    const saveInGameLoadoutAsSiteLoadout = (initialTags: string[] = []) => {
+        const savedItems = resolvedItems
+            .map((item: any) => {
+                const definition = definitions[item.itemHash];
+                const bucketHash = item.bucketHash || definition?.inventory?.bucketTypeHash;
+                
+                if (!bucketHash || bucketHash === BUCKETS.SUBCLASS) return null;
+                
+                return {
+                    itemHash: item.itemHash,
+                    itemInstanceId: item.itemInstanceId,
+                    bucketHash,
+                };
+            })
+            .filter(Boolean) as LoadoutItem[];
+        const subclassConfig = subclassDefinition ? {
+            itemHash: subclassDefinition.hash,
+            itemInstanceId: subclassItem?.itemInstanceId,
+            damageType: getDamageTypeFromHashOrEnum(subclassDefinition.defaultDamageTypeHash),
+            super: subclassPlugGroups.super[0] ? createPlugConfig(subclassPlugGroups.super[0]) : undefined,
+            abilities: {
+                classAbility: getAbilityPlug('class_abilities') ? createPlugConfig(getAbilityPlug('class_abilities')) : undefined,
+                movement: getAbilityPlug('movement') ? createPlugConfig(getAbilityPlug('movement')) : undefined,
+                melee: getAbilityPlug('melee') ? createPlugConfig(getAbilityPlug('melee')) : undefined,
+                grenade: getAbilityPlug('grenades') ? createPlugConfig(getAbilityPlug('grenades')) : undefined,
+            },
+            aspects: subclassPlugGroups.aspects.map(createPlugConfig),
+            fragments: subclassPlugGroups.fragments.map(createPlugConfig),
+        } : undefined;
+        
+        return createLoadout({
+            name: loadoutTitle,
+            description: `Saved from in-game loadout slot ${index + 1}.`,
+            classType,
+            icon: DEFAULT_LOADOUT_ICON,
+            color: '#38bdf8',
+            items: savedItems,
+            subclassConfig,
+            tags: initialTags,
+            inGameId: linkedInGameLoadoutId,
+        });
+    };
+    const handleSaveInGameLoadout = () => {
+        if (linkedSiteLoadout) {
+            toast.info(`${loadoutTitle} is already saved in-site`);
+            return;
+        }
+        
+        saveInGameLoadoutAsSiteLoadout();
+        toast.success(`Saved ${loadoutTitle} in-site`);
+    };
+    const armorSlots = Array.from({ length: 5 }, (_, slotIndex) => (
+        armor[slotIndex]
+            ? renderItemIcon(resolvedItems.find((item: any) => item.itemHash === armor[slotIndex].hash), armor[slotIndex])
+            : renderEmptySlot(`armor-${slotIndex}`)
+    ));
+    const weaponSlots = Array.from({ length: 3 }, (_, slotIndex) => (
+        weapons[slotIndex]
+            ? renderItemIcon(resolvedItems.find((item: any) => item.itemHash === weapons[slotIndex].hash), weapons[slotIndex])
+            : renderEmptySlot(`weapon-${slotIndex}`)
+    ));
+    const abilitySlots = [
+        ...subclassPlugGroups.abilities.slice(0, 4),
+    ];
+    const superSlot = subclassPlugGroups.super[0];
+    const aspectSlots = subclassPlugGroups.aspects.slice(0, 2);
+    const fragmentSlots = subclassPlugGroups.fragments.slice(0, 6);
+    const bottomRowFragments = fragmentSlots.slice(0, 4);
+    const upperRowFragments = fragmentSlots.slice(4, 5);
+    
+    if (!isLoadingDefinitions && !hasVisibleLoadoutContent) {
+        return null;
+    }
+    
+    return (
+        <div className="w-full max-w-full border-l-[3px] border-l-sky-400">
+            <FrostedCard hover className="overflow-hidden p-0">
+                <div className="group/header flex items-center justify-between gap-3 border-b border-white/5 px-3 py-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <div className="truncate text-xs font-bold uppercase tracking-wide text-white">
+                            {loadoutTitle}
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={handleEquipInGameLoadout}
+                            disabled={isEquipping}
+                            className="inline-flex h-7 w-7 items-center justify-center text-destiny-gold transition-colors hover:bg-destiny-gold/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={`Equip ${loadoutTitle}`}
+                            aria-label={`Equip ${loadoutTitle}`}
+                        >
+                            {isEquipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSaveInGameLoadout}
+                            disabled={Boolean(linkedSiteLoadout)}
+                            className="inline-flex h-7 w-7 items-center justify-center text-sky-300 transition-colors hover:bg-sky-400/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                            title={linkedSiteLoadout ? `${loadoutTitle} already saved` : `Save ${loadoutTitle} in-site`}
+                            aria-label={linkedSiteLoadout ? `${loadoutTitle} already saved` : `Save ${loadoutTitle} in-site`}
+                        >
+                            {linkedSiteLoadout ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+                        </button>
+                    </div>
+                </div>
+                <div className="flex min-h-[116px] gap-3 p-4">
+                    <div className="flex shrink-0 items-start gap-2">
+                        <div className="flex flex-col gap-1">
+                            {renderLoadoutIcon()}
+                            {superSlot
+                                ? renderPlugIcon(superSlot, 'h-12 w-12')
+                                : renderEmptySlot('super', 'h-12 w-12')}
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                            {Array.from({ length: 4 }, (_, slotIndex) => (
+                                abilitySlots[slotIndex]
+                                    ? renderPlugIcon(abilitySlots[slotIndex], 'h-[30px] w-[30px]')
+                                    : renderEmptySlot(`ability-${slotIndex}`, 'h-[30px] w-[30px]')
+                            ))}
+                            {aspectSlots.map((aspect) => renderPlugIcon(aspect, 'h-[30px] w-[30px]'))}
+                            {Array.from({ length: Math.max(0, 2 - aspectSlots.length) }, (_, slotIndex) => (
+                                renderEmptySlot(`aspect-${slotIndex}`, 'h-[30px] w-[30px]')
+                            ))}
+                            <div className="h-[30px] w-[30px]" aria-hidden="true" />
+                            {upperRowFragments[0]
+                                ? renderPlugIcon(upperRowFragments[0], 'h-[30px] w-[30px]')
+                                : <div className="h-[30px] w-[30px]" aria-hidden="true" />}
+                            {bottomRowFragments.map((fragment) => renderPlugIcon(fragment, 'h-[30px] w-[30px]'))}
+                        </div>
+                    </div>
+                    <div className="grid min-w-0 flex-1 grid-cols-[repeat(5,3rem)] content-start gap-1 overflow-hidden">
+                        {armorSlots}
+                        {weaponSlots}
+                    </div>
+                </div>
+            </FrostedCard>
+        </div>
+    );
+}
+
 function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEdit, onShare }: LoadoutCardProps) {
-    const { deleteLoadout, duplicateLoadout } = useLoadoutStore();
+    const { addTag, deleteLoadout, duplicateLoadout } = useLoadoutStore();
     const [isEquipping, setIsEquipping] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
+    const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
+    const [tagInputValue, setTagInputValue] = useState('');
+    const tagInputRef = useRef<HTMLInputElement>(null);
     
-    const itemHashes = useMemo(() => loadout.items.map((i) => i.itemHash), [loadout.items]);
+    useEffect(() => {
+        if (isTagPickerOpen) {
+            tagInputRef.current?.focus();
+        }
+    }, [isTagPickerOpen]);
+    
+    const { table: loadoutIconDefinitions } = useManifestTable<any>("DestinyLoadoutIconDefinition");
+    const { table: sandboxPerkDefinitions } = useManifestTable<any>("DestinySandboxPerkDefinition");
+    const linkedInGameLoadout = useMemo(() => {
+        const [source, characterId, indexText] = loadout.inGameId?.split(':') || [];
+        const loadoutIndex = Number(indexText);
+        
+        if (source !== 'bungie' || !characterId || !Number.isSafeInteger(loadoutIndex)) {
+            return null;
+        }
+        
+        return profile?.characterLoadouts?.data?.[characterId]?.loadouts?.[loadoutIndex] ?? null;
+    }, [loadout.inGameId, profile]);
+    const linkedLoadoutIconDefinition = linkedInGameLoadout
+        ? loadoutIconDefinitions?.[linkedInGameLoadout.iconHash] || loadoutIconDefinitions?.[String(linkedInGameLoadout.iconHash)]
+        : null;
+    const profileItemByInstanceId = useMemo(() => {
+        const itemByInstanceId = new Map<string, any>();
+        const profileItems = [
+            ...Object.values(profile?.characterInventories?.data || {}).flatMap((characterInventory: any) => characterInventory.items),
+            ...Object.values(profile?.characterEquipment?.data || {}).flatMap((characterEquipment: any) => characterEquipment.items),
+            ...(profile?.profileInventory?.data?.items || []),
+        ];
+        
+        profileItems.forEach((item: any) => {
+            if (item.itemInstanceId) {
+                itemByInstanceId.set(String(item.itemInstanceId), item);
+            }
+        });
+        
+        return itemByInstanceId;
+    }, [profile]);
+    const ownedItemInstanceIds = useMemo(() => new Set(profileItemByInstanceId.keys()), [profileItemByInstanceId]);
+    const itemHashes = useMemo(() => {
+        const definitionHashes = new Set(collectSiteLoadoutDefinitionHashes(loadout));
+        
+        if (linkedInGameLoadout) {
+            collectInGameLoadoutDefinitionHashes(linkedInGameLoadout, profileItemByInstanceId).forEach((hash) => {
+                definitionHashes.add(hash);
+            });
+        }
+        
+        return Array.from(definitionHashes);
+    }, [linkedInGameLoadout, loadout, profileItemByInstanceId]);
     const { definitions } = useItemDefinitions(itemHashes);
     
     const handleEquip = async () => {
@@ -832,273 +1748,332 @@ function LoadoutCard({ loadout, profile, membershipInfo, activeCharacterId, onEd
         setShowMenu(false);
     };
     
-    // Group items by category
-    const weaponItems = loadout.items.filter((i) => 
-        [BUCKETS.KINETIC_WEAPON, BUCKETS.ENERGY_WEAPON, BUCKETS.POWER_WEAPON].includes(i.bucketHash)
-    );
-    const armorItems = loadout.items.filter((i) =>
-        [BUCKETS.HELMET, BUCKETS.GAUNTLETS, BUCKETS.CHEST_ARMOR, BUCKETS.LEG_ARMOR, BUCKETS.CLASS_ARMOR].includes(i.bucketHash)
-    );
+    const linkedInGameItemsByBucket = useMemo(() => {
+        const itemByBucket = new Map<number, LoadoutItem & { isUnavailable?: boolean }>();
+        
+        if (!linkedInGameLoadout?.items) return itemByBucket;
+        
+        linkedInGameLoadout.items.forEach((linkedLoadoutItem: any) => {
+            const linkedItemInstanceId = String(linkedLoadoutItem?.itemInstanceId ?? '');
+            const inventoryItem = linkedItemInstanceId && linkedItemInstanceId !== '0'
+                ? profileItemByInstanceId.get(linkedItemInstanceId)
+                : undefined;
+            const itemHash = Number(inventoryItem?.itemHash || linkedLoadoutItem?.itemHash);
+            const definition = getDefinitionByHash(definitions, itemHash);
+            const bucketHash = inventoryItem?.bucketHash || definition?.inventory?.bucketTypeHash;
+            
+            if (!Number.isSafeInteger(itemHash) || !bucketHash || bucketHash === BUCKETS.SUBCLASS) return;
+            
+            itemByBucket.set(bucketHash, {
+                itemHash,
+                itemInstanceId: inventoryItem?.itemInstanceId || (linkedItemInstanceId && linkedItemInstanceId !== '0' ? linkedItemInstanceId : undefined),
+                bucketHash,
+                isUnavailable: !inventoryItem,
+            });
+        });
+        
+        return itemByBucket;
+    }, [definitions, linkedInGameLoadout, profileItemByInstanceId]);
+    const visualLoadoutItems = useMemo(() => {
+        const itemByBucket = new Map<number, LoadoutItem & { isUnavailable?: boolean }>();
+        
+        loadout.items.forEach((item) => {
+            itemByBucket.set(item.bucketHash, item);
+        });
+        linkedInGameItemsByBucket.forEach((linkedItem, bucketHash) => {
+            if (!itemByBucket.has(bucketHash)) {
+                itemByBucket.set(bucketHash, linkedItem);
+            }
+        });
+        
+        return Array.from(itemByBucket.values());
+    }, [linkedInGameItemsByBucket, loadout.items]);
     
-    // Subclass data
-    const subclassConfig = loadout.subclassConfig;
-    const damageType = subclassConfig?.damageType;
-    const aspects = subclassConfig?.aspects || [];
-    const fragments = subclassConfig?.fragments || [];
+    const weaponItems = useMemo(() => {
+        const weaponBucketOrder = [BUCKETS.KINETIC_WEAPON, BUCKETS.ENERGY_WEAPON, BUCKETS.POWER_WEAPON];
+        return visualLoadoutItems
+            .filter((item) => weaponBucketOrder.includes(item.bucketHash))
+            .sort((firstItem, secondItem) => (
+                weaponBucketOrder.indexOf(firstItem.bucketHash) - weaponBucketOrder.indexOf(secondItem.bucketHash)
+            ));
+    }, [visualLoadoutItems]);
+    const armorItems = useMemo(() => {
+        const armorBucketOrder = [BUCKETS.HELMET, BUCKETS.GAUNTLETS, BUCKETS.CHEST_ARMOR, BUCKETS.LEG_ARMOR, BUCKETS.CLASS_ARMOR];
+        return visualLoadoutItems
+            .filter((item) => armorBucketOrder.includes(item.bucketHash))
+            .sort((firstItem, secondItem) => (
+                armorBucketOrder.indexOf(firstItem.bucketHash) - armorBucketOrder.indexOf(secondItem.bucketHash)
+            ));
+    }, [visualLoadoutItems]);
+    const siteSubclassPlugGroups = useMemo(() => {
+        const subclassConfig = loadout.subclassConfig;
+        const createDefinitionFromConfig = (plugConfig: any) => {
+            if (!plugConfig?.plugHash) return null;
+            
+            return definitions[plugConfig.plugHash] || {
+                hash: plugConfig.plugHash,
+                displayProperties: {
+                    name: plugConfig.name || String(plugConfig.plugHash),
+                    icon: plugConfig.icon,
+                    description: plugConfig.description || '',
+                },
+            };
+        };
+        const abilityConfigs = subclassConfig?.abilities || {};
+        
+        return {
+            super: [createDefinitionFromConfig(subclassConfig?.super)].filter(Boolean) as any[],
+            abilities: [
+                createDefinitionFromConfig(abilityConfigs.classAbility),
+                createDefinitionFromConfig(abilityConfigs.movement),
+                createDefinitionFromConfig(abilityConfigs.melee),
+                createDefinitionFromConfig(abilityConfigs.grenade),
+            ].filter(Boolean) as any[],
+            aspects: (subclassConfig?.aspects || []).map(createDefinitionFromConfig).filter(Boolean) as any[],
+            fragments: (subclassConfig?.fragments || []).map(createDefinitionFromConfig).filter(Boolean) as any[],
+        };
+    }, [definitions, loadout.subclassConfig]);
+    const sitePlugDefinitions = useMemo(() => [
+        ...siteSubclassPlugGroups.super,
+        ...siteSubclassPlugGroups.abilities,
+        ...siteSubclassPlugGroups.aspects,
+        ...siteSubclassPlugGroups.fragments,
+    ], [siteSubclassPlugGroups]);
+    const sitePlugDefinitionHashes = useMemo(
+        () => sitePlugDefinitions.flatMap((definition) => [
+            definition.hash,
+            ...(definition.perks || []).map((perk: any) => perk?.perkHash),
+        ]).filter((hash) => Number.isSafeInteger(hash)),
+        [sitePlugDefinitions]
+    );
+    const { descriptions: clarityDescriptions } = useClarityDescriptions(sitePlugDefinitionHashes);
     
-    // Split fragments between aspects (3 each)
-    const aspect1Fragments = fragments.slice(0, 3);
-    const aspect2Fragments = fragments.slice(3, 6);
+    const renderEmptySlot = (key: string, sizeClassName = 'h-12 w-12') => (
+        <div key={key} className={cn(sizeClassName, "shrink-0 border border-white/5 bg-transparent")} />
+    );
+    const renderSiteLoadoutIcon = () => {
+        const iconPath = linkedLoadoutIconDefinition?.iconImagePath;
+        
+        if (iconPath) {
+            return (
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden border border-white/10 bg-black/35">
+                    <Image
+                        src={getBungieImage(iconPath)}
+                        alt=""
+                        fill
+                        sizes="48px"
+                        className="object-cover opacity-85"
+                    />
+                </div>
+            );
+        }
+        
+        return <LoadoutIconBadge icon={loadout.icon} color={loadout.color} className="h-12 w-12" />;
+    };
+    const renderItemIcon = (item: (LoadoutItem & { isUnavailable?: boolean }) | undefined, sizeClassName = 'h-12 w-12') => {
+        if (!item) return null;
+        
+        const definition = definitions[item.itemHash];
+        if (!definition) return renderEmptySlot(`item-${item.bucketHash}`);
+        const isUnavailable = Boolean(item.isUnavailable) ||
+            (Boolean(item.itemInstanceId) && !ownedItemInstanceIds.has(String(item.itemInstanceId)));
+        
+        return (
+            <InGameLoadoutItemTile
+                key={`${item.itemInstanceId || item.itemHash}-${item.bucketHash}`}
+                definition={definition}
+                item={item}
+                profile={profile}
+                ownerId={activeCharacterId}
+                sizeClassName={sizeClassName}
+                isUnavailable={isUnavailable}
+            />
+        );
+    };
+    const renderPlugIcon = (definition: any, sizeClassName = 'h-[30px] w-[30px]') => {
+        const perkHashes = (definition.perks || [])
+            .map((perk: any) => perk?.perkHash)
+            .filter((perkHash: number) => Number.isSafeInteger(perkHash));
+        const perkDefinitions = perkHashes
+            .map((perkHash: number) => sandboxPerkDefinitions?.[perkHash] || sandboxPerkDefinitions?.[String(perkHash)])
+            .filter(Boolean);
+        const clarityDescription = clarityDescriptions[definition.hash] || perkHashes
+            .map((perkHash: number) => clarityDescriptions[perkHash])
+            .find(Boolean);
+        
+        return (
+            <InGameLoadoutPlugTile
+                key={definition.hash}
+                definition={definition}
+                clarityDescription={clarityDescription}
+                perkDefinitions={perkDefinitions}
+                sizeClassName={sizeClassName}
+            />
+        );
+    };
+    const armorSlots = Array.from({ length: 5 }, (_, slotIndex) => (
+        armorItems[slotIndex]
+            ? renderItemIcon(armorItems[slotIndex])
+            : renderEmptySlot(`armor-${slotIndex}`)
+    ));
+    const weaponSlots = Array.from({ length: 3 }, (_, slotIndex) => (
+        weaponItems[slotIndex]
+            ? renderItemIcon(weaponItems[slotIndex])
+            : renderEmptySlot(`weapon-${slotIndex}`)
+    ));
+    const abilitySlots = siteSubclassPlugGroups.abilities.slice(0, 4);
+    const superSlot = siteSubclassPlugGroups.super[0];
+    const aspectSlots = siteSubclassPlugGroups.aspects.slice(0, 2);
+    const fragmentSlots = siteSubclassPlugGroups.fragments.slice(0, 6);
+    const bottomRowFragments = fragmentSlots.slice(0, 4);
+    const upperRowFragments = fragmentSlots.slice(4, 5);
+    const loadoutTags = loadout.tags || [];
+    
+    const handleAddTagToSiteLoadout = (tag: string) => {
+        const normalizedTag = tag.trim();
+        if (!normalizedTag) return;
+        
+        const hasExistingTag = loadoutTags.some((existingTag) => existingTag.toLowerCase() === normalizedTag.toLowerCase());
+        if (hasExistingTag) {
+            setTagInputValue('');
+            setIsTagPickerOpen(false);
+            toast.info(`${normalizedTag} is already on ${loadout.name}`);
+            return;
+        }
+        
+        addTag(loadout.id, normalizedTag);
+        setTagInputValue('');
+        setIsTagPickerOpen(false);
+        toast.success(`Added ${normalizedTag} tag`);
+    };
     
     return (
-        <div style={{ borderLeftColor: loadout.color }} className="border-l-[3px]">
-        <FrostedCard
-            hover
-            className="overflow-hidden p-0"
-        >
-            <div className="flex items-center gap-3 p-4">
-                <LoadoutIconBadge icon={loadout.icon} color={loadout.color} />
-                <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-white truncate">{loadout.name}</h3>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Image src={CLASS_ICONS[loadout.classType]} width={12} height={12} alt="" />
-                        <span>{CLASS_NAMES[loadout.classType]}</span>
-                        <span>•</span>
-                        <span>{loadout.items.length} items</span>
-                        {loadout.importedFrom && (
-                            <>
-                                <span>•</span>
-                                <Import className="w-3 h-3" />
-                            </>
-                        )}
-                    </div>
-                </div>
-                
-                {/* More Menu */}
-                <div className="relative">
-                    <button
-                        onClick={() => setShowMenu(!showMenu)}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                    >
-                        <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                    
-                    {showMenu && (
-                        <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                            <div className="absolute right-0 top-full z-50 mt-1 min-w-[140px] border border-white/10 bg-[#0b0f14] py-1 shadow-xl">
-                                <button
-                                    onClick={() => { onShare(); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
-                                >
-                                    <Share2 className="w-4 h-4" />
-                                    Share
-                                </button>
-                                <button
-                                    onClick={handleDuplicate}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
-                                >
-                                    <Copy className="w-4 h-4" />
-                                    Duplicate
-                                </button>
-                                <button
-                                    onClick={() => { onEdit(); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
-                                >
-                                    <Edit3 className="w-4 h-4" />
-                                    Edit
-                                </button>
-                                <div className="border-t border-white/10 my-1" />
-                                <button
-                                    onClick={() => { handleDelete(); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-            
-            {/* Tags */}
-            {loadout.tags && loadout.tags.length > 0 && (
-                <div className="px-4 pb-2 flex flex-wrap gap-1">
-                    {loadout.tags.slice(0, 3).map((tag) => (
-                        <span key={tag} className="px-2 py-0.5 bg-white/5 text-[10px] text-slate-400 rounded uppercase tracking-wider">
-                            {tag}
-                        </span>
-                    ))}
-                    {loadout.tags.length > 3 && (
-                        <span className="px-2 py-0.5 text-[10px] text-slate-500">
-                            +{loadout.tags.length - 3}
-                        </span>
-                    )}
-                </div>
-            )}
-            
-            {/* Items Preview - New Layout */}
-            <div className="p-4 space-y-3">
-                {/* Weapons Row */}
-                <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-600 mb-1.5 tracking-wider">Weapons</div>
-                    <div className="flex gap-1.5">
-                        {[BUCKETS.KINETIC_WEAPON, BUCKETS.ENERGY_WEAPON, BUCKETS.POWER_WEAPON].map((bucket) => {
-                            const item = weaponItems.find(i => i.bucketHash === bucket);
-                            const instanceId = item?.itemInstanceId || '';
-                            const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
-                            const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
-                            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
-                            const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
-                            const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
-                            
-                                            return (
-                                                <div key={bucket} className={cn(
-                                                    "w-11 h-11 bg-black/30 border border-white/5 rounded relative",
-                                                    hasOverrides && "ring-1 ring-destiny-gold/40"
-                                                )}>
-                                                    {item && (
-                                                        <>
-                                                            <DestinyItemCard
-                                                                itemHash={item.itemHash}
-                                                                itemInstanceId={item.itemInstanceId}
-                                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
-                                                                socketsData={socketsData}
-                                                                reusablePlugs={reusablePlugs}
-                                                                className="w-full h-full"
-                                                                size="small"
-                                                                hidePower
-                                                                tierAsNumber
-                                                            />
-                                                            {hasOverrides && (
-                                                                <div className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-destiny-gold rounded-full" title="Custom perks" />
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                
-                                {/* Armor Row */}
-                                <div>
-                                    <div className="text-[10px] uppercase font-bold text-slate-600 mb-1.5 tracking-wider">Armor</div>
-                                    <div className="flex gap-1.5">
-                                        {[BUCKETS.HELMET, BUCKETS.GAUNTLETS, BUCKETS.CHEST_ARMOR, BUCKETS.LEG_ARMOR, BUCKETS.CLASS_ARMOR].map((bucket) => {
-                                            const item = armorItems.find(i => i.bucketHash === bucket);
-                                            const instanceId = item?.itemInstanceId || '';
-                                            const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
-                                            const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
-                                            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
-                                            const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
-                                            const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
-                                            
-                                            return (
-                                                <div key={bucket} className={cn(
-                                                    "w-11 h-11 bg-black/30 border border-white/5 rounded relative",
-                                                    hasOverrides && "ring-1 ring-destiny-gold/40"
-                                                )}>
-                                                    {item && (
-                                                        <>
-                                                            <DestinyItemCard
-                                                                itemHash={item.itemHash}
-                                                                itemInstanceId={item.itemInstanceId}
-                                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
-                                                                socketsData={socketsData}
-                                                                reusablePlugs={reusablePlugs}
-                                                                className="w-full h-full"
-                                                                size="small"
-                                                                hidePower
-                                                                tierAsNumber
-                                                            />
-                                                            {hasOverrides && (
-                                                                <div className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-destiny-gold rounded-full" title="Custom mods" />
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                    </div>
-                </div>
-                
-                {/* Subclass Section */}
-                {(subclassConfig || true) && (
-                    <div className="border-t border-white/5 pt-3 mt-3">
-                        {/* Super */}
-                        <div className="flex items-center gap-3 mb-3">
-                            <div>
-                                <div className="text-[10px] uppercase font-bold text-slate-600 mb-1 tracking-wider">Super</div>
-                                <SubclassSlot 
-                                    plugHash={subclassConfig?.super?.plugHash} 
-                                    label="Super" 
-                                    size="medium"
-                                    damageType={damageType}
+        <div style={{ borderLeftColor: loadout.color }} className="w-full max-w-full border-l-[3px]">
+            <FrostedCard hover className="overflow-hidden p-0">
+                <div className="group/header flex items-center justify-between gap-3 border-b border-white/5 px-3 py-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <div className="truncate text-xs font-bold uppercase tracking-wide text-white">
+                            {loadout.name}
+                        </div>
+                        {loadoutTags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="shrink-0 bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                {tag}
+                            </span>
+                        ))}
+                        {isTagPickerOpen && (
+                            <form
+                                className="shrink-0"
+                                onSubmit={(event) => {
+                                    event.preventDefault();
+                                    handleAddTagToSiteLoadout(tagInputValue);
+                                }}
+                            >
+                                <input
+                                    ref={tagInputRef}
+                                    type="text"
+                                    value={tagInputValue}
+                                    onChange={(event) => setTagInputValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Escape') {
+                                            setTagInputValue('');
+                                            setIsTagPickerOpen(false);
+                                        }
+                                    }}
+                                    onBlur={() => {
+                                        if (!tagInputValue.trim()) {
+                                            setIsTagPickerOpen(false);
+                                        }
+                                    }}
+                                    placeholder="Tag"
+                                    className="h-5 w-20 border border-white/10 bg-slate-900 px-1.5 text-[10px] font-semibold text-white placeholder:text-slate-600 focus:border-destiny-gold/50 focus:outline-none"
                                 />
-                            </div>
-                            {damageType && (
-                                <div className="flex items-center gap-1.5 text-xs" style={{ color: DAMAGE_TYPES[damageType]?.color }}>
-                                    {DAMAGE_TYPES[damageType]?.apiIcon && (
-                                        <Image 
-                                            src={DAMAGE_TYPES[damageType].apiIcon!} 
-                                            width={14} 
-                                            height={14} 
-                                            alt="" 
-                                        />
-                                    )}
-                                    <span className="font-medium">{DAMAGE_TYPES[damageType]?.name}</span>
-                                </div>
+                            </form>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setIsTagPickerOpen((isOpen) => !isOpen)}
+                            className={cn(
+                                "inline-flex h-5 w-5 shrink-0 items-center justify-center text-slate-500 opacity-0 transition hover:bg-white/5 hover:text-white focus:opacity-100 group-hover/header:opacity-100",
+                                isTagPickerOpen && "opacity-100 text-white"
                             )}
+                            title="Add tag"
+                            aria-label="Add tag"
+                            aria-expanded={isTagPickerOpen}
+                        >
+                            <Plus className="h-3 w-3" />
+                        </button>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={handleEquip}
+                            disabled={isEquipping || (loadout.items.length === 0 && !loadout.subclassConfig)}
+                            className="inline-flex h-7 w-7 items-center justify-center text-destiny-gold transition-colors hover:bg-destiny-gold/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={`Equip ${loadout.name}`}
+                            aria-label={`Equip ${loadout.name}`}
+                        >
+                            {isEquipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onEdit}
+                            className="inline-flex h-7 w-7 items-center justify-center text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+                            title={`Edit ${loadout.name}`}
+                            aria-label={`Edit ${loadout.name}`}
+                        >
+                            <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onShare}
+                            className="inline-flex h-7 w-7 items-center justify-center text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+                            title={`Share ${loadout.name}`}
+                            aria-label={`Share ${loadout.name}`}
+                        >
+                            <Share2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleDelete}
+                            className="inline-flex h-7 w-7 items-center justify-center text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            title={`Delete ${loadout.name}`}
+                            aria-label={`Delete ${loadout.name}`}
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
+                <div className="flex min-h-[116px] gap-3 p-4">
+                    <div className="flex shrink-0 items-start gap-2">
+                        <div className="flex flex-col gap-1">
+                            {renderSiteLoadoutIcon()}
+                            {superSlot
+                                ? renderPlugIcon(superSlot, 'h-12 w-12')
+                                : renderEmptySlot('super', 'h-12 w-12')}
                         </div>
-                        
-                        {/* Aspect 1 + Fragments */}
-                        <div className="flex items-center gap-2 mb-2">
-                            <SubclassSlot 
-                                plugHash={aspects[0]?.plugHash} 
-                                label="Aspect 1" 
-                                size="medium"
-                                damageType={damageType}
-                            />
-                            <div className="h-px w-2 bg-white/10" />
-                            <FragmentRow fragments={aspect1Fragments} damageType={damageType} />
-                        </div>
-                        
-                        {/* Aspect 2 + Fragments */}
-                        <div className="flex items-center gap-2">
-                            <SubclassSlot 
-                                plugHash={aspects[1]?.plugHash} 
-                                label="Aspect 2" 
-                                size="medium"
-                                damageType={damageType}
-                            />
-                            <div className="h-px w-2 bg-white/10" />
-                            <FragmentRow fragments={aspect2Fragments} damageType={damageType} />
+                        <div className="grid grid-cols-4 gap-1">
+                            {Array.from({ length: 4 }, (_, slotIndex) => (
+                                abilitySlots[slotIndex]
+                                    ? renderPlugIcon(abilitySlots[slotIndex], 'h-[30px] w-[30px]')
+                                    : renderEmptySlot(`ability-${slotIndex}`, 'h-[30px] w-[30px]')
+                            ))}
+                            {aspectSlots.map((aspect) => renderPlugIcon(aspect, 'h-[30px] w-[30px]'))}
+                            {Array.from({ length: Math.max(0, 2 - aspectSlots.length) }, (_, slotIndex) => (
+                                renderEmptySlot(`aspect-${slotIndex}`, 'h-[30px] w-[30px]')
+                            ))}
+                            <div className="h-[30px] w-[30px]" aria-hidden="true" />
+                            {upperRowFragments[0]
+                                ? renderPlugIcon(upperRowFragments[0], 'h-[30px] w-[30px]')
+                                : <div className="h-[30px] w-[30px]" aria-hidden="true" />}
+                            {bottomRowFragments.map((fragment) => renderPlugIcon(fragment, 'h-[30px] w-[30px]'))}
                         </div>
                     </div>
-                )}
-                
-                {loadout.items.length === 0 && !subclassConfig && (
-                    <div className="text-sm text-slate-600 italic py-2">No items assigned</div>
-                )}
-            </div>
-            
-            <div className="flex border-t border-white/5">
-                <button
-                    onClick={handleEquip}
-                    disabled={isEquipping || loadout.items.length === 0}
-                    className="flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium text-destiny-gold transition-colors hover:bg-destiny-gold/10 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                    {isEquipping ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Play className="w-4 h-4" />
-                    )}
-                    Equip
-                </button>
-            </div>
-        </FrostedCard>
+                    <div className="grid min-w-0 flex-1 grid-cols-[repeat(5,3rem)] content-start gap-1 overflow-hidden">
+                        {armorSlots}
+                        {weaponSlots}
+                    </div>
+                </div>
+            </FrostedCard>
         </div>
     );
 }
@@ -1115,7 +2090,7 @@ const SUBCLASS_HASHES: Record<number, Record<number, number>> = {
         4: 2842471112, // Void - Sentinel
         6: 613647804,  // Stasis - Behemoth
         7: 242419885,  // Strand - Berserker
-        5: 2453351420, // Prismatic
+        5: 1616346845, // Prismatic
     },
     // Hunter (classType 1)
     1: {
@@ -1124,7 +2099,7 @@ const SUBCLASS_HASHES: Record<number, Record<number, number>> = {
         4: 2453866490, // Void - Nightstalker
         6: 873720784,  // Stasis - Revenant
         7: 3785442599, // Strand - Threadrunner
-        5: 2375107888, // Prismatic
+        5: 4282591831, // Prismatic
     },
     // Warlock (classType 2) 
     2: {
@@ -1136,6 +2111,152 @@ const SUBCLASS_HASHES: Record<number, Record<number, number>> = {
         5: 3893112950, // Prismatic
     },
 };
+
+type SubclassSlotType = 'super' | 'aspect' | 'fragment' | 'melee' | 'grenade' | 'classAbility' | 'movement';
+
+const DAMAGE_TYPE_BY_HASH: Record<number, number> = {
+    3373582085: 1, // Kinetic
+    2303181850: 2, // Arc
+    1847026933: 3, // Solar
+    3454344768: 4, // Void
+    2817963223: 5, // Prismatic
+    151347233: 6, // Stasis
+    3949783978: 7, // Strand
+};
+
+function getDamageTypeFromHashOrEnum(damageType?: number) {
+    if (!damageType) return undefined;
+    return DAMAGE_TYPES[damageType] ? damageType : DAMAGE_TYPE_BY_HASH[damageType];
+}
+
+function normalizeLoadoutSubclassDamageType(loadout: CustomLoadout) {
+    if (!loadout.subclassConfig?.damageType) return loadout;
+    
+    const normalizedDamageType = getDamageTypeFromHashOrEnum(loadout.subclassConfig.damageType);
+    if (!normalizedDamageType || normalizedDamageType === loadout.subclassConfig.damageType) return loadout;
+    
+    return {
+        ...loadout,
+        subclassConfig: {
+            ...loadout.subclassConfig,
+            damageType: normalizedDamageType,
+        },
+    };
+}
+
+function getSubclassHash(classType: number, damageType?: number) {
+    return damageType ? SUBCLASS_HASHES[classType]?.[damageType] : null;
+}
+
+function collectSubclassPlugSetHashes(subclassDefinition: any) {
+    if (!subclassDefinition?.sockets?.socketEntries) return [];
+
+    const plugSetHashes: number[] = [];
+    subclassDefinition.sockets.socketEntries.forEach((socketEntry: any) => {
+        if (socketEntry.reusablePlugSetHash) {
+            plugSetHashes.push(socketEntry.reusablePlugSetHash);
+        }
+        if (socketEntry.randomizedPlugSetHash) {
+            plugSetHashes.push(socketEntry.randomizedPlugSetHash);
+        }
+    });
+
+    return [...new Set(plugSetHashes)];
+}
+
+function collectSubclassPlugHashes(plugSetDefinitions: Record<number, any>) {
+    const plugHashes = new Set<number>();
+
+    Object.values(plugSetDefinitions).forEach((plugSetDefinition: any) => {
+        plugSetDefinition?.reusablePlugItems?.forEach((plugItem: any) => {
+            if (plugItem.plugItemHash) {
+                plugHashes.add(plugItem.plugItemHash);
+            }
+        });
+    });
+
+    return Array.from(plugHashes);
+}
+
+function getSubclassPlugCategory(definition: any): SubclassSlotType | 'unknown' {
+    const identifier = definition.plug?.plugCategoryIdentifier?.toLowerCase() || '';
+    const typeDisplay = definition.itemTypeDisplayName?.toLowerCase() || '';
+    const name = definition.displayProperties?.name?.toLowerCase() || '';
+    
+    if (identifier.includes('supers') || typeDisplay === 'super') {
+        return 'super';
+    }
+    
+    if (identifier.includes('aspects') || typeDisplay === 'aspect') {
+        return 'aspect';
+    }
+    
+    if (identifier.includes('fragments') || typeDisplay === 'fragment' || name.startsWith('facet of')) {
+        return 'fragment';
+    }
+    
+    if (identifier.includes('grenade') || typeDisplay.includes('grenade')) {
+        return 'grenade';
+    }
+    
+    if (identifier.includes('melee') || typeDisplay.includes('melee')) {
+        return 'melee';
+    }
+    
+    if (
+        identifier.includes('class_abilities') ||
+        typeDisplay.includes('class ability') ||
+        name.includes('rift') ||
+        name.includes('barricade') ||
+        name.includes('dodge')
+    ) {
+        return 'classAbility';
+    }
+    
+    if (
+        identifier.includes('movement') ||
+        identifier.includes('jump') ||
+        typeDisplay.includes('jump') ||
+        typeDisplay.includes('glide') ||
+        typeDisplay.includes('lift')
+    ) {
+        return 'movement';
+    }
+    
+    return 'unknown';
+}
+
+function useSubclassOptionDefinitions(classType: number, damageType?: number) {
+    const expectedSubclassHash = getSubclassHash(classType, damageType);
+    const subclassHashes = useMemo(
+        () => (expectedSubclassHash ? [expectedSubclassHash] : []),
+        [expectedSubclassHash]
+    );
+    const { definitions: subclassDefs, isLoading: subclassDefsLoading } = useInventoryItemDefinitionsFromTable(
+        subclassHashes,
+        'full'
+    );
+    const subclassDef = expectedSubclassHash ? subclassDefs[expectedSubclassHash] : null;
+    const plugSetHashes = useMemo(() => collectSubclassPlugSetHashes(subclassDef), [subclassDef]);
+    const { plugSetDefinitions, isLoading: plugSetsLoading } = usePlugSetDefinitions(plugSetHashes);
+    const allPlugHashes = useMemo(
+        () => collectSubclassPlugHashes(plugSetDefinitions),
+        [plugSetDefinitions]
+    );
+    const { definitions: plugDefs, isLoading: plugDefsLoading } = useInventoryItemDefinitionsFromTable(
+        allPlugHashes,
+        'full'
+    );
+
+    return {
+        expectedSubclassHash,
+        subclassDef,
+        plugSetDefinitions,
+        allPlugHashes,
+        plugDefs,
+        isLoading: subclassDefsLoading || plugSetsLoading || plugDefsLoading,
+    };
+}
 
 // ===== Subclass Picker Item with Tooltip =====
 
@@ -1150,12 +2271,20 @@ interface SubclassPickerItemProps {
     slotType: string;
     damageColor: string;
     onSelect: () => void;
+    clarityDescription?: ClarityDescription;
+    perkDefinitions?: any[];
 }
 
-function SubclassPickerItem({ plug, slotType, damageColor, onSelect }: SubclassPickerItemProps) {
+function SubclassPickerItem({ plug, slotType, damageColor, onSelect, clarityDescription, perkDefinitions = [] }: SubclassPickerItemProps) {
     const [isHovered, setIsHovered] = useState(false);
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
     const buttonRef = useRef<HTMLButtonElement>(null);
+    const perkDescriptions = perkDefinitions
+        .map((perkDefinition) => ({
+            name: perkDefinition?.displayProperties?.name,
+            description: perkDefinition?.displayProperties?.description,
+        }))
+        .filter((perkDefinition) => perkDefinition.name || perkDefinition.description);
     
     const handleMouseEnter = () => {
         if (buttonRef.current) {
@@ -1175,7 +2304,7 @@ function SubclassPickerItem({ plug, slotType, damageColor, onSelect }: SubclassP
                 onClick={onSelect}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={() => setIsHovered(false)}
-                className="group flex flex-col items-center gap-2 p-2 bg-black/30 border border-white/10 hover:border-destiny-gold/50 hover:bg-black/50 transition-all relative"
+                className="group relative flex flex-col items-center gap-2 border border-white/10 bg-transparent p-2 transition-all hover:border-destiny-gold/50"
                 style={{ borderColor: `${damageColor}20` }}
             >
                 <div className="w-12 h-12 rounded overflow-hidden border border-white/10 relative">
@@ -1259,6 +2388,43 @@ function SubclassPickerItem({ plug, slotType, damageColor, onSelect }: SubclassP
                             </div>
                         )}
                         
+                        {!plug.def.displayProperties?.description && perkDescriptions.length > 0 && (
+                            <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                                <div className="text-[10px] uppercase tracking-wider text-slate-500">
+                                    Details
+                                </div>
+                                {perkDescriptions.map((perkDefinition, perkIndex) => (
+                                    <div key={`${plug.plugHash}-perk-${perkIndex}`} className="text-xs leading-relaxed text-slate-300">
+                                        {perkDefinition.name && perkDefinition.name !== plug.def.displayProperties?.name && (
+                                            <div className="font-semibold text-slate-100">{perkDefinition.name}</div>
+                                        )}
+                                        {perkDefinition.description && (
+                                            <div>{perkDefinition.description}</div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {clarityDescription && (
+                            <div className="mt-2 border-t border-white/10 pt-2">
+                                <div className="text-[10px] uppercase tracking-wider text-cyan-200">
+                                    Clarity
+                                </div>
+                                <div className="mt-1 space-y-2 text-xs leading-relaxed text-slate-200">
+                                    {clarityDescription.lines.map((line, lineIndex) => (
+                                        line ? (
+                                            <p key={`${clarityDescription.hash}-${lineIndex}`} className="break-words">
+                                                {line}
+                                            </p>
+                                        ) : (
+                                            <div key={`${clarityDescription.hash}-${lineIndex}`} className="h-1" aria-hidden="true" />
+                                        )
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
                         {/* Stat bonuses */}
                         {plug.def.investmentStats && plug.def.investmentStats.length > 0 && (
                             <div className="mt-2 pt-2 border-t border-white/10">
@@ -1294,129 +2460,26 @@ function SubclassPickerItem({ plug, slotType, damageColor, onSelect }: SubclassP
 }
 
 interface SubclassPickerProps {
-    slotType: 'super' | 'aspect' | 'fragment' | 'melee' | 'grenade' | 'classAbility' | 'movement';
+    slotType: SubclassSlotType;
     slotIndex?: number;
     classType: number;
     damageType?: number;
-    profile: any;
     onSelect: (plugHash: number, name?: string, icon?: string, fragmentSlots?: number) => void;
     onClose: () => void;
     selectedFragments?: number[]; // Already selected fragment hashes to exclude
     selectedAspects?: number[]; // Already selected aspect hashes to exclude
 }
 
-function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, onSelect, onClose, selectedFragments = [], selectedAspects = [] }: SubclassPickerProps) {
+function SubclassPicker({ slotType, slotIndex, classType, damageType, onSelect, onClose, selectedFragments = [], selectedAspects = [] }: SubclassPickerProps) {
     const [searchQuery, setSearchQuery] = useState('');
-    const [allPlugHashes, setAllPlugHashes] = useState<number[]>([]);
-    
-    // Get the expected subclass hash for this class and damage type
-    const expectedSubclassHash = damageType ? SUBCLASS_HASHES[classType]?.[damageType] : null;
-    
-    // First, fetch the subclass definition to get plug set hashes
-    const { definitions: subclassDefs, isLoading: subclassDefsLoading } = useItemDefinitions(
-        expectedSubclassHash ? [expectedSubclassHash] : []
-    );
-    const subclassDef = expectedSubclassHash ? subclassDefs[expectedSubclassHash] : null;
-    
-    // Extract all plug set hashes from the subclass definition
-    const plugSetHashes = useMemo(() => {
-        if (!subclassDef?.sockets?.socketEntries) return [];
-        
-        const hashes: number[] = [];
-        subclassDef.sockets.socketEntries.forEach((entry: any) => {
-            if (entry.reusablePlugSetHash) {
-                hashes.push(entry.reusablePlugSetHash);
-            }
-            if (entry.randomizedPlugSetHash) {
-                hashes.push(entry.randomizedPlugSetHash);
-            }
-        });
-        return [...new Set(hashes)];
-    }, [subclassDef]);
-    
-    // Fetch plug set definitions
-    const [plugSets, setPlugSets] = useState<Record<number, any>>({});
-    const [plugSetsLoading, setPlugSetsLoading] = useState(false);
-    
-    useEffect(() => {
-        if (plugSetHashes.length === 0) return;
-        
-        const fetchPlugSets = async () => {
-            setPlugSetsLoading(true);
-            const results: Record<number, any> = {};
-            
-            // Fetch each plug set definition
-            for (const hash of plugSetHashes) {
-                try {
-                    const response = await bungieApi.get(endpoints.getPlugSetDefinition(hash));
-                    if (response.data.Response) {
-                        results[hash] = response.data.Response;
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch plug set ${hash}:`, e);
-                }
-            }
-            
-            setPlugSets(results);
-            setPlugSetsLoading(false);
-        };
-        
-        fetchPlugSets();
-    }, [plugSetHashes]);
-    
-    // Extract all plug item hashes from the plug sets
-    useEffect(() => {
-        if (Object.keys(plugSets).length === 0) return;
-        
-        const hashes = new Set<number>();
-        
-        Object.values(plugSets).forEach((plugSet: any) => {
-            if (plugSet?.reusablePlugItems) {
-                plugSet.reusablePlugItems.forEach((item: any) => {
-                    if (item.plugItemHash) {
-                        hashes.add(item.plugItemHash);
-                    }
-                });
-            }
-        });
-        
-        setAllPlugHashes(Array.from(hashes));
-    }, [plugSets]);
-    
-    // Fetch all plug definitions
-    const { definitions: plugDefs, isLoading: plugDefsLoading } = useItemDefinitions(allPlugHashes);
-    
-    // Find the subclass instance for socket index mapping
-    const subclassInstanceData = useMemo(() => {
-        if (!profile || !damageType) return { subclassInstanceId: null, socketsData: null, reusablePlugs: null };
-        
-        const characters = profile.characters?.data || {};
-        const characterEquipment = profile.characterEquipment?.data || {};
-        const characterInventories = profile.characterInventories?.data || {};
-        
-        let subclassInstanceId: string | null = null;
-        
-        // Look through all characters of the matching class type
-        Object.entries(characters).forEach(([charId, char]: [string, any]) => {
-            if (char?.classType !== classType) return;
-            
-            const equippedItems = characterEquipment[charId]?.items || [];
-            const inventoryItems = characterInventories[charId]?.items || [];
-            const allCharItems = [...equippedItems, ...inventoryItems];
-            
-            allCharItems.forEach((item: any) => {
-                if (item.bucketHash !== BUCKETS.SUBCLASS) return;
-                if (expectedSubclassHash && item.itemHash === expectedSubclassHash) {
-                    subclassInstanceId = item.itemInstanceId;
-                }
-            });
-        });
-        
-        const socketsData = subclassInstanceId ? profile.itemComponents?.sockets?.data?.[subclassInstanceId] : null;
-        const reusablePlugs = subclassInstanceId ? profile.itemComponents?.reusablePlugs?.data?.[subclassInstanceId]?.plugs : null;
-        
-        return { subclassInstanceId, socketsData, reusablePlugs };
-    }, [profile, classType, damageType, expectedSubclassHash]);
+    const { table: pickerSandboxPerkDefinitions } = useManifestTable<any>("DestinySandboxPerkDefinition");
+    const {
+        subclassDef,
+        plugSetDefinitions,
+        allPlugHashes,
+        plugDefs,
+        isLoading,
+    } = useSubclassOptionDefinitions(classType, damageType);
     
     // Build socket index mapping from subclass definition
     const socketIndexMap = useMemo(() => {
@@ -1427,7 +2490,7 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
         subclassDef.sockets.socketEntries.forEach((entry: any, idx: number) => {
             // Map plug set hash to socket index
             if (entry.reusablePlugSetHash) {
-                const plugSet = plugSets[entry.reusablePlugSetHash];
+                const plugSet = plugSetDefinitions[entry.reusablePlugSetHash];
                 if (plugSet?.reusablePlugItems) {
                     plugSet.reusablePlugItems.forEach((item: any) => {
                         if (item.plugItemHash && !map.has(item.plugItemHash)) {
@@ -1439,54 +2502,7 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
         });
         
         return map;
-    }, [subclassDef, plugSets]);
-    
-    // Helper to categorize plugs
-    const getPlugCategory = useCallback((def: any): string => {
-        const identifier = def.plug?.plugCategoryIdentifier?.toLowerCase() || '';
-        const typeDisplay = def.itemTypeDisplayName?.toLowerCase() || '';
-        const name = def.displayProperties?.name?.toLowerCase() || '';
-        
-        // Check for supers (usually contains "supers" in identifier or itemType)
-        if (identifier.includes('supers') || typeDisplay === 'super') {
-            return 'super';
-        }
-        
-        // Check for aspects
-        if (identifier.includes('aspects') || typeDisplay === 'aspect') {
-            return 'aspect';
-        }
-        
-        // Check for fragments (for Prismatic, these are "Facet of X")
-        if (identifier.includes('fragments') || typeDisplay === 'fragment' || name.startsWith('facet of')) {
-            return 'fragment';
-        }
-        
-        // Check for grenades
-        if (identifier.includes('grenade') || typeDisplay.includes('grenade')) {
-            return 'grenade';
-        }
-        
-        // Check for melee abilities
-        if (identifier.includes('melee') || typeDisplay.includes('melee')) {
-            return 'melee';
-        }
-        
-        // Check for class abilities (rift, barricade, dodge)
-        if (identifier.includes('class_abilities') || 
-            typeDisplay.includes('class ability') ||
-            name.includes('rift') || name.includes('barricade') || name.includes('dodge')) {
-            return 'classAbility';
-        }
-        
-        // Check for movement abilities (jump, glide, lift)
-        if (identifier.includes('movement') || identifier.includes('jump') ||
-            typeDisplay.includes('jump') || typeDisplay.includes('glide') || typeDisplay.includes('lift')) {
-            return 'movement';
-        }
-        
-        return 'unknown';
-    }, []);
+    }, [subclassDef, plugSetDefinitions]);
     
     // Filter plugs based on slot type and search - now using ALL plugs from plug sets
     const filteredPlugs = useMemo(() => {
@@ -1496,7 +2512,7 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
             if (!def) return false;
             
             // Get the category of this plug
-            const plugCategory = getPlugCategory(def);
+            const plugCategory = getSubclassPlugCategory(def);
             
             // Filter by slot type
             if (plugCategory !== slotType) return false;
@@ -1525,42 +2541,51 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
             def: plugDefs[plugHash],
             fragmentSlots: plugDefs[plugHash]?.plug?.energyCapacity?.capacityValue,
         }));
-    }, [allPlugHashes, plugDefs, searchQuery, slotType, getPlugCategory, socketIndexMap, selectedFragments, selectedAspects]);
-    
-    const isLoading = subclassDefsLoading || plugSetsLoading || plugDefsLoading;
+    }, [allPlugHashes, plugDefs, searchQuery, slotType, socketIndexMap, selectedFragments, selectedAspects]);
+    const pickerPlugPerkHashes = useMemo(() => (
+        filteredPlugs.flatMap((plug) => (
+            (plug.def?.perks || [])
+                .map((perk: any) => perk?.perkHash)
+                .filter((perkHash: number) => Number.isSafeInteger(perkHash))
+        ))
+    ), [filteredPlugs]);
+    const { descriptions: pickerClarityDescriptions } = useClarityDescriptions([
+        ...filteredPlugs.map((plug) => plug.plugHash),
+        ...pickerPlugPerkHashes,
+    ]);
     
     const damageColor = damageType === 5 ? '#e878e8' : (damageType ? DAMAGE_TYPES[damageType]?.color : '#888');
     
     return (
-        <div className="fixed inset-0 bg-black/80 z-110 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]" onClick={onClose}>
             <div 
-                className="bg-gray-800/20 backdrop-blur-xl border border-white/10 w-full max-w-2xl max-h-[70vh] flex flex-col overflow-hidden"
-                style={{ borderColor: `${damageColor}30` }}
+                className="flex max-h-[72vh] w-full max-w-2xl flex-col overflow-hidden border-l-[3px] bg-[#090d13]/98 shadow-2xl shadow-black/70"
+                style={{ borderLeftColor: damageColor }}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
+                <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
                     <div className="flex items-center gap-3">
                         {damageType && DAMAGE_TYPES[damageType]?.apiIcon && (
-                            <Image src={DAMAGE_TYPES[damageType].apiIcon!} width={24} height={24} alt="" />
+                            <Image src={DAMAGE_TYPES[damageType].apiIcon!} width={20} height={20} alt="" />
                         )}
-                        <h3 className="text-lg font-bold text-white capitalize">
+                        <h3 className="font-condensed text-base font-bold uppercase tracking-wide text-white">
                             Select {slotType} {slotIndex !== undefined ? slotIndex + 1 : ''}
                         </h3>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                        <X className="w-5 h-5 text-slate-400" />
+                    <button onClick={onClose} className="p-1.5 text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
+                        <X className="h-4 w-4" />
                     </button>
                 </div>
                 
                 {/* Search */}
-                <div className="p-4 border-b border-white/10">
+                <div className="border-b border-white/5 p-3">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                         <input
                             type="text"
                             placeholder={`Search ${slotType}s...`}
-                            className="w-full bg-black/40 border border-white/10 py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-destiny-gold/50"
+                            className="w-full border border-white/10 bg-slate-900 py-1.5 pl-8 pr-3 text-sm text-white placeholder:text-slate-600 focus:border-destiny-gold/50 focus:outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             autoFocus
@@ -1569,7 +2594,7 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
                 </div>
                 
                 {/* Options Grid */}
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
                     {!damageType ? (
                         <div className="text-center py-8 text-slate-500">
                             <Zap className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -1595,19 +2620,33 @@ function SubclassPicker({ slotType, slotIndex, classType, damageType, profile, o
                             </p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3">
-                            {filteredPlugs.map((plug) => (
-                                <SubclassPickerItem
-                                    key={`${plug.socketIndex}-${plug.plugHash}`}
-                                    plug={plug}
-                                    slotType={slotType}
-                                    damageColor={damageColor}
-                                    onSelect={() => {
-                                        onSelect(plug.plugHash, plug.def?.displayProperties?.name, plug.def?.displayProperties?.icon, plug.fragmentSlots);
-                                        onClose();
-                                    }}
-                                />
-                            ))}
+                        <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-6">
+                            {filteredPlugs.map((plug) => {
+                                const perkHashes = (plug.def?.perks || [])
+                                    .map((perk: any) => perk?.perkHash)
+                                    .filter((perkHash: number) => Number.isSafeInteger(perkHash));
+                                const perkDefinitions = perkHashes
+                                    .map((perkHash: number) => pickerSandboxPerkDefinitions?.[perkHash] || pickerSandboxPerkDefinitions?.[String(perkHash)])
+                                    .filter(Boolean);
+                                const clarityDescription = pickerClarityDescriptions[plug.plugHash] || perkHashes
+                                    .map((perkHash: number) => pickerClarityDescriptions[perkHash])
+                                    .find(Boolean);
+                                
+                                return (
+                                    <SubclassPickerItem
+                                        key={`${plug.socketIndex}-${plug.plugHash}`}
+                                        plug={plug}
+                                        slotType={slotType}
+                                        damageColor={damageColor}
+                                        clarityDescription={clarityDescription}
+                                        perkDefinitions={perkDefinitions}
+                                        onSelect={() => {
+                                            onSelect(plug.plugHash, plug.def?.displayProperties?.name, plug.def?.displayProperties?.icon, plug.fragmentSlots);
+                                            onClose();
+                                        }}
+                                    />
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -1845,7 +2884,7 @@ interface LoadoutEditorProps {
 }
 
 type SubclassSlotPicker = {
-    type: 'super' | 'aspect' | 'fragment' | 'melee' | 'grenade' | 'classAbility' | 'movement';
+    type: SubclassSlotType;
     index?: number;
 } | null;
 
@@ -1853,7 +2892,7 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
     const generateId = () => `loadout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const [editedLoadout, setEditedLoadout] = useState<CustomLoadout>(
-        loadout || {
+        loadout ? normalizeLoadoutSubclassDamageType(loadout) : {
             id: generateId(),
             name: 'New Loadout',
             classType,
@@ -1871,7 +2910,16 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
     const [subclassPicker, setSubclassPicker] = useState<SubclassSlotPicker>(null);
     const [showIconPicker, setShowIconPicker] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
+    const [iconSearchQuery, setIconSearchQuery] = useState('');
     const [showTagPicker, setShowTagPicker] = useState(false);
+    const [isModsViewOpen, setIsModsViewOpen] = useState(() => (
+        typeof window !== 'undefined' && window.localStorage.getItem(LOADOUT_EDITOR_MODS_VIEW_STORAGE_KEY) === 'true'
+    ));
+    const [activeArmorModPicker, setActiveArmorModPicker] = useState<{
+        bucketHash: number;
+        socketIndex: number;
+    } | null>(null);
+    const [editorTagInputValue, setEditorTagInputValue] = useState('');
     const [showDamageTypePicker, setShowDamageTypePicker] = useState(false);
     const [contextMenu, setContextMenu] = useState<{
         x: number;
@@ -1898,9 +2946,114 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
         }));
     };
     
+    useEffect(() => {
+        window.localStorage.setItem(LOADOUT_EDITOR_MODS_VIEW_STORAGE_KEY, String(isModsViewOpen));
+    }, [isModsViewOpen]);
+    
     const getItemForBucket = (bucketHash: number) => {
         return editedLoadout.items.find((i) => i.bucketHash === bucketHash);
     };
+    
+    const selectedEditorArmorItems = useMemo(() => (
+        LOADOUT_BUCKETS.armor
+            .map((bucket) => ({
+                bucket,
+                item: editedLoadout.items.find((loadoutItem) => loadoutItem.bucketHash === bucket.hash),
+            }))
+            .filter((entry): entry is { bucket: typeof LOADOUT_BUCKETS.armor[number]; item: LoadoutItem } => Boolean(entry.item))
+    ), [editedLoadout.items]);
+    const selectedEditorArmorItemHashes = useMemo(
+        () => selectedEditorArmorItems.map(({ item }) => item.itemHash),
+        [selectedEditorArmorItems]
+    );
+    const { definitions: editorArmorItemDefinitions } = useItemDefinitions(selectedEditorArmorItemHashes);
+    const editorArmorModPlugHashes = useMemo(() => {
+        const plugHashes = new Set<number>();
+        
+        selectedEditorArmorItems.forEach(({ item }) => {
+            const itemInstanceId = item.itemInstanceId || '';
+            const socketsData = profile?.itemComponents?.sockets?.data?.[itemInstanceId];
+            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[itemInstanceId]?.plugs;
+            
+            socketsData?.sockets?.forEach((socket: any, socketIndex: number) => {
+                const overridePlugHash = item.socketOverrides?.[socketIndex];
+                if (socket.plugHash) plugHashes.add(socket.plugHash);
+                if (overridePlugHash) plugHashes.add(overridePlugHash);
+            });
+            
+            Object.values(reusablePlugs || {}).forEach((plugEntry: any) => {
+                getReusablePlugItems(plugEntry).forEach((plug: any) => {
+                    if (plug.plugItemHash) {
+                        plugHashes.add(plug.plugItemHash);
+                    }
+                });
+            });
+        });
+        
+        return Array.from(plugHashes);
+    }, [profile, selectedEditorArmorItems]);
+    const { definitions: editorArmorModPlugDefinitions } = useItemDefinitions(editorArmorModPlugHashes);
+    const editorArmorModRows = useMemo(() => (
+        selectedEditorArmorItems.map(({ bucket, item }) => {
+            const itemInstanceId = item.itemInstanceId || '';
+            const itemDefinition = editorArmorItemDefinitions[item.itemHash];
+            const socketsData = profile?.itemComponents?.sockets?.data?.[itemInstanceId];
+            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[itemInstanceId]?.plugs;
+            const modSockets: Array<{
+                socketIndex: number;
+                currentPlugHash?: number;
+                currentPlugDefinition?: any;
+                availablePlugs: Array<{ plugHash: number; definition: any; canInsert?: boolean; enabled?: boolean }>;
+            }> = [];
+            
+            itemDefinition?.sockets?.socketCategories?.forEach((category: any) => {
+                if (!ARMOR_MOD_SOCKET_CATEGORY_HASHES.has(category.socketCategoryHash)) return;
+                
+                category.socketIndexes?.forEach((socketIndex: number) => {
+                    const socket = socketsData?.sockets?.[socketIndex];
+                    const overridePlugHash = item.socketOverrides?.[socketIndex];
+                    const currentPlugHash = overridePlugHash || socket?.plugHash;
+                    const reusableAvailablePlugs = getReusablePlugItems(reusablePlugs?.[socketIndex] || reusablePlugs?.[String(socketIndex)])
+                        .map((plug: any) => ({
+                            plugHash: plug.plugItemHash,
+                            definition: editorArmorModPlugDefinitions[plug.plugItemHash],
+                            canInsert: plug.canInsert,
+                            enabled: plug.enabled,
+                        }))
+                        .filter((plug: any) => plug.definition);
+                    const availablePlugs = currentPlugHash &&
+                        editorArmorModPlugDefinitions[currentPlugHash] &&
+                        !reusableAvailablePlugs.some((plug: any) => plug.plugHash === currentPlugHash)
+                        ? [
+                            {
+                                plugHash: currentPlugHash,
+                                definition: editorArmorModPlugDefinitions[currentPlugHash],
+                                canInsert: true,
+                                enabled: true,
+                            },
+                            ...reusableAvailablePlugs,
+                        ]
+                        : reusableAvailablePlugs;
+                    
+                    if (!currentPlugHash && availablePlugs.length === 0) return;
+                    
+                    modSockets.push({
+                        socketIndex,
+                        currentPlugHash,
+                        currentPlugDefinition: currentPlugHash ? editorArmorModPlugDefinitions[currentPlugHash] : undefined,
+                        availablePlugs,
+                    });
+                });
+            });
+            
+            return {
+                bucket,
+                item,
+                definition: itemDefinition,
+                modSockets: modSockets.slice(0, 6),
+            };
+        })
+    ), [editorArmorItemDefinitions, editorArmorModPlugDefinitions, profile, selectedEditorArmorItems]);
     
     const toggleTag = (tag: string) => {
         setEditedLoadout((prev) => {
@@ -1912,19 +3065,47 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
             }
         });
     };
+    const addTypedEditorTag = () => {
+        const normalizedTag = editorTagInputValue.trim();
+        if (!normalizedTag) return;
+        
+        setEditedLoadout((prev) => {
+            const tags = prev.tags || [];
+            const hasExistingTag = tags.some((tag) => tag.toLowerCase() === normalizedTag.toLowerCase());
+            
+            if (hasExistingTag) return prev;
+            
+            return { ...prev, tags: [...tags, normalizedTag] };
+        });
+        setEditorTagInputValue('');
+        setShowTagPicker(false);
+    };
     
     const setDamageType = (damageType: number) => {
-        setEditedLoadout((prev) => ({
-            ...prev,
-            subclassConfig: {
-                ...(prev.subclassConfig || { itemHash: 0 }),
-                damageType,
-            },
-        }));
+        setEditedLoadout((prev) => {
+            const currentSubclassConfig = prev.subclassConfig || { itemHash: 0 };
+            const isChangingDamageType = currentSubclassConfig.damageType !== damageType;
+
+            return {
+                ...prev,
+                subclassConfig: {
+                    ...currentSubclassConfig,
+                    damageType,
+                    ...(isChangingDamageType
+                        ? {
+                            super: undefined,
+                            abilities: undefined,
+                            aspects: undefined,
+                            fragments: undefined,
+                        }
+                        : {}),
+                },
+            };
+        });
         setShowDamageTypePicker(false);
     };
     
-    const handleSubclassSlotClick = (type: 'super' | 'aspect' | 'fragment' | 'melee' | 'grenade' | 'classAbility' | 'movement', index?: number) => {
+    const handleSubclassSlotClick = (type: SubclassSlotType, index?: number) => {
         setSubclassPicker({ type, index });
     };
     
@@ -2032,6 +3213,46 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
     
     const damageType = editedLoadout.subclassConfig?.damageType;
     const subclassConfig = editedLoadout.subclassConfig;
+    const { allPlugHashes: availableSubclassPlugHashes } = useSubclassOptionDefinitions(
+        editedLoadout.classType,
+        damageType
+    );
+    
+    useEffect(() => {
+        if (!damageType || !subclassConfig || availableSubclassPlugHashes.length === 0) return;
+        
+        const selectedSubclassPlugHashes = [
+            subclassConfig.super?.plugHash,
+            ...Object.values(subclassConfig.abilities || {}).map((ability) => ability?.plugHash),
+            ...(subclassConfig.aspects || []).map((aspect) => aspect?.plugHash),
+            ...(subclassConfig.fragments || []).map((fragment) => fragment?.plugHash),
+        ].filter((plugHash): plugHash is number => typeof plugHash === 'number');
+        
+        if (selectedSubclassPlugHashes.length === 0) return;
+        
+        const availableSubclassPlugHashSet = new Set(availableSubclassPlugHashes);
+        const hasUnavailableSelectedPlug = selectedSubclassPlugHashes.some(
+            (plugHash) => !availableSubclassPlugHashSet.has(plugHash)
+        );
+        
+        if (!hasUnavailableSelectedPlug) return;
+        
+        setEditedLoadout((prev) => {
+            const currentSubclassConfig = prev.subclassConfig;
+            if (!currentSubclassConfig || currentSubclassConfig.damageType !== damageType) return prev;
+            
+            return {
+                ...prev,
+                subclassConfig: {
+                    ...currentSubclassConfig,
+                    super: undefined,
+                    abilities: undefined,
+                    aspects: undefined,
+                    fragments: undefined,
+                },
+            };
+        });
+    }, [availableSubclassPlugHashes, damageType, subclassConfig]);
     
     // Calculate total available fragment slots from selected aspects
     const totalFragmentSlots = useMemo(() => {
@@ -2057,8 +3278,42 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
             .map(a => a.plugHash);
     }, [subclassConfig?.aspects]);
     
+    const editorSubclassPlugConfigs = useMemo(() => {
+        const abilityConfigs = subclassConfig?.abilities || {};
+        
+        return [
+            subclassConfig?.super,
+            abilityConfigs.classAbility,
+            abilityConfigs.movement,
+            abilityConfigs.melee,
+            abilityConfigs.grenade,
+            ...(subclassConfig?.aspects || []),
+            ...(subclassConfig?.fragments || []),
+        ].filter((plugConfig): plugConfig is { plugHash: number; name?: string; icon?: string; description?: string; fragmentSlots?: number } => (
+            typeof plugConfig?.plugHash === 'number'
+        ));
+    }, [subclassConfig]);
+    const editorSubclassPlugHashes = useMemo(
+        () => Array.from(new Set(editorSubclassPlugConfigs.map((plugConfig) => plugConfig.plugHash))),
+        [editorSubclassPlugConfigs]
+    );
+    const { definitions: editorSubclassPlugDefinitions } = useItemDefinitions(editorSubclassPlugHashes);
+    const { table: editorSandboxPerkDefinitions } = useManifestTable<any>("DestinySandboxPerkDefinition");
+    const editorSubclassPerkHashes = useMemo(() => (
+        editorSubclassPlugConfigs.flatMap((plugConfig) => {
+            const definition = editorSubclassPlugDefinitions[plugConfig.plugHash];
+            return (definition?.perks || [])
+                .map((perk: any) => perk?.perkHash)
+                .filter((perkHash: number) => Number.isSafeInteger(perkHash));
+        })
+    ), [editorSubclassPlugConfigs, editorSubclassPlugDefinitions]);
+    const { descriptions: editorClarityDescriptions } = useClarityDescriptions([
+        ...editorSubclassPlugHashes,
+        ...editorSubclassPerkHashes,
+    ]);
+    
     // Check if any popup is currently open
-    const hasOpenPopup = pickerBucket !== null || subclassPicker !== null || showIconPicker || showColorPicker || showTagPicker || showDamageTypePicker || contextMenu !== null;
+    const hasOpenPopup = pickerBucket !== null || subclassPicker !== null || showIconPicker || showColorPicker || showTagPicker || showDamageTypePicker || activeArmorModPicker !== null || contextMenu !== null;
     
     const handleBackdropClick = () => {
         // Don't close the editor if a popup is open
@@ -2089,276 +3344,587 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
         }));
     };
     
+    const handleArmorModSelect = (bucketHash: number, socketIndex: number, plugHash: number) => {
+        setEditedLoadout((prev) => ({
+            ...prev,
+            items: prev.items.map((item) => {
+                if (item.bucketHash !== bucketHash) return item;
+                
+                return {
+                    ...item,
+                    socketOverrides: {
+                        ...(item.socketOverrides || {}),
+                        [socketIndex]: plugHash,
+                    },
+                };
+            }),
+            armorMods: [
+                ...(prev.armorMods || []).filter((armorMod) => armorMod.bucketHash !== bucketHash),
+                {
+                    bucketHash,
+                    mods: [
+                        ...((prev.armorMods || []).find((armorMod) => armorMod.bucketHash === bucketHash)?.mods || [])
+                            .filter((mod) => mod.socketIndex !== socketIndex),
+                        { socketIndex, plugHash },
+                    ],
+                },
+            ],
+        }));
+        setActiveArmorModPicker(null);
+    };
+    
+    const handleArmorModReset = (bucketHash: number, socketIndex: number) => {
+        setEditedLoadout((prev) => ({
+            ...prev,
+            items: prev.items.map((item) => {
+                if (item.bucketHash !== bucketHash || !item.socketOverrides?.[socketIndex]) return item;
+                
+                const { [socketIndex]: _removedPlugHash, ...remainingSocketOverrides } = item.socketOverrides;
+                
+                return {
+                    ...item,
+                    socketOverrides: Object.keys(remainingSocketOverrides).length > 0 ? remainingSocketOverrides : undefined,
+                };
+            }),
+            armorMods: (prev.armorMods || [])
+                .map((armorMod) => {
+                    if (armorMod.bucketHash !== bucketHash) return armorMod;
+                    
+                    return {
+                        ...armorMod,
+                        mods: armorMod.mods.filter((mod) => mod.socketIndex !== socketIndex),
+                    };
+                })
+                .filter((armorMod) => armorMod.mods.length > 0),
+        }));
+        setActiveArmorModPicker(null);
+    };
+    
+    const filteredLoadoutIcons = useMemo(() => {
+        const normalizedIconSearch = iconSearchQuery.trim().toLowerCase();
+        
+        if (!normalizedIconSearch) return LOADOUT_ICONS;
+        
+        return LOADOUT_ICONS.filter((iconId) => iconId.toLowerCase().includes(normalizedIconSearch));
+    }, [iconSearchQuery]);
+    
+    const getEditorPlugDefinition = (plugConfig?: { plugHash: number; name?: string; icon?: string; description?: string }) => {
+        if (!plugConfig?.plugHash) return null;
+        
+        return editorSubclassPlugDefinitions[plugConfig.plugHash] || {
+            hash: plugConfig.plugHash,
+            displayProperties: {
+                name: plugConfig.name || String(plugConfig.plugHash),
+                icon: plugConfig.icon,
+                description: plugConfig.description || '',
+            },
+        };
+    };
+    
+    const renderEditorPlugTile = (
+        plugConfig: { plugHash: number; name?: string; icon?: string; description?: string } | undefined,
+        sizeClassName: string
+    ) => {
+        const definition = getEditorPlugDefinition(plugConfig);
+        if (!definition) return null;
+        
+        const perkHashes = (definition.perks || [])
+            .map((perk: any) => perk?.perkHash)
+            .filter((perkHash: number) => Number.isSafeInteger(perkHash));
+        const perkDefinitions = perkHashes
+            .map((perkHash: number) => editorSandboxPerkDefinitions?.[perkHash] || editorSandboxPerkDefinitions?.[String(perkHash)])
+            .filter(Boolean);
+        const clarityDescription = editorClarityDescriptions[definition.hash] || perkHashes
+            .map((perkHash: number) => editorClarityDescriptions[perkHash])
+            .find(Boolean);
+        
+        return (
+            <InGameLoadoutPlugTile
+                definition={definition}
+                clarityDescription={clarityDescription}
+                perkDefinitions={perkDefinitions}
+                sizeClassName={sizeClassName}
+            />
+        );
+    };
+    
+    const renderEditorSubclassSelector = ({
+        slotType,
+        label,
+        plugConfig,
+        sizeClassName,
+        emptyIcon,
+        index,
+        disabled = false,
+        onRemove,
+        hint,
+    }: {
+        slotType: SubclassSlotType;
+        label: string;
+        plugConfig?: { plugHash: number; name?: string; icon?: string; description?: string; fragmentSlots?: number };
+        sizeClassName: string;
+        emptyIcon: ReactNode;
+        index?: number;
+        disabled?: boolean;
+        onRemove?: () => void;
+        hint?: string;
+    }) => (
+        <div className="group relative">
+            <button
+                type="button"
+                onClick={() => !disabled && handleSubclassSlotClick(slotType, index)}
+                disabled={disabled}
+                className={cn(
+                    sizeClassName,
+                    "flex items-center justify-center transition-all",
+                    disabled ? "cursor-not-allowed opacity-35" : "hover:scale-105"
+                )}
+                title={label}
+            >
+                {plugConfig?.plugHash ? (
+                    renderEditorPlugTile(plugConfig, sizeClassName)
+                ) : (
+                    <SelectorHintTile
+                        label={label}
+                        description={hint || `Select ${label.toLowerCase()} for this loadout.`}
+                        sizeClassName="h-full w-full"
+                        disabled={disabled}
+                    >
+                        {emptyIcon}
+                    </SelectorHintTile>
+                )}
+            </button>
+            {plugConfig?.plugHash && onRemove && (
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onRemove();
+                    }}
+                    className="absolute -right-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 opacity-0 transition-opacity group-hover:opacity-100"
+                    aria-label={`Remove ${label}`}
+                    title={`Remove ${label}`}
+                >
+                    <X className="h-2.5 w-2.5 text-white" />
+                </button>
+            )}
+        </div>
+    );
+    
+    const renderEditorItemSelector = (
+        bucket: { hash: number; name: string; icon: string },
+        itemType: 'weapon' | 'armor',
+        sizeClassName: string
+    ) => {
+        const item = getItemForBucket(bucket.hash);
+        const instanceId = item?.itemInstanceId || '';
+        const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
+        const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
+        const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
+        const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
+        const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
+        
+        return (
+            <div key={bucket.hash} className="group relative">
+                <button
+                    type="button"
+                    onClick={() => setPickerBucket(bucket.hash)}
+                    onContextMenu={(event) => item && handleItemContextMenu(event, item, itemType)}
+                    className={cn(
+                        sizeClassName,
+                        "flex items-center justify-center transition-all hover:scale-105",
+                        item
+                            ? "border-0 bg-transparent"
+                            : "border border-white/10 bg-transparent hover:border-destiny-gold/50",
+                        hasOverrides && "ring-2 ring-destiny-gold/50"
+                    )}
+                    title={!item ? bucket.name : `Right-click to configure ${itemType === 'weapon' ? 'perks' : 'mods'}`}
+                >
+                    {item ? (
+                        <DestinyItemCard
+                            itemHash={item.itemHash}
+                            itemInstanceId={item.itemInstanceId}
+                            instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
+                            socketsData={socketsData}
+                            reusablePlugs={reusablePlugs}
+                            className="h-full w-full"
+                            size={itemType === 'weapon' ? 'medium' : 'small'}
+                        />
+                    ) : (
+                        <SelectorHintTile
+                            label={bucket.name}
+                            description={`Select ${itemType === 'weapon' ? 'a' : ''} ${bucket.name.toLowerCase()} for this loadout.`}
+                            sizeClassName="h-full w-full"
+                        >
+                            <BucketIcon icon={bucket.icon} className={itemType === 'armor' ? 'opacity-50' : undefined} />
+                        </SelectorHintTile>
+                    )}
+                </button>
+                {hasOverrides && (
+                    <div className="absolute -left-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-destiny-gold" title={itemType === 'weapon' ? 'Perks configured' : 'Mods configured'}>
+                        <Settings2 className="h-2.5 w-2.5 text-slate-900" />
+                    </div>
+                )}
+                {item && (
+                    <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            handleRemoveItem(bucket.hash);
+                        }}
+                        className={cn(
+                            "absolute -right-1 -top-1 z-10 flex items-center justify-center rounded-full bg-red-500 opacity-0 transition-opacity group-hover:opacity-100",
+                            itemType === 'weapon' ? "h-5 w-5" : "h-4 w-4"
+                        )}
+                        title={`Remove ${bucket.name}`}
+                        aria-label={`Remove ${bucket.name}`}
+                    >
+                        <X className={cn("text-white", itemType === 'weapon' ? "h-3 w-3" : "h-2.5 w-2.5")} />
+                    </button>
+                )}
+            </div>
+        );
+    };
+    
     return (
         <>
-        <LoadoutModal
-            title={loadout ? 'Edit Loadout' : 'Create Loadout'}
-            icon={loadout ? Edit3 : Plus}
-            onClose={onCancel}
-            onBackdropClick={handleBackdropClick}
-            maxWidth="lg"
-            footer={
-                <LoadoutModalFooter>
-                    <LoadoutSecondaryButton onClick={onCancel}>Cancel</LoadoutSecondaryButton>
-                    <LoadoutPrimaryButton onClick={() => onSave(editedLoadout)}>
-                        <Save className="w-4 h-4" />
-                        Save Loadout
-                    </LoadoutPrimaryButton>
-                </LoadoutModalFooter>
-            }
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm"
+            onClick={handleBackdropClick}
         >
-                {/* Name & Appearance Row */}
-                <div className="space-y-4 border-b border-white/10 p-4 sm:p-5">
-                    <div className="flex items-center gap-4">
-                        {/* Icon Picker */}
-                        <div className="relative">
-                            <button
-                                type="button"
-                                onClick={() => setShowIconPicker(!showIconPicker)}
-                                className="flex h-14 w-14 items-center justify-center border border-white/10 bg-black/40 transition-colors hover:border-white/30"
-                                style={{ borderColor: editedLoadout.color }}
-                            >
-                                <LoadoutIcon icon={editedLoadout.icon} color={editedLoadout.color} size="lg" />
-                            </button>
-                            {showIconPicker && (
-                                <div className="absolute left-0 top-full z-50 mt-2 grid grid-cols-7 gap-1 border border-white/10 bg-[#0b0f14] p-2 shadow-xl">
-                                    {LOADOUT_ICONS.map((iconId) => {
+            <div
+                className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden border-l-[3px] bg-[#090d13]/95 shadow-2xl shadow-black/70"
+                style={{ borderLeftColor: editedLoadout.color }}
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
+                    <div className="relative shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowIconPicker((isOpen) => !isOpen);
+                                setShowColorPicker(false);
+                            }}
+                            className="flex h-12 w-12 items-center justify-center border border-white/10 bg-black/30 transition-colors hover:border-white/30"
+                            style={{ borderColor: `${editedLoadout.color}66`, color: editedLoadout.color }}
+                            title="Choose icon and color"
+                            aria-label="Choose icon and color"
+                            aria-expanded={showIconPicker}
+                        >
+                            <LoadoutIcon icon={editedLoadout.icon} color={editedLoadout.color} size="lg" />
+                        </button>
+                        {showIconPicker && (
+                            <div className="absolute left-0 top-full z-50 mt-2 w-72 border border-white/10 bg-[#0b0f14]/98 p-3 shadow-2xl shadow-black/70">
+                                <div className="relative mb-3">
+                                    <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                                    <input
+                                        type="text"
+                                        value={iconSearchQuery}
+                                        onChange={(event) => setIconSearchQuery(event.target.value)}
+                                        placeholder="Search icons..."
+                                        className="w-full border border-white/10 bg-slate-900 py-1.5 pl-7 pr-2 text-xs text-white placeholder:text-slate-600 focus:border-destiny-gold/50 focus:outline-none"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="mb-3 grid max-h-36 grid-cols-7 gap-1 overflow-y-auto pr-1 custom-scrollbar">
+                                    {filteredLoadoutIcons.map((iconId) => {
                                         const IconComponent = getLoadoutIconComponent(iconId);
+                                        const isSelected = resolveLoadoutIconId(editedLoadout.icon) === iconId;
+                                        
                                         return (
-                                        <button
-                                            key={iconId}
-                                            type="button"
-                                            onClick={() => {
-                                                setEditedLoadout((prev) => ({ ...prev, icon: iconId }));
-                                                setShowIconPicker(false);
-                                            }}
-                                            className="flex h-8 w-8 items-center justify-center text-slate-300 hover:bg-white/10"
-                                        >
-                                            <IconComponent className="h-4 w-4" />
-                                        </button>
-                                    )})}
-                                </div>
-                            )}
-                        </div>
-                        
-                        {/* Name Input */}
-                        <input
-                            type="text"
-                            value={editedLoadout.name}
-                            onChange={(e) => setEditedLoadout((prev) => ({ ...prev, name: e.target.value }))}
-                            className="flex-1 border border-white/10 bg-black/40 px-4 py-3 text-lg font-bold text-white focus:border-destiny-gold/50 focus:outline-none"
-                            placeholder="Loadout Name"
-                        />
-                        
-                        {/* Color Picker */}
-                        <div className="relative">
-                            <button
-                                type="button"
-                                onClick={() => setShowColorPicker(!showColorPicker)}
-                                className="h-10 w-10 border-2 border-white/20"
-                                style={{ backgroundColor: editedLoadout.color }}
-                                aria-label="Choose loadout color"
-                            />
-                            {showColorPicker && (
-                                <div className="absolute right-0 top-full z-50 mt-2 flex gap-1 border border-white/10 bg-[#0b0f14] p-2 shadow-xl">
-                                    {LOADOUT_COLORS.map((color) => (
-                                        <button
-                                            key={color}
-                                            type="button"
-                                            onClick={() => {
-                                                setEditedLoadout((prev) => ({ ...prev, color }));
-                                                setShowColorPicker(false);
-                                            }}
-                                            className="h-6 w-6 border-2 border-white/20 transition-transform hover:scale-110"
-                                            style={{ backgroundColor: color }}
-                                            aria-label={`Color ${color}`}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    
-                    {/* Class & Tags Row */}
-                    <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex items-center gap-2 text-sm text-slate-400">
-                            <Image src={CLASS_ICONS[editedLoadout.classType]} width={16} height={16} alt="" />
-                            <span>{CLASS_NAMES[editedLoadout.classType]}</span>
-                        </div>
-                        
-                        <div className="h-4 w-px bg-white/10" />
-                        
-                        {/* Tags */}
-                        <div className="flex items-center gap-2 flex-wrap flex-1">
-                            {(editedLoadout.tags || []).map((tag) => (
-                                <button
-                                    key={tag}
-                                    onClick={() => toggleTag(tag)}
-                                    className="px-2 py-0.5 bg-destiny-gold/20 text-destiny-gold text-xs rounded flex items-center gap-1 hover:bg-destiny-gold/30 transition-colors"
-                                >
-                                    {tag}
-                                    <X className="w-3 h-3" />
-                                </button>
-                            ))}
-                            
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowTagPicker(!showTagPicker)}
-                                    className="px-2 py-0.5 bg-white/5 text-slate-400 text-xs rounded flex items-center gap-1 hover:bg-white/10 transition-colors"
-                                >
-                                    <Tag className="w-3 h-3" />
-                                    Add Tag
-                                </button>
-                                
-                                {showTagPicker && (
-                                    <div className="absolute left-0 top-full z-50 mt-2 max-h-48 w-48 overflow-y-auto border border-white/10 bg-[#0b0f14] p-2 shadow-xl">
-                                        {LOADOUT_TAGS.filter((t) => !(editedLoadout.tags || []).includes(t)).map((tag) => (
                                             <button
-                                                key={tag}
-                                                onClick={() => {
-                                                    toggleTag(tag);
-                                                    setShowTagPicker(false);
-                                                }}
-                                                className="w-full text-left px-2 py-1.5 text-sm text-slate-300 hover:bg-white/10 rounded"
+                                                key={iconId}
+                                                type="button"
+                                                onClick={() => setEditedLoadout((prev) => ({ ...prev, icon: iconId }))}
+                                                className={cn(
+                                                    "flex h-8 w-8 items-center justify-center text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
+                                                    isSelected && "bg-destiny-gold/15 text-destiny-gold"
+                                                )}
+                                                title={iconId}
+                                                aria-label={`Use ${iconId} icon`}
                                             >
-                                                {tag}
+                                                <IconComponent className="h-4 w-4" />
                                             </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="border-t border-white/10 pt-3">
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                        Color
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {LOADOUT_COLORS.map((color) => (
+                                            <button
+                                                key={color}
+                                                type="button"
+                                                onClick={() => setEditedLoadout((prev) => ({ ...prev, color }))}
+                                                className={cn(
+                                                    "h-6 w-6 border transition-transform hover:scale-110",
+                                                    editedLoadout.color === color ? "border-white" : "border-white/20"
+                                                )}
+                                                style={{ backgroundColor: color }}
+                                                aria-label={`Use ${color} color`}
+                                            />
                                         ))}
                                     </div>
-                                )}
+                                </div>
                             </div>
+                        )}
+                    </div>
+                    
+                    <input
+                        type="text"
+                        value={editedLoadout.name}
+                        onChange={(event) => setEditedLoadout((prev) => ({ ...prev, name: event.target.value }))}
+                        className="min-w-0 flex-1 bg-transparent text-lg font-bold uppercase tracking-wide text-white outline-none placeholder:text-slate-600 focus:text-destiny-gold"
+                        placeholder="Loadout Name"
+                    />
+                    
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsModsViewOpen((isOpen) => !isOpen)}
+                            className={cn(
+                                "inline-flex h-8 w-8 items-center justify-center transition-colors hover:bg-white/5 hover:text-white",
+                                isModsViewOpen ? "text-destiny-gold" : "text-slate-400"
+                            )}
+                            title={isModsViewOpen ? "Hide mod rows" : "Show mod rows"}
+                            aria-label={isModsViewOpen ? "Hide mod rows" : "Show mod rows"}
+                            aria-pressed={isModsViewOpen}
+                        >
+                            <Settings2 className="h-4 w-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onSave(editedLoadout)}
+                            className="inline-flex h-8 w-8 items-center justify-center text-destiny-gold transition-colors hover:bg-destiny-gold/10 hover:text-white"
+                            title="Save loadout"
+                            aria-label="Save loadout"
+                        >
+                            <Save className="h-4 w-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="inline-flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+                            title="Close"
+                            aria-label="Close"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="border-b border-white/5 px-4 py-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                            <Image src={CLASS_ICONS[editedLoadout.classType]} width={14} height={14} alt="" />
+                            <span>{CLASS_NAMES[editedLoadout.classType]}</span>
+                        </div>
+                        {(editedLoadout.tags || []).map((tag) => (
+                            <button
+                                key={tag}
+                                type="button"
+                                onClick={() => toggleTag(tag)}
+                                className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            >
+                                {tag}
+                                <X className="h-3 w-3" />
+                            </button>
+                        ))}
+                        <div className="relative">
+                            {showTagPicker ? (
+                                <form
+                                    onSubmit={(event) => {
+                                        event.preventDefault();
+                                        addTypedEditorTag();
+                                    }}
+                                >
+                                    <input
+                                        type="text"
+                                        value={editorTagInputValue}
+                                        onChange={(event) => setEditorTagInputValue(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Escape') {
+                                                setEditorTagInputValue('');
+                                                setShowTagPicker(false);
+                                            }
+                                        }}
+                                        placeholder="Tag"
+                                        className="h-5 w-24 border border-white/10 bg-slate-900 px-1.5 text-[10px] font-semibold text-white placeholder:text-slate-600 focus:border-destiny-gold/50 focus:outline-none"
+                                        autoFocus
+                                    />
+                                </form>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTagPicker(true)}
+                                    className="inline-flex h-5 w-5 items-center justify-center text-slate-500 transition-colors hover:bg-white/5 hover:text-white"
+                                    title="Add tag"
+                                    aria-label="Add tag"
+                                >
+                                    <Plus className="h-3 w-3" />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
                 
+                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-4">
-                    <div className="space-y-6">
-                            {/* Two Column Layout: Weapons Left, Armor Right */}
-                            <div className="grid grid-cols-2 gap-8">
-                                {/* Weapons Column (Left) */}
-                                <div>
-                                    <h4 className="text-xs uppercase font-bold text-slate-500 mb-3 tracking-widest">Weapons</h4>
-                                    <div className="flex gap-2">
-                                        {LOADOUT_BUCKETS.weapons.map((bucket) => {
-                                            const item = getItemForBucket(bucket.hash);
-                                            const instanceId = item?.itemInstanceId || '';
-                                            const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
-                                            const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
-                                            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
-                                            const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
-                                            const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
-                                            
-                                            return (
-                                                <div key={bucket.hash} className="relative group">
-                                                    <button
-                                                        onClick={() => setPickerBucket(bucket.hash)}
-                                                        onContextMenu={(e) => item && handleItemContextMenu(e, item, 'weapon')}
-                                                        className={cn(
-                                                            "w-16 h-16 bg-black/40 border-2 border-white/10 flex items-center justify-center transition-all hover:border-destiny-gold/50 hover:scale-105",
-                                                            item && "border-solid border-white/20",
-                                                            hasOverrides && "ring-2 ring-destiny-gold/50"
-                                                        )}
-                                                        title={!item ? bucket.name : 'Right-click to configure perks'}
-                                                    >
-                                                        {item ? (
-                                                            <DestinyItemCard
-                                                                itemHash={item.itemHash}
-                                                                itemInstanceId={item.itemInstanceId}
-                                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
-                                                                socketsData={socketsData}
-                                                                reusablePlugs={reusablePlugs}
-                                                                className="w-full h-full"
-                                                                size="medium"
-                                                                tierAsNumber
-                                                            />
-                                                        ) : (
-                                                            <BucketIcon icon={bucket.icon} />
-                                                        )}
-                                                    </button>
-                                                    {/* Perks configured indicator */}
-                                                    {hasOverrides && (
-                                                        <div className="absolute -top-1 -left-1 w-4 h-4 bg-destiny-gold rounded-full flex items-center justify-center z-10" title="Perks configured">
-                                                            <Settings2 className="w-2.5 h-2.5 text-slate-900" />
+                <div className="p-4 sm:p-5">
+                    <div className="space-y-5">
+                            {isModsViewOpen ? (
+                                <div className="grid grid-cols-1 gap-5 lg:grid-cols-[5rem_minmax(0,1fr)]">
+                                    <div>
+                                        <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Weapons</h4>
+                                        <div className="flex flex-row gap-2 lg:flex-col">
+                                            {LOADOUT_BUCKETS.weapons.map((bucket) => renderEditorItemSelector(bucket, 'weapon', 'h-16 w-16'))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="min-w-0">
+                                        <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Armor - Mods</h4>
+                                        <div className="space-y-2">
+                                            {LOADOUT_BUCKETS.armor.map((bucket) => {
+                                                const armorRow = editorArmorModRows.find((row) => row.bucket.hash === bucket.hash);
+                                                
+                                                return (
+                                                    <div key={bucket.hash} className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-3 border-b border-white/5 pb-2 last:border-b-0">
+                                                        <div>{renderEditorItemSelector(bucket, 'armor', 'h-14 w-14')}</div>
+                                                        <div className="min-w-0 pt-0.5">
+                                                            <div className="mb-1 truncate text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                                                {armorRow?.definition?.displayProperties?.name || bucket.name}
+                                                            </div>
+                                                            {!armorRow ? (
+                                                                <div className="text-xs text-slate-600">Select armor to reveal mods.</div>
+                                                            ) : armorRow.modSockets.length === 0 ? (
+                                                                <div className="text-xs text-slate-600">No configurable mods found.</div>
+                                                            ) : (
+                                                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                                                    {armorRow.modSockets.map((socket) => {
+                                                                        const selectedPlugHash = armorRow.item.socketOverrides?.[socket.socketIndex] || socket.currentPlugHash;
+                                                                        const isPickerOpen = activeArmorModPicker?.bucketHash === armorRow.item.bucketHash &&
+                                                                            activeArmorModPicker.socketIndex === socket.socketIndex;
+                                                                        
+                                                                        return (
+                                                                            <div key={`${armorRow.bucket.hash}-${socket.socketIndex}`} className="relative flex min-w-0 items-center gap-1.5">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setActiveArmorModPicker((currentPicker) => (
+                                                                                        currentPicker?.bucketHash === armorRow.item.bucketHash && currentPicker.socketIndex === socket.socketIndex
+                                                                                            ? null
+                                                                                            : { bucketHash: armorRow.item.bucketHash, socketIndex: socket.socketIndex }
+                                                                                    ))}
+                                                                                    className={cn(
+                                                                                        "relative h-8 w-8 shrink-0 overflow-hidden border bg-transparent transition-colors hover:border-white/30",
+                                                                                        armorRow.item.socketOverrides?.[socket.socketIndex]
+                                                                                            ? "border-destiny-gold"
+                                                                                            : "border-white/10"
+                                                                                    )}
+                                                                                    title={socket.currentPlugDefinition?.displayProperties?.name || `Socket ${socket.socketIndex + 1}`}
+                                                                                    aria-label={`Select mod for socket ${socket.socketIndex + 1}`}
+                                                                                    aria-expanded={isPickerOpen}
+                                                                                >
+                                                                                    {socket.currentPlugDefinition?.displayProperties?.icon ? (
+                                                                                        <Image
+                                                                                            src={getBungieImage(socket.currentPlugDefinition.displayProperties.icon)}
+                                                                                            alt={socket.currentPlugDefinition.displayProperties?.name || ''}
+                                                                                            fill
+                                                                                            sizes="32px"
+                                                                                            className="object-cover"
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <Settings2 className="m-1.5 h-5 w-5 text-slate-600" />
+                                                                                    )}
+                                                                                </button>
+                                                                                {armorRow.item.socketOverrides?.[socket.socketIndex] && (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleArmorModReset(armorRow.item.bucketHash, socket.socketIndex)}
+                                                                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-white/10 text-slate-500 transition-colors hover:border-red-400/40 hover:text-red-300"
+                                                                                        title="Reset this mod socket"
+                                                                                        aria-label="Reset this mod socket"
+                                                                                    >
+                                                                                        <X className="h-3.5 w-3.5" />
+                                                                                    </button>
+                                                                                )}
+                                                                                {isPickerOpen && (
+                                                                                    <>
+                                                                                        <div className="fixed inset-0 z-[120]" onClick={() => setActiveArmorModPicker(null)} />
+                                                                                        <div className="absolute left-0 top-full z-[121] mt-2 w-72 border border-white/10 bg-[#0b0f14]/98 p-2 shadow-2xl shadow-black/70 backdrop-blur-xl">
+                                                                                            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                                                                                Socket {socket.socketIndex + 1}
+                                                                                            </div>
+                                                                                            <div className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto custom-scrollbar">
+                                                                                                {socket.availablePlugs.map((plug) => {
+                                                                                                    const isSelectedPlug = selectedPlugHash === plug.plugHash;
+                                                                                                    const isDisabled = plug.canInsert === false || plug.enabled === false;
+                                                                                                    
+                                                                                                    return (
+                                                                                                        <button
+                                                                                                            key={`${socket.socketIndex}-${plug.plugHash}`}
+                                                                                                            type="button"
+                                                                                                            onClick={() => !isDisabled && handleArmorModSelect(armorRow.item.bucketHash, socket.socketIndex, plug.plugHash)}
+                                                                                                            disabled={isDisabled}
+                                                                                                            className={cn(
+                                                                                                                "relative h-9 w-9 overflow-hidden border transition-colors disabled:cursor-not-allowed disabled:opacity-35",
+                                                                                                                isSelectedPlug
+                                                                                                                    ? "border-destiny-gold"
+                                                                                                                    : "border-white/10 hover:border-white/30"
+                                                                                                            )}
+                                                                                                            title={plug.definition.displayProperties?.name || `Mod ${plug.plugHash}`}
+                                                                                                        >
+                                                                                                            {plug.definition.displayProperties?.icon ? (
+                                                                                                                <Image
+                                                                                                                    src={getBungieImage(plug.definition.displayProperties.icon)}
+                                                                                                                    alt={plug.definition.displayProperties?.name || ''}
+                                                                                                                    fill
+                                                                                                                    sizes="36px"
+                                                                                                                    className="object-cover"
+                                                                                                                />
+                                                                                                            ) : (
+                                                                                                                <Settings2 className="m-2 h-5 w-5 text-slate-600" />
+                                                                                                            )}
+                                                                                                        </button>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                    {item && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleRemoveItem(bucket.hash); }}
-                                                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                                        >
-                                                            <X className="w-3 h-3 text-white" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
-                                
-                                {/* Armor Column (Right) */}
-                                <div>
-                                    <h4 className="text-xs uppercase font-bold text-slate-500 mb-3 tracking-widest">Armor</h4>
-                                    <div className="flex gap-2">
-                                        {LOADOUT_BUCKETS.armor.map((bucket) => {
-                                            const item = getItemForBucket(bucket.hash);
-                                            const instanceId = item?.itemInstanceId || '';
-                                            const instanceData = profile?.itemComponents?.instances?.data?.[instanceId];
-                                            const socketsData = profile?.itemComponents?.sockets?.data?.[instanceId];
-                                            const reusablePlugs = profile?.itemComponents?.reusablePlugs?.data?.[instanceId]?.plugs;
-                                            const statsData = profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
-                                            const hasOverrides = item?.socketOverrides && Object.keys(item.socketOverrides).length > 0;
-                                            
-                                            return (
-                                                <div key={bucket.hash} className="relative group">
-                                                    <button
-                                                        onClick={() => setPickerBucket(bucket.hash)}
-                                                        onContextMenu={(e) => item && handleItemContextMenu(e, item, 'armor')}
-                                                        className={cn(
-                                                            "w-14 h-14 bg-black/40 border-2 border-white/10 rounded-lg flex items-center justify-center transition-all hover:border-destiny-gold/50 hover:scale-105",
-                                                            item && "border-solid border-white/20",
-                                                            hasOverrides && "ring-2 ring-destiny-gold/50"
-                                                        )}
-                                                        title={!item ? bucket.name : 'Right-click to configure mods'}
-                                                    >
-                                                        {item ? (
-                                                            <DestinyItemCard
-                                                                itemHash={item.itemHash}
-                                                                itemInstanceId={item.itemInstanceId}
-                                                                instanceData={instanceData ? { ...instanceData, stats: statsData } : undefined}
-                                                                socketsData={socketsData}
-                                                                reusablePlugs={reusablePlugs}
-                                                                className="w-full h-full"
-                                                                size="small"
-                                                                tierAsNumber
-                                                            />
-                                                        ) : (
-                                                            <BucketIcon icon={bucket.icon} className="opacity-50" />
-                                                        )}
-                                                    </button>
-                                                    {/* Mods configured indicator */}
-                                                    {hasOverrides && (
-                                                        <div className="absolute -top-1 -left-1 w-3.5 h-3.5 bg-destiny-gold rounded-full flex items-center justify-center z-10" title="Mods configured">
-                                                            <Settings2 className="w-2 h-2 text-slate-900" />
-                                                        </div>
-                                                    )}
-                                                    {item && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleRemoveItem(bucket.hash); }}
-                                                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                                        >
-                                                            <X className="w-2.5 h-2.5 text-white" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                            ) : (
+                                <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                                    <div>
+                                        <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Weapons</h4>
+                                        <div className="flex gap-2">
+                                            {LOADOUT_BUCKETS.weapons.map((bucket) => renderEditorItemSelector(bucket, 'weapon', 'h-16 w-16'))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Armor</h4>
+                                        <div className="flex gap-2">
+                                            {LOADOUT_BUCKETS.armor.map((bucket) => renderEditorItemSelector(bucket, 'armor', 'h-14 w-14'))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                             
                             {/* Subclass Section (Bottom) */}
-                            <div className="border-t border-white/10 pt-6">
+                            <div className="border-t border-white/5 pt-4">
                                 <div className="flex items-center justify-between mb-4">
                                     <h4 className="text-xs uppercase font-bold text-slate-500 tracking-widest">Subclass</h4>
                                     
@@ -2369,10 +3935,10 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                                 key={dt}
                                                 onClick={() => setDamageType(dt)}
                                                 className={cn(
-                                                    "w-8 h-8 rounded-lg border flex items-center justify-center transition-all hover:scale-110",
+                                                    "w-8 h-8 border flex items-center justify-center transition-all hover:scale-110",
                                                     damageType === dt 
-                                                        ? "border-2 bg-black/60" 
-                                                        : "border-white/10 bg-black/30 hover:border-white/30"
+                                                        ? "border-2 bg-transparent" 
+                                                        : "border-white/10 bg-transparent hover:border-white/30"
                                                 )}
                                                 style={{ 
                                                     borderColor: damageType === dt ? (dt === 5 ? '#e878e8' : DAMAGE_TYPES[dt]?.color) : undefined,
@@ -2399,183 +3965,111 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                                     </div>
                                 </div>
                                 
-                                <div className="space-y-4">
-                                    {/* Super + Abilities Row */}
-                                    <div className="flex items-center gap-3">
-                                        {/* Super */}
-                                        <button
-                                            onClick={() => handleSubclassSlotClick('super')}
-                                            className="w-14 h-14 border-white/10 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
-                                            style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}30` : undefined }}
-                                            title="Super"
-                                        >
-                                            {subclassConfig?.super?.plugHash ? (
-                                                <SubclassSlot 
-                                                    plugHash={subclassConfig.super.plugHash} 
-                                                    label="Super" 
-                                                    size="medium"
-                                                    damageType={damageType}
-                                                />
-                                            ) : (
-                                                <Zap className="w-6 h-6 text-slate-600" />
-                                            )}
-                                        </button>
-                                        
-                                        <div className="w-px h-10 bg-white/10" />
-                                        
-                                        {/* Abilities */}
-                                        {(['melee', 'grenade', 'classAbility', 'movement'] as const).map((ability) => {
-                                            const AbilityIcon = ABILITY_ICONS[ability] || CircleDot;
-                                            const abilityConfig = subclassConfig?.abilities?.[ability];
-                                            return (
-                                                <button
-                                                    key={ability}
-                                                    onClick={() => handleSubclassSlotClick(ability)}
-                                                    className="w-11 h-11 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
-                                                    style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}20` : undefined }}
-                                                    title={ability.charAt(0).toUpperCase() + ability.slice(1).replace(/([A-Z])/g, ' $1')}
-                                                >
-                                                    {abilityConfig?.plugHash ? (
-                                                        <SubclassSlot 
-                                                            plugHash={abilityConfig.plugHash} 
-                                                            label={ability} 
-                                                            size="small"
-                                                            damageType={damageType}
-                                                        />
-                                                    ) : (
-                                                        <AbilityIcon className="w-5 h-5 text-slate-600" />
-                                                    )}
-                                                </button>
-                                            );
+                                <div className="flex flex-wrap items-start gap-5">
+                                    <div className="flex items-start gap-3">
+                                        {renderEditorSubclassSelector({
+                                            slotType: 'super',
+                                            label: 'Super',
+                                            plugConfig: subclassConfig?.super,
+                                            sizeClassName: 'h-14 w-14',
+                                            emptyIcon: <Zap className="h-6 w-6" />,
+                                            hint: damageType ? `Select a ${DAMAGE_TYPES[damageType]?.name || 'subclass'} super.` : 'Select an element before choosing a super.',
                                         })}
+                                        
+                                        <div className="h-14 w-px bg-white/10" />
+                                        
+                                        <div className="grid grid-cols-4 gap-1">
+                                            {([
+                                                ['classAbility', 'Class Ability'],
+                                                ['movement', 'Movement'],
+                                                ['melee', 'Melee'],
+                                                ['grenade', 'Grenade'],
+                                            ] as const).map(([ability, label]) => {
+                                                const AbilityIcon = ABILITY_ICONS[ability] || CircleDot;
+                                                const abilityConfig = subclassConfig?.abilities?.[ability];
+                                                
+                                                return (
+                                                    <div key={ability}>
+                                                        {renderEditorSubclassSelector({
+                                                            slotType: ability,
+                                                            label,
+                                                            plugConfig: abilityConfig,
+                                                            sizeClassName: 'h-10 w-10',
+                                                            emptyIcon: <AbilityIcon className="h-5 w-5" />,
+                                                            hint: damageType ? `Select ${label.toLowerCase()} for this subclass.` : 'Select an element before choosing abilities.',
+                                                        })}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                     
-                                    {/* Aspects Row */}
-                                    <div className="flex items-start gap-4">
-                                        {/* Aspect 1 */}
-                                        <div className="relative group">
-                                            <button
-                                                onClick={() => handleSubclassSlotClick('aspect', 0)}
-                                                className="w-14 h-14 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
-                                                style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}30` : undefined }}
-                                                title="Aspect 1"
-                                            >
-                                                {subclassConfig?.aspects?.[0]?.plugHash ? (
-                                                    <SubclassSlot 
-                                                        plugHash={subclassConfig.aspects[0].plugHash} 
-                                                        label="Aspect 1" 
-                                                        size="medium"
-                                                        damageType={damageType}
-                                                        fragmentSlots={(subclassConfig.aspects[0] as any)?.fragmentSlots}
-                                                    />
-                                                ) : (
-                                                    <Plus className="w-5 h-5 text-slate-600" />
-                                                )}
-                                            </button>
-                                            {subclassConfig?.aspects?.[0]?.plugHash && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleRemoveAspect(0); }}
-                                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                    <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
+                                        <div className="flex items-start gap-1.5">
+                                            {[0, 1].map((aspectIndex) => (
+                                                <div key={`aspect-${aspectIndex}`}>
+                                                    {renderEditorSubclassSelector({
+                                                        slotType: 'aspect',
+                                                        label: `Aspect ${aspectIndex + 1}`,
+                                                        plugConfig: subclassConfig?.aspects?.[aspectIndex],
+                                                        sizeClassName: 'h-14 w-14',
+                                                        emptyIcon: <Plus className="h-5 w-5" />,
+                                                        index: aspectIndex,
+                                                        onRemove: subclassConfig?.aspects?.[aspectIndex]?.plugHash
+                                                            ? () => handleRemoveAspect(aspectIndex)
+                                                            : undefined,
+                                                        hint: damageType ? 'Select an aspect to unlock fragment slots.' : 'Select an element before choosing aspects.',
+                                                    })}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        
+                                        <div className="flex min-w-0 flex-wrap items-start gap-1.5">
+                                            {totalFragmentSlots === 0 ? (
+                                                <SelectorHintTile
+                                                    label="Fragments Locked"
+                                                    description="Select aspects to unlock fragment slots."
+                                                    sizeClassName="h-10 min-w-40 px-3"
+                                                    disabled
                                                 >
-                                                    <X className="w-2.5 h-2.5 text-white" />
-                                                </button>
+                                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+                                                        Select aspects for fragments
+                                                    </span>
+                                                </SelectorHintTile>
+                                            ) : (
+                                                Array.from({ length: Math.min(totalFragmentSlots, 5) }).map((_, fragmentIndex) => (
+                                                    <div key={`fragment-${fragmentIndex}`}>
+                                                        {renderEditorSubclassSelector({
+                                                            slotType: 'fragment',
+                                                            label: `Fragment ${fragmentIndex + 1}`,
+                                                            plugConfig: subclassConfig?.fragments?.[fragmentIndex],
+                                                            sizeClassName: 'h-10 w-10',
+                                                            emptyIcon: <Plus className="h-4 w-4" />,
+                                                            index: fragmentIndex,
+                                                            onRemove: subclassConfig?.fragments?.[fragmentIndex]?.plugHash
+                                                                ? () => handleRemoveFragment(fragmentIndex)
+                                                                : undefined,
+                                                            hint: `Select fragment ${fragmentIndex + 1}.`,
+                                                        })}
+                                                    </div>
+                                                ))
                                             )}
                                         </div>
                                         
-                                        {/* Aspect 2 */}
-                                        <div className="relative group">
-                                            <button
-                                                onClick={() => handleSubclassSlotClick('aspect', 1)}
-                                                className="w-14 h-14 flex items-center justify-center hover:border-destiny-gold/50 hover:scale-105 transition-all"
-                                                style={{ borderColor: damageType ? `${DAMAGE_TYPES[damageType]?.color}30` : undefined }}
-                                                title="Aspect 2"
-                                            >
-                                                {subclassConfig?.aspects?.[1]?.plugHash ? (
-                                                    <SubclassSlot 
-                                                        plugHash={subclassConfig.aspects[1].plugHash} 
-                                                        label="Aspect 2" 
-                                                        size="medium"
-                                                        damageType={damageType}
-                                                        fragmentSlots={(subclassConfig.aspects[1] as any)?.fragmentSlots}
-                                                    />
-                                                ) : (
-                                                    <Plus className="w-5 h-5 text-slate-600" />
-                                                )}
-                                            </button>
-                                            {subclassConfig?.aspects?.[1]?.plugHash && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleRemoveAspect(1); }}
-                                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                                >
-                                                    <X className="w-2.5 h-2.5 text-white" />
-                                                </button>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="flex-1" />
-                                        
-                                        {/* Fragment slot indicator */}
-                                        <div className="text-right">
-                                            <div className="text-[10px] uppercase font-bold text-slate-600 tracking-wider">Fragments</div>
+                                        <div className="ml-auto text-right">
+                                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Fragments</div>
                                             <div className="text-sm font-bold" style={{ color: damageType ? DAMAGE_TYPES[damageType]?.color : '#888' }}>
                                                 {selectedFragmentHashes.length} / {totalFragmentSlots}
                                             </div>
                                         </div>
                                     </div>
-                                    
-                                    {/* Fragments Row - Dynamic based on aspect slots */}
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        {totalFragmentSlots === 0 ? (
-                                            <div className="text-xs text-slate-600 italic py-2">
-                                                Select aspects to unlock fragment slots
-                                            </div>
-                                        ) : (
-                                            Array.from({ length: Math.min(totalFragmentSlots, 5) }).map((_, fragIdx) => {
-                                                const fragment = subclassConfig?.fragments?.[fragIdx];
-                                                const isSlotAvailable = fragIdx < totalFragmentSlots;
-                                                
-                                                return (
-                                                    <div key={`frag-${fragIdx}`} className="relative group">
-                                                        <button
-                                                            onClick={() => isSlotAvailable && handleSubclassSlotClick('fragment', fragIdx)}
-                                                            disabled={!isSlotAvailable}
-                                                            className={cn(
-                                                                "w-11 h-11 flex items-center justify-center transition-all",
-                                                                isSlotAvailable && "hover:border-destiny-gold/50 hover:scale-105",
-                                                                !isSlotAvailable && "opacity-30 cursor-not-allowed"
-                                                            )}
-                                                            style={{ borderColor: damageType && isSlotAvailable ? `${DAMAGE_TYPES[damageType]?.color}20` : undefined }}
-                                                            title={isSlotAvailable ? `Fragment ${fragIdx + 1}` : 'Locked - select more aspects'}
-                                                        >
-                                                            {fragment?.plugHash ? (
-                                                                <SubclassSlot 
-                                                                    plugHash={fragment.plugHash} 
-                                                                    label={`Fragment ${fragIdx + 1}`} 
-                                                                    size="small"
-                                                                    damageType={damageType}
-                                                                />
-                                                            ) : (
-                                                                <Plus className="w-4 h-4 text-slate-600" />
-                                                            )}
-                                                        </button>
-                                                        {fragment?.plugHash && (
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleRemoveFragment(fragIdx); }}
-                                                                className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                                            >
-                                                                <X className="w-2 h-2 text-white" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })
-                                        )}
-                                    </div>
                                 </div>
                             </div>
                     </div>
                 </div>
-        </LoadoutModal>
+                </div>
+            </div>
+        </div>
             
             {/* Item Picker */}
             {pickerBucket !== null && (
@@ -2595,7 +4089,6 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
                     slotIndex={subclassPicker.index}
                     classType={editedLoadout.classType}
                     damageType={damageType}
-                    profile={profile}
                     onSelect={handleSubclassSelect}
                     onClose={() => setSubclassPicker(null)}
                     selectedFragments={selectedFragmentHashes}
@@ -2623,20 +4116,55 @@ function LoadoutEditor({ loadout, classType, profile, onSave, onCancel }: Loadou
 // ===== Main Page =====
 
 export default function LoadoutsPage() {
-    const { profile, stats, isLoading, isLoggedIn, membershipInfo } = useDestinyProfileContext();
+    const { profile, stats, isLoading, isLoggedIn, membershipInfo, allCharacters } = useDestinyProfileContext();
     const { loadouts, createLoadout, updateLoadout, importLoadouts } = useLoadoutStore();
     const [selectedClass, setSelectedClass] = useState<number>(0);
+    const [selectedCharacterId, setSelectedCharacterId] = useState<string>('');
     const [editingLoadout, setEditingLoadout] = useState<CustomLoadout | null | 'new'>(null);
     const [sharingLoadout, setSharingLoadout] = useState<CustomLoadout | null>(null);
     const [showImportDialog, setShowImportDialog] = useState(false);
+    const [showLoadoutSettings, setShowLoadoutSettings] = useState(false);
+    const [loadoutSourceFilter, setLoadoutSourceFilter] = useState<LoadoutSourceFilter>('all');
+    const [loadoutSortMode, setLoadoutSortMode] = useState<LoadoutSortMode>('updated');
+    const [loadoutSearchQuery, setLoadoutSearchQuery] = useState('');
+    const [isLoadoutSearchOpen, setIsLoadoutSearchOpen] = useState(false);
+    const loadoutSearchInputRef = useRef<HTMLInputElement>(null);
     const [mounted, setMounted] = useState(false);
     
     const searchParams = useSearchParams();
     const router = useRouter();
     
     useEffect(() => {
+        const savedSourceFilter = window.localStorage.getItem(LOADOUT_FILTER_STORAGE_KEY);
+        const savedSortMode = window.localStorage.getItem(LOADOUT_SORT_STORAGE_KEY);
+        
+        if (isLoadoutSourceFilter(savedSourceFilter)) {
+            setLoadoutSourceFilter(savedSourceFilter);
+        }
+        if (isLoadoutSortMode(savedSortMode)) {
+            setLoadoutSortMode(savedSortMode);
+        }
+        
         setMounted(true);
     }, []);
+    
+    useEffect(() => {
+        if (!mounted) return;
+        
+        window.localStorage.setItem(LOADOUT_FILTER_STORAGE_KEY, loadoutSourceFilter);
+    }, [loadoutSourceFilter, mounted]);
+    
+    useEffect(() => {
+        if (!mounted) return;
+        
+        window.localStorage.setItem(LOADOUT_SORT_STORAGE_KEY, loadoutSortMode);
+    }, [loadoutSortMode, mounted]);
+    
+    useEffect(() => {
+        if (isLoadoutSearchOpen) {
+            loadoutSearchInputRef.current?.focus();
+        }
+    }, [isLoadoutSearchOpen]);
     
     // Handle URL-based import
     useEffect(() => {
@@ -2658,13 +4186,164 @@ export default function LoadoutsPage() {
         if (stats?.classType !== undefined) {
             setSelectedClass(stats.classType);
         }
-    }, [stats?.classType]);
+        if (stats?.characterId) {
+            setSelectedCharacterId(stats.characterId);
+        }
+    }, [stats?.characterId, stats?.classType]);
     
-    const filteredLoadouts = useMemo(() => {
+    useEffect(() => {
+        if (allCharacters.length === 0 || selectedCharacterId) return;
+        
+        setSelectedCharacterId(allCharacters[0].characterId);
+        setSelectedClass(allCharacters[0].classType);
+    }, [allCharacters, selectedCharacterId]);
+    
+    const siteLoadoutsForSelectedCharacter = useMemo(() => {
         return loadouts.filter((l) => l.classType === selectedClass);
     }, [loadouts, selectedClass]);
     
-    const activeCharacterId = stats?.characterId || '';
+    const loadoutCharacterFilters = useMemo(() => {
+        if (allCharacters.length > 0) {
+            return allCharacters;
+        }
+        
+        return stats ? [{
+            characterId: stats.characterId,
+            classType: stats.classType,
+            light: stats.light,
+            emblemPath: stats.emblemPath,
+            emblemBackgroundPath: stats.emblemBackgroundPath,
+            dateLastPlayed: '',
+        }] : [];
+    }, [allCharacters, stats]);
+    
+    const selectedLoadoutCharacter = useMemo(() => {
+        return (
+            loadoutCharacterFilters.find((character) => character.characterId === selectedCharacterId) ||
+            loadoutCharacterFilters.find((character) => character.classType === selectedClass)
+        );
+    }, [loadoutCharacterFilters, selectedCharacterId, selectedClass]);
+    
+    const selectedCharacterInGameLoadouts = useMemo(() => {
+        if (!selectedLoadoutCharacter?.characterId) return [];
+        
+        const inGameLoadouts = profile?.characterLoadouts?.data?.[selectedLoadoutCharacter.characterId]?.loadouts ?? [];
+        return inGameLoadouts.filter(isNonEmptyInGameLoadout);
+    }, [profile, selectedLoadoutCharacter?.characterId]);
+    
+    const profileItemByInstanceId = useMemo(() => {
+        const itemByInstanceId = new Map<string, any>();
+        const profileItems = [
+            ...Object.values(profile?.characterInventories?.data || {}).flatMap((characterInventory: any) => characterInventory.items),
+            ...Object.values(profile?.characterEquipment?.data || {}).flatMap((characterEquipment: any) => characterEquipment.items),
+            ...(profile?.profileInventory?.data?.items || []),
+        ];
+        
+        profileItems.forEach((item: any) => {
+            if (item.itemInstanceId) {
+                itemByInstanceId.set(String(item.itemInstanceId), item);
+            }
+        });
+        
+        return itemByInstanceId;
+    }, [profile]);
+    
+    const sourceFilteredLoadoutEntries = useMemo<DisplayedLoadoutEntry[]>(() => {
+        const siteEntries: DisplayedLoadoutEntry[] = siteLoadoutsForSelectedCharacter.map((loadout) => ({
+            source: 'site',
+            id: `site-${loadout.id}`,
+            loadout,
+            sortName: loadout.name,
+            updatedAt: loadout.updatedAt,
+        }));
+        const inGameEntries: DisplayedLoadoutEntry[] = selectedCharacterInGameLoadouts.map((loadout: any, index: number) => ({
+            source: 'ingame',
+            id: `ingame-${selectedLoadoutCharacter?.characterId}-${index}`,
+            loadout,
+            index,
+            sortName: `In-game Loadout ${index + 1}`,
+        }));
+        
+        return [...siteEntries, ...inGameEntries].filter((entry) => (
+            loadoutSourceFilter === 'all' || entry.source === loadoutSourceFilter
+        ));
+    }, [
+        loadoutSourceFilter,
+        selectedCharacterInGameLoadouts,
+        selectedLoadoutCharacter?.characterId,
+        siteLoadoutsForSelectedCharacter,
+    ]);
+    
+    const loadoutSearchDefinitionHashes = useMemo(() => {
+        const hashes = new Set<number>();
+        
+        sourceFilteredLoadoutEntries.forEach((entry) => {
+            if (entry.source === 'site') {
+                collectSiteLoadoutDefinitionHashes(entry.loadout).forEach((hash) => hashes.add(hash));
+                return;
+            }
+            
+            collectInGameLoadoutDefinitionHashes(entry.loadout, profileItemByInstanceId).forEach((hash) => hashes.add(hash));
+        });
+        
+        return Array.from(hashes);
+    }, [profileItemByInstanceId, sourceFilteredLoadoutEntries]);
+    const { definitions: loadoutSearchDefinitions } = useItemDefinitions(loadoutSearchDefinitionHashes);
+    const { table: loadoutNameDefinitionsForSearch } = useManifestTable<any>("DestinyLoadoutNameDefinition");
+    const { table: sandboxPerkDefinitionsForSearch } = useManifestTable<any>("DestinySandboxPerkDefinition");
+    
+    const displayedLoadoutEntries = useMemo<DisplayedLoadoutEntry[]>(() => {
+        const normalizedSearchQuery = loadoutSearchQuery.trim();
+        const searchFilteredEntries = normalizedSearchQuery
+            ? sourceFilteredLoadoutEntries.filter((entry) => {
+                const searchText = entry.source === 'site'
+                    ? getSiteLoadoutSearchText(
+                        entry.loadout,
+                        loadoutSearchDefinitions,
+                        sandboxPerkDefinitionsForSearch
+                    )
+                    : getInGameLoadoutSearchText({
+                        loadout: entry.loadout,
+                        index: entry.index,
+                        activeCharacterId: selectedLoadoutCharacter?.characterId || '',
+                        classType: selectedLoadoutCharacter?.classType ?? selectedClass,
+                        itemByInstanceId: profileItemByInstanceId,
+                        itemDefinitions: loadoutSearchDefinitions,
+                        loadoutNameDefinitions: loadoutNameDefinitionsForSearch,
+                        sandboxPerkDefinitions: sandboxPerkDefinitionsForSearch,
+                    });
+                
+                return matchesLoadoutSearch(searchText, normalizedSearchQuery);
+            })
+            : sourceFilteredLoadoutEntries;
+        
+        return [...searchFilteredEntries].sort((firstEntry, secondEntry) => {
+            if (loadoutSortMode === 'name') {
+                return firstEntry.sortName.localeCompare(secondEntry.sortName);
+            }
+            if (loadoutSortMode === 'source') {
+                return firstEntry.source.localeCompare(secondEntry.source) || firstEntry.sortName.localeCompare(secondEntry.sortName);
+            }
+            
+            const firstTime = firstEntry.source === 'site' ? new Date(firstEntry.updatedAt).getTime() : 0;
+            const secondTime = secondEntry.source === 'site' ? new Date(secondEntry.updatedAt).getTime() : 0;
+            return secondTime - firstTime;
+        });
+    }, [
+        loadouts,
+        loadoutSortMode,
+        loadoutSearchDefinitions,
+        loadoutSearchQuery,
+        loadoutNameDefinitionsForSearch,
+        profileItemByInstanceId,
+        sandboxPerkDefinitionsForSearch,
+        selectedClass,
+        selectedLoadoutCharacter?.characterId,
+        selectedLoadoutCharacter?.classType,
+        sourceFilteredLoadoutEntries,
+    ]);
+    
+    const activeCharacterId = selectedLoadoutCharacter?.characterId || stats?.characterId || '';
     
     const handleSaveLoadout = (loadout: CustomLoadout) => {
         const exists = loadouts.some((l) => l.id === loadout.id);
@@ -2686,6 +4365,7 @@ export default function LoadoutsPage() {
                 subclass: loadout.subclass,
                 subclassConfig: loadout.subclassConfig,
                 tags: loadout.tags,
+                inGameId: loadout.inGameId,
             });
         }
         
@@ -2700,6 +4380,10 @@ export default function LoadoutsPage() {
         
         // Switch to the imported loadout's class
         setSelectedClass(loadout.classType);
+        const matchingCharacter = loadoutCharacterFilters.find((character) => character.classType === loadout.classType);
+        if (matchingCharacter) {
+            setSelectedCharacterId(matchingCharacter.characterId);
+        }
     };
     
     const handleExportAll = () => {
@@ -2737,57 +4421,243 @@ export default function LoadoutsPage() {
     }
     
     return (
-        <div className="mx-auto max-w-6xl">
-            <PageHeader
-                title="Loadouts"
-                description="Create, manage, and share custom loadouts for your Guardians"
-            >
-                <div className="flex flex-wrap items-center gap-2">
-                    <LoadoutGhostButton onClick={() => setShowImportDialog(true)}>
-                        <Download className="w-4 h-4" />
-                        Import
-                    </LoadoutGhostButton>
-                    <LoadoutGhostButton onClick={handleExportAll} disabled={loadouts.length === 0}>
-                        <Upload className="w-4 h-4" />
-                        Export All
-                    </LoadoutGhostButton>
-                    <LoadoutPrimaryButton onClick={() => setEditingLoadout('new')}>
-                        <Plus className="w-4 h-4" />
-                        New Loadout
-                    </LoadoutPrimaryButton>
+        <div className="mx-auto w-full max-w-[96rem]">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <div className="min-h-16 flex-1 overflow-hidden">
+                    <div className="flex min-h-16 flex-wrap items-stretch gap-2 p-2">
+                        {loadoutCharacterFilters.map((character) => {
+                            const isSelected = selectedLoadoutCharacter?.characterId === character.characterId;
+                            const classLoadoutCount = loadouts.filter((loadout) => loadout.classType === character.classType).length;
+                            const inGameLoadoutCount = (profile?.characterLoadouts?.data?.[character.characterId]?.loadouts ?? [])
+                                .filter(isNonEmptyInGameLoadout)
+                                .length;
+                            
+                            return (
+                                <button
+                                    key={character.characterId}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedCharacterId(character.characterId);
+                                        setSelectedClass(character.classType);
+                                    }}
+                                    className={cn(
+                                        "group relative min-h-12 min-w-36 overflow-hidden px-3 py-2 text-left transition-colors",
+                                        isSelected
+                                            ? "text-destiny-gold"
+                                            : "text-slate-300 hover:text-white"
+                                    )}
+                                    title={`${CLASS_NAMES[character.classType]} loadouts`}
+                                >
+                                    {character.emblemBackgroundPath && (
+                                        <Image
+                                            src={character.emblemBackgroundPath}
+                                            alt=""
+                                            fill
+                                            sizes="160px"
+                                            className="object-cover opacity-35 transition-opacity group-hover:opacity-45"
+                                        />
+                                    )}
+                                    <span className="absolute inset-0 bg-black/60" />
+                                    <span
+                                        className={cn(
+                                            "absolute inset-y-2 left-0 w-0.5 transition-colors",
+                                            isSelected ? "bg-destiny-gold" : "bg-transparent"
+                                        )}
+                                    />
+                                    <span className="relative flex flex-col leading-none">
+                                        <span className="text-sm font-bold uppercase tracking-wide drop-shadow-md">
+                                            {CLASS_NAMES[character.classType]}
+                                        </span>
+                                        <span className="mt-1 text-[10px] uppercase tracking-wider text-slate-400">
+                                            {classLoadoutCount + inGameLoadoutCount} loadout{classLoadoutCount + inGameLoadoutCount === 1 ? '' : 's'}
+                                        </span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
-            </PageHeader>
-            
-            {/* Class Tabs */}
-            <div className="mb-6 flex gap-2">
-                {[0, 1, 2].map((classType) => (
-                    <button
-                        key={classType}
-                        type="button"
-                        onClick={() => setSelectedClass(classType)}
-                        className={cn(
-                            "flex items-center gap-2 border px-4 py-2 text-sm font-medium transition-all",
-                            selectedClass === classType
-                                ? "border-destiny-gold/40 bg-destiny-gold/10 text-destiny-gold"
-                                : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20 hover:text-white"
+                
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                    <div className="flex h-8 items-center border border-white/10 p-0.5" aria-label="Loadout source filter">
+                        {([
+                            ['ingame', 'Game'],
+                            ['all', 'All'],
+                            ['site', 'Local'],
+                        ] as const).map(([value, label]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => setLoadoutSourceFilter(value)}
+                                className={cn(
+                                    "h-6 px-3 text-[10px] font-bold uppercase tracking-wider transition-colors",
+                                    loadoutSourceFilter === value
+                                        ? "bg-destiny-gold/15 text-destiny-gold"
+                                        : "text-slate-500 hover:text-white"
+                                )}
+                                aria-pressed={loadoutSourceFilter === value}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setIsLoadoutSearchOpen((isOpen) => !isOpen)}
+                            className={cn(
+                                "inline-flex h-8 w-8 items-center justify-center transition-colors",
+                                isLoadoutSearchOpen || loadoutSearchQuery
+                                    ? "bg-white/10 text-destiny-gold"
+                                    : "text-slate-400 hover:bg-white/5 hover:text-white"
+                            )}
+                            title="Search loadouts"
+                            aria-label="Search loadouts"
+                            aria-expanded={isLoadoutSearchOpen}
+                        >
+                            <Search className="h-5 w-5" />
+                        </button>
+                        
+                        {isLoadoutSearchOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setIsLoadoutSearchOpen(false)} />
+                                <div className="absolute right-0 top-full z-50 mt-3 w-[min(24rem,calc(100vw-2rem))] border border-white/10 bg-[#0b0f14]/95 p-3 shadow-2xl shadow-black/70 backdrop-blur-xl">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                                        <input
+                                            ref={loadoutSearchInputRef}
+                                            type="text"
+                                            value={loadoutSearchQuery}
+                                            onChange={(event) => setLoadoutSearchQuery(event.target.value)}
+                                            placeholder="Search loadouts, items, tags, perks..."
+                                            className="w-full border border-white/10 bg-black/45 py-2.5 pl-9 pr-9 text-sm text-white outline-none transition-colors placeholder:text-slate-600 focus:border-destiny-gold/60"
+                                        />
+                                        {loadoutSearchQuery && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setLoadoutSearchQuery('')}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 transition-colors hover:text-white"
+                                                title="Clear search"
+                                                aria-label="Clear search"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
                         )}
+                        
+                        {loadoutSearchQuery && !isLoadoutSearchOpen && (
+                            <button
+                                type="button"
+                                onClick={() => setLoadoutSearchQuery('')}
+                                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-900 text-slate-500 transition-colors hover:text-white"
+                                title="Clear search"
+                                aria-label="Clear search"
+                            >
+                                <X className="h-2.5 w-2.5" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={() => setShowImportDialog(true)}
+                        className="inline-flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:text-white"
+                        title="Import loadouts"
+                        aria-label="Import loadouts"
                     >
-                        <Image src={CLASS_ICONS[classType]} width={16} height={16} alt="" />
-                        <span className="font-condensed uppercase tracking-wide">{CLASS_NAMES[classType]}</span>
-                        <span className="ml-1 text-xs opacity-70">
-                            ({loadouts.filter((l) => l.classType === classType).length})
-                        </span>
+                        <Download className="h-5 w-5" />
                     </button>
-                ))}
+                    <button
+                        type="button"
+                        onClick={handleExportAll}
+                        disabled={loadouts.length === 0}
+                        className="inline-flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                        title="Export all loadouts"
+                        aria-label="Export all loadouts"
+                    >
+                        <Upload className="h-5 w-5" />
+                    </button>
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setShowLoadoutSettings((isOpen) => !isOpen)}
+                            className={cn(
+                                "inline-flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:text-white",
+                                showLoadoutSettings && "text-destiny-gold"
+                            )}
+                            title="Loadout sort"
+                            aria-label="Loadout sort"
+                            aria-expanded={showLoadoutSettings}
+                        >
+                            <Settings2 className="h-5 w-5" />
+                        </button>
+                        
+                        {showLoadoutSettings && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowLoadoutSettings(false)} />
+                                <div className="absolute right-0 top-full z-50 mt-3 w-64 border border-white/10 bg-[#0b0f14]/95 p-3 shadow-2xl shadow-black/70 backdrop-blur-xl">
+                                    <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                        Loadout Settings
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                            Sort
+                                        </div>
+                                        {([
+                                            ['updated', 'Recently updated'],
+                                            ['name', 'Name'],
+                                            ['source', 'Source'],
+                                        ] as const).map(([value, label]) => (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                onClick={() => setLoadoutSortMode(value)}
+                                                className={cn(
+                                                    "flex w-full items-center justify-between px-2 py-1.5 text-sm transition-colors",
+                                                    loadoutSortMode === value
+                                                        ? "bg-destiny-gold/10 text-destiny-gold"
+                                                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                                                )}
+                                            >
+                                                {label}
+                                                {loadoutSortMode === value && <Check className="h-3.5 w-3.5" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setEditingLoadout('new')}
+                        className="inline-flex h-8 w-8 items-center justify-center text-destiny-gold transition-colors hover:text-white"
+                        title="New loadout"
+                        aria-label="New loadout"
+                    >
+                        <Plus className="h-5 w-5" />
+                    </button>
+                </div>
             </div>
             
             {/* Loadouts Grid */}
-            {filteredLoadouts.length === 0 ? (
+            {displayedLoadoutEntries.length === 0 ? (
                 <FrostedCard className="py-16 text-center">
                     <Layers className="mx-auto mb-4 h-12 w-12 text-slate-600" />
-                    <h3 className="mb-2 text-lg font-medium text-slate-400">No loadouts yet</h3>
+                    <h3 className="mb-2 text-lg font-medium text-slate-400">
+                        {loadoutSearchQuery.trim() ? 'No matching loadouts' : 'No loadouts yet'}
+                    </h3>
                     <p className="mb-4 text-sm text-slate-600">
-                        Create your first {CLASS_NAMES[selectedClass]} loadout to get started
+                        {loadoutSearchQuery.trim()
+                            ? `No loadouts match "${loadoutSearchQuery.trim()}".`
+                            : `No ${loadoutSourceFilter === 'all' ? '' : `${loadoutSourceFilter === 'site' ? 'in-site' : 'in-game'} `}loadouts found for ${CLASS_NAMES[selectedClass]}.`}
                     </p>
                     <div className="flex items-center justify-center gap-3">
                         <LoadoutPrimaryButton onClick={() => setEditingLoadout('new')}>
@@ -2801,17 +4671,29 @@ export default function LoadoutsPage() {
                     </div>
                 </FrostedCard>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredLoadouts.map((loadout) => (
-                        <LoadoutCard
-                            key={loadout.id}
-                            loadout={loadout}
-                            profile={profile}
-                            membershipInfo={membershipInfo}
-                            activeCharacterId={activeCharacterId}
-                            onEdit={() => setEditingLoadout(loadout)}
-                            onShare={() => setSharingLoadout(loadout)}
-                        />
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,31rem),1fr))] gap-4">
+                    {displayedLoadoutEntries.map((entry) => (
+                        entry.source === 'site' ? (
+                            <LoadoutCard
+                                key={entry.id}
+                                loadout={entry.loadout}
+                                profile={profile}
+                                membershipInfo={membershipInfo}
+                                activeCharacterId={activeCharacterId}
+                                onEdit={() => setEditingLoadout(entry.loadout)}
+                                onShare={() => setSharingLoadout(entry.loadout)}
+                            />
+                        ) : (
+                            <InGameLoadoutCard
+                                key={entry.id}
+                                loadout={entry.loadout}
+                                index={entry.index}
+                                classType={selectedLoadoutCharacter?.classType ?? selectedClass}
+                                activeCharacterId={activeCharacterId}
+                                membershipInfo={membershipInfo}
+                                profile={profile}
+                            />
+                        )
                     ))}
                 </div>
             )}

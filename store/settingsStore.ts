@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useWishListStore } from './wishlistStore';
 import { DEFAULT_PAGE_FALLBACK, normalizeDefaultPage, type DefaultPage } from '@/lib/defaultPages';
+import { defaultFavouriteHeaderNavHrefs } from '@/lib/navigation';
 
 // ===== Type Definitions =====
 
@@ -32,6 +33,7 @@ export interface SyncableSettings {
     theme: Theme;
     accentColor: AccentColor;
     defaultPage: DefaultPage;
+    favouriteHeaderNavHrefs: string[];
     compactMode: boolean;
     reducedMotion: boolean;
     
@@ -41,6 +43,16 @@ export interface SyncableSettings {
     vaultGrouping: VaultGroupingOptions;
     showLockedHighlight: boolean;
     postmasterWarningThreshold: number;
+
+    // Triumphs, Titles & Collections
+    hideCompletedTriumphs: boolean;
+    hideInvisibleTriumphs: boolean;
+    hideUnobtainableTriumphs: boolean;
+    hideAcquiredCollectionItems: boolean;
+    hideInvisibleCollectionItems: boolean;
+    groupCollectionItems: boolean;
+    groupTitles: boolean;
+    revealLegacyTitles: boolean;
     
     // Activity History
     defaultActivityTab: DefaultTab;
@@ -90,6 +102,8 @@ export interface SettingsActions {
     setTheme: (theme: Theme) => void;
     setAccentColor: (color: AccentColor) => void;
     setDefaultPage: (page: DefaultPage) => void;
+    setFavouriteHeaderNavItems: (hrefs: string[]) => void;
+    toggleFavouriteHeaderNavItem: (href: string) => void;
     setCompactMode: (enabled: boolean) => void;
     setReducedMotion: (enabled: boolean) => void;
     
@@ -99,6 +113,16 @@ export interface SettingsActions {
     setVaultGrouping: (grouping: Partial<VaultGroupingOptions>) => void;
     setShowLockedHighlight: (enabled: boolean) => void;
     setPostmasterWarningThreshold: (threshold: number) => void;
+
+    // Triumphs, Titles & Collections
+    setHideCompletedTriumphs: (enabled: boolean) => void;
+    setHideInvisibleTriumphs: (enabled: boolean) => void;
+    setHideUnobtainableTriumphs: (enabled: boolean) => void;
+    setHideAcquiredCollectionItems: (enabled: boolean) => void;
+    setHideInvisibleCollectionItems: (enabled: boolean) => void;
+    setGroupCollectionItems: (enabled: boolean) => void;
+    setGroupTitles: (enabled: boolean) => void;
+    setRevealLegacyTitles: (enabled: boolean) => void;
     
     // Activity History
     setDefaultActivityTab: (tab: DefaultTab) => void;
@@ -153,11 +177,16 @@ function normalizeCacheDurationMinutes(minutes: number): number {
     return Math.min(MAX_CACHE_DURATION_MINUTES, Math.max(MIN_CACHE_DURATION_MINUTES, roundedMinutes));
 }
 
+function normalizeFavouriteHeaderNavHrefs(hrefs: string[]): string[] {
+    return [...new Set(hrefs.filter(Boolean))];
+}
+
 const defaultSyncableSettings: SyncableSettings = {
     // Appearance
     theme: 'dark',
     accentColor: 'gold',
     defaultPage: DEFAULT_PAGE_FALLBACK,
+    favouriteHeaderNavHrefs: [...defaultFavouriteHeaderNavHrefs],
     compactMode: false,
     reducedMotion: false,
     
@@ -167,6 +196,16 @@ const defaultSyncableSettings: SyncableSettings = {
     vaultGrouping: { byClass: false, byRarity: false, byAmmoType: false, byTier: false },
     showLockedHighlight: true,
     postmasterWarningThreshold: 18,
+
+    // Triumphs, Titles & Collections
+    hideCompletedTriumphs: false,
+    hideInvisibleTriumphs: true,
+    hideUnobtainableTriumphs: true,
+    hideAcquiredCollectionItems: false,
+    hideInvisibleCollectionItems: true,
+    groupCollectionItems: true,
+    groupTitles: false,
+    revealLegacyTitles: false,
     
     // Activity History
     defaultActivityTab: 'raids',
@@ -317,6 +356,21 @@ export const useSettingsStore = create<SettingsStore>()(
                 set({ defaultPage: normalizeDefaultPage(defaultPage), hasChosenDefaultPage: true });
                 get().syncToCloud();
             },
+            setFavouriteHeaderNavItems: (favouriteHeaderNavHrefs) => {
+                set({ favouriteHeaderNavHrefs: normalizeFavouriteHeaderNavHrefs(favouriteHeaderNavHrefs) });
+                get().syncToCloud();
+            },
+            toggleFavouriteHeaderNavItem: (href) => {
+                set((state) => {
+                    const isFavourite = state.favouriteHeaderNavHrefs.includes(href);
+                    return {
+                        favouriteHeaderNavHrefs: isFavourite
+                            ? state.favouriteHeaderNavHrefs.filter((favouriteHref) => favouriteHref !== href)
+                            : [...state.favouriteHeaderNavHrefs, href],
+                    };
+                });
+                get().syncToCloud();
+            },
             setCompactMode: (compactMode) => {
                 set({ compactMode });
                 get().syncToCloud();
@@ -347,6 +401,40 @@ export const useSettingsStore = create<SettingsStore>()(
             },
             setPostmasterWarningThreshold: (postmasterWarningThreshold) => {
                 set({ postmasterWarningThreshold });
+                get().syncToCloud();
+            },
+
+            // Triumphs, Titles & Collections
+            setHideCompletedTriumphs: (hideCompletedTriumphs) => {
+                set({ hideCompletedTriumphs });
+                get().syncToCloud();
+            },
+            setHideInvisibleTriumphs: (hideInvisibleTriumphs) => {
+                set({ hideInvisibleTriumphs });
+                get().syncToCloud();
+            },
+            setHideUnobtainableTriumphs: (hideUnobtainableTriumphs) => {
+                set({ hideUnobtainableTriumphs });
+                get().syncToCloud();
+            },
+            setHideAcquiredCollectionItems: (hideAcquiredCollectionItems) => {
+                set({ hideAcquiredCollectionItems });
+                get().syncToCloud();
+            },
+            setHideInvisibleCollectionItems: (hideInvisibleCollectionItems) => {
+                set({ hideInvisibleCollectionItems });
+                get().syncToCloud();
+            },
+            setGroupCollectionItems: (groupCollectionItems) => {
+                set({ groupCollectionItems });
+                get().syncToCloud();
+            },
+            setGroupTitles: (groupTitles) => {
+                set({ groupTitles });
+                get().syncToCloud();
+            },
+            setRevealLegacyTitles: (revealLegacyTitles) => {
+                set({ revealLegacyTitles });
                 get().syncToCloud();
             },
             
@@ -492,6 +580,7 @@ export const useSettingsStore = create<SettingsStore>()(
                     theme: state.theme,
                     accentColor: state.accentColor,
                     defaultPage: normalizeDefaultPage(state.defaultPage),
+                    favouriteHeaderNavHrefs: normalizeFavouriteHeaderNavHrefs(state.favouriteHeaderNavHrefs),
                     compactMode: state.compactMode,
                     reducedMotion: state.reducedMotion,
                     iconSize: state.iconSize,
@@ -499,6 +588,14 @@ export const useSettingsStore = create<SettingsStore>()(
                     vaultGrouping: state.vaultGrouping,
                     showLockedHighlight: state.showLockedHighlight,
                     postmasterWarningThreshold: state.postmasterWarningThreshold,
+                    hideCompletedTriumphs: state.hideCompletedTriumphs,
+                    hideInvisibleTriumphs: state.hideInvisibleTriumphs,
+                    hideUnobtainableTriumphs: state.hideUnobtainableTriumphs,
+                    hideAcquiredCollectionItems: state.hideAcquiredCollectionItems,
+                    hideInvisibleCollectionItems: state.hideInvisibleCollectionItems,
+                    groupCollectionItems: state.groupCollectionItems,
+                    groupTitles: state.groupTitles,
+                    revealLegacyTitles: state.revealLegacyTitles,
                     defaultActivityTab: state.defaultActivityTab,
                     hideInvalidReports: state.hideInvalidReports,
                     showFailedRuns: state.showFailedRuns,
@@ -525,6 +622,9 @@ export const useSettingsStore = create<SettingsStore>()(
                     defaultPage: settings.defaultPage
                         ? normalizeDefaultPage(settings.defaultPage)
                         : state.defaultPage,
+                    favouriteHeaderNavHrefs: settings.favouriteHeaderNavHrefs
+                        ? normalizeFavouriteHeaderNavHrefs(settings.favouriteHeaderNavHrefs)
+                        : state.favouriteHeaderNavHrefs,
                     hasChosenDefaultPage: settings.defaultPage
                         ? true
                         : state.hasChosenDefaultPage,

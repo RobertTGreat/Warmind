@@ -70,12 +70,14 @@ export interface ActivityDefinition {
     duoRecordHash?: number; // For specific duo achievements if they exist
     trioRecordHash?: number; // For specific trio achievements (usually Raids)
     exoticItemHash?: number; // To check if acquired
+    contestActivityHashes?: number[]; // Activity hashes for contest mode variants
+    contestRankByInstanceId?: Record<string, number>; // Known world placement by PGCR instance ID
     dayOneRecordHash?: number; // Contest mode / Day One record (if available)
     contestRecordHash?: number; // Contest mode specific record
     masterRecordHash?: number; // Master difficulty completion record
     epicRecordHash?: number; // For Desert Perpetual / custom achievements
     epicFlawlessRecordHash?: number; // For Desert Perpetual / custom achievements
-    releaseDate?: string; // ISO date string for week one calculation (YYYY-MM-DD)
+    releaseDate?: string; // ISO date/date-time used for Day One and Week One clear windows
     image?: string; // Manual override if needed
     isLegacy?: boolean; 
 }
@@ -151,6 +153,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         triumphHash: 3954661385,                           // Unchanged: Clear triumph
         flawlessRecordHash: RECORDS.DESERT_PERPETUAL_FLAWLESS, // Now valid: 2936644752
         exoticItemHash: 3742953758,                        // "The When And Where" rocket launcher (light.gg verified)
+        contestActivityHashes: [3896382790],
         dayOneRecordHash: 3896382790,                     // "The Desert Perpetual: Contest" activity hash (contest mode)
         contestRecordHash: 3896382790,                     
         releaseDate: '2025-07-19',                         // Approximate release date for week one calculation
@@ -167,6 +170,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         triumphHash: 3954661385,
         flawlessRecordHash: RECORDS.DESERT_PERPETUAL_FLAWLESS,
         exoticItemHash: 3742953758,
+        contestActivityHashes: [2586252122],
         dayOneRecordHash: 2586252122,
         contestRecordHash: 2586252122,
         releaseDate: '2025-07-19',
@@ -288,6 +292,11 @@ export const ACTIVITIES: ActivityDefinition[] = [
         flawlessMetricHash: RECORDS.EQUILIBRIUM_FLAWLESS_METRIC,
         soloFlawlessMetricHash: RECORDS.EQUILIBRIUM_SOLO_FLAWLESS_METRIC,
         exoticItemHash: 515926065, // heirloom
+        contestActivityHashes: [1754635208],
+        // Public stats.destiny.report listing for Equilibrium Contest world first.
+        contestRankByInstanceId: {
+            "3364070672": 1,
+        },
         releaseDate: '2025-02-07', // Release date for week one calculation
         image: 'https://images.contentstack.io/v3/assets/blte410e3b15535c144/blt827bbc7cb39295cf/6916038a9caebfd3dd3c5b62/Dungeon_KeyArt_Final_4K_Web.jpg',
     },

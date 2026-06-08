@@ -21,7 +21,9 @@ import {
     ExternalLink,
     ThumbsDown,
     ChevronRight,
-    Heart
+    Heart,
+    BookOpen,
+    Trophy
 } from "lucide-react";
 import { useState, useEffect, useCallback, type ElementType, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -238,9 +240,14 @@ function WishListSection() {
             )}
             
             {/* Preset Wish Lists */}
-            <div className="border-b border-white/5 py-4">
+            <div className={cn(
+                "relative border-b border-white/5 py-4",
+                showPresets && "z-30"
+            )}>
                 <button
+                    type="button"
                     onClick={() => setShowPresets(!showPresets)}
+                    aria-expanded={showPresets}
                     className={cn(
                         "flex items-center justify-between w-full text-left px-3 py-2.5",
                         "rounded-sm border border-white/10 bg-white/[0.03]",
@@ -258,7 +265,7 @@ function WishListSection() {
                 </button>
                 
                 {showPresets && (
-                    <div className="mt-3 overflow-hidden rounded-sm border border-white/10 bg-black/20">
+                    <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(32rem,calc(100vh-10rem))] overflow-y-auto rounded-sm border border-white/10 bg-[#05070c]/95 shadow-2xl shadow-black/70 backdrop-blur-md custom-scrollbar">
                         {safePresetWishLists.map(preset => {
                             const isAdded = isPresetAdded(preset.url);
                             const addedList = wishLists.find(wl => wl.url === preset.url);
@@ -647,6 +654,54 @@ export default function SettingsPage() {
                         <Toggle
                             checked={Boolean(settings.vaultGrouping.byAmmoType)}
                             onChange={(checked) => settings.setVaultGrouping({ byAmmoType: checked })}
+                        />
+                    </SettingRow>
+                </SettingSection>
+
+                <SettingSection title="Collections" icon={BookOpen}>
+                    <SettingRow label="Hide Acquired Collection Items" description="Only show collection items you have not acquired yet">
+                        <Toggle
+                            checked={settings.hideAcquiredCollectionItems}
+                            onChange={settings.setHideAcquiredCollectionItems}
+                        />
+                    </SettingRow>
+                    <SettingRow label="Hide Invisible Collection Items" description="Hide collection entries marked invisible by the game">
+                        <Toggle
+                            checked={settings.hideInvisibleCollectionItems}
+                            onChange={settings.setHideInvisibleCollectionItems}
+                        />
+                    </SettingRow>
+                    <SettingRow label="Group Collection Items" description="Keep collection items grouped by their presentation category">
+                        <Toggle
+                            checked={settings.groupCollectionItems}
+                            onChange={settings.setGroupCollectionItems}
+                        />
+                    </SettingRow>
+                </SettingSection>
+
+                <SettingSection title="Triumphs & Titles" icon={Trophy}>
+                    <SettingRow label="Hide Completed Triumphs" description="Hide completed and redeemed triumph records from triumph views">
+                        <Toggle
+                            checked={settings.hideCompletedTriumphs}
+                            onChange={settings.setHideCompletedTriumphs}
+                        />
+                    </SettingRow>
+                    <SettingRow label="Hide Invisible Triumphs" description="Hide records that the game marks invisible">
+                        <Toggle
+                            checked={settings.hideInvisibleTriumphs}
+                            onChange={settings.setHideInvisibleTriumphs}
+                        />
+                    </SettingRow>
+                    <SettingRow label="Hide Unobtainable Triumphs" description="Hide incomplete records that the profile reports as unavailable">
+                        <Toggle
+                            checked={settings.hideUnobtainableTriumphs}
+                            onChange={settings.setHideUnobtainableTriumphs}
+                        />
+                    </SettingRow>
+                    <SettingRow label="Group Titles" description="Group title cards by acquired and missing status">
+                        <Toggle
+                            checked={settings.groupTitles}
+                            onChange={settings.setGroupTitles}
                         />
                     </SettingRow>
                 </SettingSection>

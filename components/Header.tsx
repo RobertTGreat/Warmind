@@ -5,79 +5,29 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { 
-    Shield, 
-    Book, 
-    User, 
-    Scroll, 
-    Activity, 
-    Trophy, 
     LogOut, 
-    Globe, 
     Menu, 
     X, 
     Settings,
-    Home,
-    Medal,
-    Users,
-    Swords,
     ChevronDown,
     Check,
     Heart,
     Search,
-    ShieldCheck,
-    Layers
+    Star
 } from 'lucide-react';
 import { CLASS_NAMES } from '@/hooks/useDestinyProfile';
 import { useDestinyProfileContext } from '@/components/DestinyProfileProvider';
 import { logout, getBungieImage } from '@/lib/bungie';
 import { useItemDefinitions } from '@/hooks/useItemDefinitions';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { useUIStore } from '@/store/uiStore';
-
-type SubNavItem = { name: string; href: string; icon: any };
-
-const navItems: { 
-  name: string; 
-  href: string; 
-  icon: any; 
-  description: string;
-  subNav?: SubNavItem[];
-  disabled?: boolean;
-}[] = [
-  { name: 'Home', href: '/?home=1', icon: Shield, description: 'Dashboard & Overview' },
-  {
-    name: 'Collections',
-    href: '/collections',
-    icon: Book,
-    description: 'Weapons, Armor & More',
-    subNav: [
-      { name: 'Collections', href: '/collections', icon: Book },
-      { name: 'Sets', href: '/collections/sets', icon: Layers },
-      { name: 'Armor Set Bonuses', href: '/collections/armor-set-bonuses', icon: ShieldCheck },
-    ],
-  },
-  { name: 'Triumphs', href: '/triumphs', icon: Trophy, description: 'Achievements & Seals' },
-  { 
-    name: 'Character', 
-    href: '/character', 
-    icon: User, 
-    description: 'Inventory & Loadouts',
-    subNav: [
-      { name: 'Overview', href: '/character', icon: Home },
-    ]
-  },
-  { name: 'Quests', href: '/quests', icon: Scroll, description: 'Active Quests' },
-  { 
-    name: 'Activities', 
-    href: '/activity', 
-    icon: Globe, 
-    description: 'Past Activities',
-    subNav: [
-      { name: 'Activity Report', href: '/activity', icon: Book },
-      { name: 'Wrapped', href: '/activity/wrapped', icon: Swords },
-    ]
-  },
-];
+import { useSettingsStore } from '@/store/settingsStore';
+import {
+  getHeaderNavigationEntries,
+  headerNavigationItems,
+  isNavigationHrefActive,
+  type HeaderNavigationEntry,
+} from '@/lib/navigation';
 
 export function Header() {
   const pathname = usePathname();
@@ -86,13 +36,46 @@ export function Header() {
   const headerSearchVisible = useUIStore((state) => state.headerSearchVisible);
   const headerSearchPlaceholder = useUIStore((state) => state.headerSearchPlaceholder);
   const setHeaderSearchQuery = useUIStore((state) => state.setHeaderSearchQuery);
+  const favouriteHeaderNavHrefs = useSettingsStore((state) => state.favouriteHeaderNavHrefs);
+  const toggleFavouriteHeaderNavItem = useSettingsStore((state) => state.toggleFavouriteHeaderNavItem);
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [characterSelectorOpen, setCharacterSelectorOpen] = useState(false);
   const [searchPopoverOpen, setSearchPopoverOpen] = useState(false);
+  const [showHeaderNavLabels, setShowHeaderNavLabels] = useState(true);
+  const headerNavRef = useRef<HTMLElement>(null);
+  const headerNavMeasurementRef = useRef<HTMLUListElement>(null);
   const characterSelectorRef = useRef<HTMLDivElement>(null);
   const searchPopoverRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const headerNavigationEntries = useMemo(() => getHeaderNavigationEntries(), []);
+  const headerNavigationEntryByHref = useMemo(
+    () => new Map(headerNavigationEntries.map((item) => [item.href, item])),
+    [headerNavigationEntries]
+  );
+  const favouriteHeaderNavItems = useMemo(
+    () =>
+      favouriteHeaderNavHrefs.reduce<HeaderNavigationEntry[]>((items, href) => {
+        const navigationEntry = headerNavigationEntryByHref.get(href);
+
+        if (navigationEntry) {
+          items.push(navigationEntry);
+        }
+
+        return items;
+      }, []),
+    [favouriteHeaderNavHrefs, headerNavigationEntryByHref]
+  );
+  const expandedHeaderNavigationItems = useMemo(
+    () =>
+      [...headerNavigationItems].sort((firstItem, secondItem) => {
+        const firstItemSubPageCount = firstItem.subNav?.length ?? 0;
+        const secondItemSubPageCount = secondItem.subNav?.length ?? 0;
+
+        return secondItemSubPageCount - firstItemSubPageCount;
+      }),
+    []
+  );
 
   // Close menu when route changes
   useEffect(() => {
@@ -100,6 +83,52 @@ export function Header() {
     setCharacterSelectorOpen(false);
     setSearchPopoverOpen(false);
   }, [pathname]);
+
+  useLayoutEffect(() => {
+    if (menuOpen || !isLoggedIn) {
+      return;
+    }
+
+    const updateHeaderNavLabelVisibility = () => {
+      const headerNav = headerNavRef.current;
+      const measurementList = headerNavMeasurementRef.current;
+
+      if (!headerNav || !measurementList) {
+        setShowHeaderNavLabels(true);
+        return;
+      }
+
+      const availableWidth = headerNav.getBoundingClientRect().width;
+      const labelledNavigationWidth = measurementList.getBoundingClientRect().width;
+
+      if (availableWidth <= 0 || labelledNavigationWidth <= 0) {
+        setShowHeaderNavLabels(true);
+        return;
+      }
+
+      setShowHeaderNavLabels(labelledNavigationWidth <= availableWidth);
+    };
+
+    const animationFrameId = window.requestAnimationFrame(updateHeaderNavLabelVisibility);
+
+    const resizeObserver = new ResizeObserver(updateHeaderNavLabelVisibility);
+
+    if (headerNavRef.current) {
+      resizeObserver.observe(headerNavRef.current);
+    }
+
+    if (headerNavMeasurementRef.current) {
+      resizeObserver.observe(headerNavMeasurementRef.current);
+    }
+
+    window.addEventListener('resize', updateHeaderNavLabelVisibility);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateHeaderNavLabelVisibility);
+    };
+  }, [favouriteHeaderNavItems, isLoggedIn, menuOpen]);
 
   // Close character selector on click outside
   useEffect(() => {
@@ -290,53 +319,60 @@ export function Header() {
 
             {/* Center: Navigation (Desktop, only when menu closed) */}
               {!menuOpen && (
-                <nav className="mx-2 flex min-w-0 flex-1 justify-center overflow-hidden animate-in fade-in duration-150 sm:mx-4">
+                <nav
+                  ref={headerNavRef}
+                  className="relative mx-2 flex min-w-0 flex-1 justify-center overflow-hidden animate-in fade-in duration-150 sm:mx-4"
+                >
                   {isLoggedIn && (
-                    <ul className="no-scrollbar flex items-center gap-1 overflow-x-auto flex-nowrap">
-                      {navItems.map((item) => {
-                        const isActive =
-                          pathname === item.href ||
-                          (item.href !== '/' &&
-                            item.href !== '/?home=1' &&
-                            pathname.startsWith(item.href));
-                        const Icon = item.icon;
-                        
-                        if (item.disabled) {
+                    <>
+                      <ul
+                        ref={headerNavMeasurementRef}
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-0 top-0 flex items-center gap-1 whitespace-nowrap opacity-0"
+                      >
+                        {favouriteHeaderNavItems.map((item) => {
+                          const Icon = item.icon;
+
                           return (
-                            <li key={item.name}>
-                              <span
-                                className="relative flex items-center gap-2 px-3 py-2 text-sm font-medium uppercase tracking-wider text-slate-600 cursor-not-allowed"
-                                title="Coming Soon"
-                              >
+                            <li key={item.href}>
+                              <span className="relative flex items-center gap-2 px-3 py-2 text-sm font-medium uppercase tracking-wider">
                                 <Icon className="h-4 w-4 shrink-0" />
-                                <span className="hidden xl:inline">{item.name}</span>
+                                <span>{item.name}</span>
                               </span>
                             </li>
                           );
-                        }
-                        
-                        return (
-                          <li key={item.name}>
-                            <Link
-                              href={item.href}
-                              className={cn(
-                                "relative flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors uppercase tracking-wider",
-                                isActive 
-                                  ? "text-destiny-gold bg-white/5" 
-                                  : "text-slate-400 hover:text-white hover:bg-white/5"
-                              )}
-                            >
-                              <Icon className="h-4 w-4 shrink-0" />
-                              <span className="hidden xl:inline">{item.name}</span>
-                              
-                              {isActive && (
-                                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-destiny-gold shadow-[0_0_8px_rgba(227,206,98,0.5)]" />
-                              )}
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                        })}
+                      </ul>
+
+                      <ul className="no-scrollbar flex items-center gap-1 overflow-x-auto flex-nowrap">
+                        {favouriteHeaderNavItems.map((item) => {
+                          const isActive = isNavigationHrefActive(pathname, item.href);
+                          const Icon = item.icon;
+                          
+                          return (
+                            <li key={item.href}>
+                              <Link
+                                href={item.href}
+                                title={item.parentName ? `${item.parentName}: ${item.name}` : item.name}
+                                className={cn(
+                                  "relative flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors uppercase tracking-wider",
+                                  isActive 
+                                    ? "text-destiny-gold bg-white/5" 
+                                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                                )}
+                              >
+                                <Icon className="h-4 w-4 shrink-0" />
+                                <span className={showHeaderNavLabels ? "inline" : "hidden"}>{item.name}</span>
+                                
+                                {isActive && (
+                                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-destiny-gold shadow-[0_0_8px_rgba(227,206,98,0.5)]" />
+                                )}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
                   )}
                 </nav>
               )}
@@ -475,10 +511,11 @@ export function Header() {
               <div className="px-6 sm:px-12 py-6 max-w-7xl mx-auto">
                 {/* Navigation Cards Grid */}
                 <div className="flex flex-wrap gap-x-6 gap-y-4 justify-center">
-                  {navItems.map((item) => {
-                    const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                  {expandedHeaderNavigationItems.map((item) => {
+                    const isActive = isNavigationHrefActive(pathname, item.href);
                     const Icon = item.icon;
                     const hasSubNav = item.subNav && item.subNav.length > 0;
+                    const isMainItemFavourite = favouriteHeaderNavHrefs.includes(item.href);
                     
                     // Handle disabled items
                     if (item.disabled) {
@@ -507,7 +544,7 @@ export function Header() {
                       <div
                         key={item.name}
                         className={cn(
-                          "group relative flex transition-all duration-200 border border-transparent",
+                          "group relative flex w-44 flex-col transition-all duration-200 border border-transparent",
                           isActive 
                             ? "bg-white/5 border-white/10" 
                             : "hover:border-white/20"
@@ -517,7 +554,7 @@ export function Header() {
                         <Link
                           href={item.href}
                           onClick={() => setMenuOpen(false)}
-                          className="flex flex-col p-3 w-32"
+                          className="flex min-h-28 flex-col p-3 pr-10"
                         >
                           {/* Icon */}
                           <div className={cn(
@@ -548,28 +585,81 @@ export function Header() {
                           )}
                         </Link>
 
-                        {/* Sub Navigation - Vertical on right side, centered */}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            toggleFavouriteHeaderNavItem(item.href);
+                          }}
+                          className={cn(
+                            "absolute right-2 top-2 z-10 p-1 transition-colors",
+                            isMainItemFavourite
+                              ? "text-destiny-gold"
+                              : "text-slate-600 hover:text-destiny-gold"
+                          )}
+                          title={isMainItemFavourite ? `Remove ${item.name} from header` : `Add ${item.name} to header`}
+                          aria-label={isMainItemFavourite ? `Remove ${item.name} from header` : `Add ${item.name} to header`}
+                        >
+                          <Star
+                            className={cn(
+                              "w-3.5 h-3.5",
+                              isMainItemFavourite && "fill-current"
+                            )}
+                          />
+                        </button>
+
+                        {/* Sub Navigation */}
                         {hasSubNav && (
-                          <div className="flex flex-col justify-center border-l border-white/10">
+                          <div className="border-t border-white/10 p-1">
                             {item.subNav!.map((subItem) => {
                               const SubIcon = subItem.icon;
-                              const isSubActive = pathname === subItem.href;
+                              const isSubActive = isNavigationHrefActive(pathname, subItem.href);
+                              const isSubItemFavourite = favouriteHeaderNavHrefs.includes(subItem.href);
                               
                               return (
-                                <Link
+                                <div
                                   key={subItem.href}
-                                  href={subItem.href}
-                                  onClick={() => setMenuOpen(false)}
-                                  title={subItem.name}
                                   className={cn(
-                                    "p-2 transition-colors",
+                                    "flex items-center transition-colors",
                                     isSubActive
-                                      ? "text-destiny-gold bg-destiny-gold/10"
-                                      : "text-slate-500 hover:text-white hover:bg-white/5"
+                                      ? "bg-destiny-gold/10 text-destiny-gold"
+                                      : "text-slate-500 hover:bg-white/5 hover:text-white"
                                   )}
                                 >
-                                  <SubIcon className="w-4 h-4" />
-                                </Link>
+                                  <Link
+                                    href={subItem.href}
+                                    onClick={() => setMenuOpen(false)}
+                                    title={subItem.name}
+                                    className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-xs transition-colors"
+                                  >
+                                    <SubIcon className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">{subItem.name}</span>
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      toggleFavouriteHeaderNavItem(subItem.href);
+                                    }}
+                                    title={isSubItemFavourite ? `Remove ${subItem.name} from header` : `Add ${subItem.name} to header`}
+                                    aria-label={isSubItemFavourite ? `Remove ${subItem.name} from header` : `Add ${subItem.name} to header`}
+                                    className={cn(
+                                      "mr-1 p-1 transition-colors",
+                                      isSubItemFavourite
+                                        ? "text-destiny-gold"
+                                        : "text-slate-600 hover:text-destiny-gold"
+                                    )}
+                                  >
+                                    <Star
+                                      className={cn(
+                                        "h-3 w-3",
+                                        isSubItemFavourite && "fill-current"
+                                      )}
+                                    />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>

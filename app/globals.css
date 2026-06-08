@@ -276,6 +276,82 @@ body {
   }
 }
 
+@keyframes activity-holofoil-shift {
+  0% {
+    --activity-holofoil-angle: 0deg;
+    background-position: -120% 50%, 50% 50%, 0 0;
+    filter: hue-rotate(0deg) saturate(1.25);
+  }
+  50% {
+    --activity-holofoil-angle: 180deg;
+    background-position: 220% 50%, 50% 50%, 80px 40px;
+    filter: hue-rotate(22deg) saturate(1.6);
+  }
+  100% {
+    --activity-holofoil-angle: 360deg;
+    background-position: -120% 50%, 50% 50%, 160px 80px;
+    filter: hue-rotate(0deg) saturate(1.25);
+  }
+}
+
+@keyframes activity-silver-sheen {
+  0% {
+    --activity-silver-angle: 0deg;
+    background-position: 18% 28%, 82% 68%, 50% 50%;
+  }
+  50% {
+    --activity-silver-angle: 180deg;
+    background-position: 34% 42%, 66% 54%, 50% 50%;
+  }
+  100% {
+    --activity-silver-angle: 360deg;
+    background-position: 18% 28%, 82% 68%, 50% 50%;
+  }
+}
+
+@keyframes activity-starry-black-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.45;
+  }
+  35% {
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate3d(8px, -5px, 0);
+    opacity: 0.45;
+  }
+}
+
+@keyframes activity-contest-shine {
+  0%, 38% {
+    transform: translateX(-140%) skewX(-18deg);
+    opacity: 0;
+  }
+  48% {
+    opacity: 0.58;
+  }
+  62%, 100% {
+    transform: translateX(230%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+@property --activity-holofoil-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --activity-silver-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .activity-achievement-tag {
   position: relative;
   display: inline-flex;
@@ -295,31 +371,102 @@ body {
   pointer-events: none;
 }
 
-.activity-achievement-tag--day-one {
+.activity-achievement-tag--silver,
+.activity-achievement-tag--week-one {
+  --activity-silver-angle: 0deg;
+  border-color: #f8fafc;
+  color: #0f172a;
+  background:
+    radial-gradient(ellipse at 18% 28%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 28%),
+    radial-gradient(ellipse at 82% 68%, rgba(226, 232, 240, 0.82), rgba(226, 232, 240, 0) 30%),
+    conic-gradient(from var(--activity-silver-angle) at 116% -34%, #475569, #f8fafc, #94a3b8, #ffffff, #64748b, #f8fafc, #475569);
+  background-size: 180% 180%, 170% 170%, 230% 230%;
+  box-shadow: 0 0 16px rgba(226, 232, 240, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  animation: activity-silver-sheen 5.6s ease-in-out infinite;
+}
+
+.activity-achievement-tag--flawless {
   border-color: #fff0a3;
   color: #171205;
   background:
-    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.75), transparent 16%),
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.85), transparent 18%),
     linear-gradient(135deg, #8d6800 0%, #e3ce62 36%, #fff4a8 52%, #b88700 100%);
   box-shadow: 0 0 16px rgba(227, 206, 98, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
-.activity-achievement-tag--week-one {
-  border-color: #f2b27c;
-  color: #1c0b02;
+.activity-achievement-tag--holofoil {
+  --activity-holofoil-angle: 0deg;
+  border-color: rgba(255, 255, 255, 0.86);
+  color: #07111f;
   background:
-    radial-gradient(circle at 20% 18%, rgba(255, 245, 220, 0.78), transparent 18%),
-    linear-gradient(135deg, #7a2e12 0%, #c76d35 34%, #ffd0a3 52%, #9d431f 100%);
-  box-shadow: 0 0 16px rgba(199, 109, 53, 0.58), inset 0 1px 0 rgba(255, 238, 210, 0.62);
+    linear-gradient(115deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.58) 46%, rgba(255, 255, 255, 0) 62%),
+    conic-gradient(from var(--activity-holofoil-angle) at 118% -38%, #ff7ad9, #7dd3fc, #a7f3d0, #fde68a, #c4b5fd, #ff7ad9),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 160 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.42'/%3E%3C/svg%3E");
+  background-blend-mode: screen, normal, overlay;
+  background-size: 70% 100%, 240% 240%, 96px 48px;
+  box-shadow:
+    0 0 18px rgba(125, 211, 252, 0.45),
+    0 0 26px rgba(244, 114, 182, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  animation: activity-holofoil-shift 4.5s ease-in-out infinite;
 }
 
-.activity-achievement-tag--flawless {
-  border-color: #ffffff;
-  color: #0f172a;
+.activity-achievement-tag--contest {
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #f8fafc;
+  background: #000000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+.activity-achievement-tag--contest::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   background:
-    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.95), transparent 18%),
-    linear-gradient(135deg, #94a3b8 0%, #f8fafc 38%, #ffffff 54%, #cbd5e1 100%);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    radial-gradient(circle at 18% 30%, rgba(255, 255, 255, 0.95) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 72% 42%, rgba(255, 255, 255, 0.75) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 44% 68%, rgba(196, 181, 253, 0.65) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 9% 76%, rgba(255, 255, 255, 0.78) 0 0.7px, transparent 1.2px),
+    radial-gradient(circle at 36% 14%, rgba(255, 255, 255, 0.62) 0 0.6px, transparent 1.1px),
+    radial-gradient(circle at 86% 18%, rgba(221, 214, 254, 0.72) 0 0.75px, transparent 1.25px),
+    radial-gradient(circle at 58% 84%, rgba(255, 255, 255, 0.58) 0 0.55px, transparent 1px);
+  background-size: 34px 34px, 46px 46px, 58px 58px, 23px 23px, 29px 29px, 37px 37px, 41px 41px;
+  animation: activity-starry-black-drift 4.8s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.activity-achievement-tag--contest::after {
+  content: "";
+  position: absolute;
+  inset: -60% auto -60% -35%;
+  width: 46%;
+  z-index: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.58), transparent);
+  animation: activity-contest-shine 4.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.activity-achievement-tag--trio {
+  border-color: #d8b4fe;
+  color: #f5f3ff;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.95), rgba(168, 85, 247, 0.88));
+  box-shadow: none !important;
+}
+
+.activity-achievement-tag--duo {
+  border-color: #93c5fd;
+  color: #eff6ff;
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.95), rgba(59, 130, 246, 0.86));
+  box-shadow: none !important;
+}
+
+.activity-achievement-tag--solo {
+  border-color: #86efac;
+  color: #052e16;
+  background: linear-gradient(135deg, #16a34a, #86efac);
+  box-shadow: none !important;
 }
 
 .activity-clan-member-tag {

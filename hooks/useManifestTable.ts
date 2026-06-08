@@ -17,6 +17,8 @@ type ManifestTableOptions = {
   view?: string;
 };
 
+const MANIFEST_TABLE_QUERY_VERSION = "full-table-cache-v3";
+
 export function useManifestTable<T = any>(
   definitionType: string,
   options?: ManifestTableOptions
@@ -33,7 +35,12 @@ export function useManifestTable<T = any>(
   }, [definitionType, options?.view]);
 
   const { data, error, isLoading } = useQuery({
-    queryKey: ["manifestTable", definitionType, options?.view ?? "full"],
+    queryKey: [
+      "manifestTable",
+      MANIFEST_TABLE_QUERY_VERSION,
+      definitionType,
+      options?.view ?? "full",
+    ],
     queryFn: async () => {
       try {
         return await getManifestTable<T>(definitionType, { view: options?.view });

@@ -22,6 +22,8 @@ import {
     ActivityRunSummary,
     filterActivityReportByTag,
     formatActivityDuration,
+    getRunClearDate,
+    isWithinWeekOneWindow,
 } from '@/lib/activityReport';
 import { usePGCR } from '@/hooks/useActivityHistory';
 import type { PGCRPlayer } from '@/hooks/useActivityHistory';
@@ -45,7 +47,7 @@ interface ActivityReportCardProps {
 
 interface ProfileAchievement {
     label: string;
-    tone: 'gold' | 'flawless' | 'blue' | 'dayOne' | 'weekOne' | 'green' | 'lowMan';
+    tone: 'gold' | 'flawless' | 'blue' | 'dayOne' | 'weekOne' | 'green' | 'lowMan' | 'trio' | 'duo' | 'solo';
 }
 
 interface PGCRData {
@@ -92,6 +94,10 @@ export function ActivityReportCard({
         () => [...profileAchievements, ...getLowManTitleBadges(report)],
         [profileAchievements, report]
     );
+    const shouldShowEndgameActivityTags = activity.type === 'RAID' || activity.type === 'DUNGEON';
+    const visibleActivityTags = shouldShowEndgameActivityTags
+        ? (activity.tags ?? []).filter((tag) => tag === 'Contest')
+        : [];
     const flexBorderTone = flexModeEnabled ? getFlexBorderTone(profileAchievements, report) : null;
     const flexBorderClass = flexBorderTone ? flexBorderToneClasses[flexBorderTone] : undefined;
     const weeklyProgress = useWeeklyClassProgress(report, characterIds);
@@ -194,8 +200,16 @@ export function ActivityReportCard({
                         </button>
 
                         <div className="absolute bottom-3 left-4 right-4">
-                            {titleBadges.length > 0 && (
+                            {(visibleActivityTags.length > 0 || titleBadges.length > 0) && (
                                 <div className="mb-2 flex flex-wrap items-center gap-2">
+                                    {visibleActivityTags.map((tag) => (
+                                        <span
+                                            key={`activity-tag-${tag}`}
+                                            className={getActivityMetadataTagClasses(tag)}
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
                                     {titleBadges.slice(0, 6).map((achievement) => (
                                         <span
                                             key={achievement.label}
@@ -245,7 +259,7 @@ export function ActivityReportCard({
                                             title={selected ? `Clear ${tag} card filter` : `Filter this card by ${tag}`}
                                             aria-pressed={selected}
                                         >
-                                            {tag} ({data.amount})
+                                            {data.label ?? tag} ({data.amount})
                                         </button>
                                     );
                                 })}
@@ -411,7 +425,7 @@ function FullStatsFace({
                                     key={tag}
                                     className={getSpecialTagBadgeClasses(tag)}
                                 >
-                                    {tag} ({data.amount})
+                                    {data.label ?? tag} ({data.amount})
                                 </span>
                             ))}
                         </div>
@@ -516,10 +530,13 @@ const achievementToneClasses = {
     gold: 'border-destiny-gold bg-destiny-gold text-slate-950',
     flawless: 'activity-achievement-tag--shiny activity-achievement-tag--flawless',
     blue: 'border-sky-300 bg-sky-500 text-slate-950',
-    dayOne: 'activity-achievement-tag--shiny activity-achievement-tag--day-one',
-    weekOne: 'activity-achievement-tag--shiny activity-achievement-tag--week-one',
+    dayOne: 'activity-achievement-tag--holofoil',
+    weekOne: 'activity-achievement-tag--silver',
     green: 'border-emerald-300 bg-emerald-500 text-slate-950',
     lowMan: 'border-cyan-300 bg-cyan-400 text-slate-950',
+    trio: 'activity-achievement-tag--trio',
+    duo: 'activity-achievement-tag--duo',
+    solo: 'activity-achievement-tag--solo',
 };
 
 const flexBorderToneClasses: Record<FlexBorderTone, string> = {
@@ -558,21 +575,21 @@ function getLowManTitleBadges(report: ActivityReportSummary): ProfileAchievement
     const tagCounts = report.specialTagCounts;
 
     if (report.activity.type === 'RAID' && hasAnySpecialTag(tagCounts, ['Trio', 'Trio Flawless'])) {
-        titleBadges.push({ label: 'Trio', tone: 'lowMan' });
+        titleBadges.push({ label: 'Trio', tone: 'trio' });
     }
 
     if (
         (report.activity.type === 'RAID' || report.activity.type === 'DUNGEON') &&
         hasAnySpecialTag(tagCounts, ['Duo', 'Duo Flawless'])
     ) {
-        titleBadges.push({ label: 'Duo', tone: 'lowMan' });
+        titleBadges.push({ label: 'Duo', tone: 'duo' });
     }
 
     if (
         (report.activity.type === 'RAID' || report.activity.type === 'DUNGEON') &&
         hasAnySpecialTag(tagCounts, ['Solo', 'Solo Flawless'])
     ) {
-        titleBadges.push({ label: 'Solo', tone: 'lowMan' });
+        titleBadges.push({ label: 'Solo', tone: 'solo' });
     }
 
     return titleBadges;
@@ -586,15 +603,39 @@ function hasAnySpecialTag(
 }
 
 function getSpecialTagBadgeClasses(tag: string): string {
-    if (tag === 'Day One') {
-        return 'activity-achievement-tag activity-achievement-tag--shiny activity-achievement-tag--day-one rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide';
+    if (tag === 'Contest') {
+        return 'activity-achievement-tag activity-achievement-tag--contest rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-lg';
     }
 
-    if (tag !== 'Personal Flawless' && tag.includes('Flawless')) {
+    if (tag === 'Trio' || tag === 'Trio Flawless') {
+        return 'activity-achievement-tag activity-achievement-tag--trio rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-lg';
+    }
+
+    if (tag === 'Duo' || tag === 'Duo Flawless') {
+        return 'activity-achievement-tag activity-achievement-tag--duo rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-lg';
+    }
+
+    if (tag === 'Solo' || tag === 'Solo Flawless') {
+        return 'activity-achievement-tag activity-achievement-tag--solo rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-lg';
+    }
+
+    if (tag === 'Day One') {
+        return 'activity-achievement-tag activity-achievement-tag--holofoil rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide';
+    }
+
+    if (tag.includes('Flawless')) {
         return 'activity-achievement-tag activity-achievement-tag--shiny activity-achievement-tag--flawless rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide';
     }
 
     return 'rounded-sm border border-destiny-gold/30 bg-destiny-gold/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-destiny-gold';
+}
+
+function getActivityMetadataTagClasses(tag: string): string {
+    if (tag === 'Contest') {
+        return 'activity-achievement-tag activity-achievement-tag--contest rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-lg';
+    }
+
+    return 'rounded-sm border border-white/15 bg-black/45 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-slate-200';
 }
 
 function useProfileAchievements(report: ActivityReportSummary, metrics: any, records: any): ProfileAchievement[] {
@@ -747,7 +788,7 @@ function RunMarkers({
                             </div>
                             {run.specialTags.length > 0 && (
                                 <div className="mt-1 truncate text-destiny-gold">
-                                    {run.specialTags.join(', ')}
+                                    {run.specialTags.map((tag) => run.specialTagLabels[tag] ?? tag).join(', ')}
                                 </div>
                             )}
                         </div>
@@ -1001,20 +1042,10 @@ function recordTextMatchesActivity(
 }
 
 function getWeekOneRun(report: ActivityReportSummary): ActivityRunSummary | null {
-    const releaseDate = report.activity.releaseDate;
-    if (!releaseDate) {
-        return null;
-    }
-
-    const [year, month, day] = releaseDate.split('-').map(Number);
-    const weekOneStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-    const weekOneEnd = new Date(weekOneStart);
-    weekOneEnd.setUTCDate(weekOneEnd.getUTCDate() + 7);
-    weekOneEnd.setUTCHours(23, 59, 59, 999);
-
     return report.completedRuns.find((run) => {
-        const runDate = new Date(run.period);
-        return runDate >= weekOneStart && runDate <= weekOneEnd;
+        const runStartDate = new Date(run.period);
+        const clearDate = getRunClearDate(runStartDate, run.durationSeconds);
+        return isWithinWeekOneWindow(report.activity, clearDate);
     }) ?? null;
 }
 

@@ -34,11 +34,13 @@ export interface ActivityRunSummary {
   playerCount: number | null;
   characterId?: string;
   specialTags: string[];
+  specialTagLabels: Record<string, string>;
 }
 
 export interface ActivityTagCount {
   amount: number;
   instanceId: string;
+  label?: string;
 }
 
 export interface ActivityReportSummary {
@@ -69,10 +71,14 @@ export const ACTIVITY_SPECIAL_TAGS = [
   "Duo Flawless",
   "Trio",
   "Trio Flawless",
+  "Contest",
   "Day One",
 ];
 
 const MINIMUM_SPECIAL_CLEAR_SECONDS = 60 * 3;
+const DEFAULT_ACTIVITY_RELEASE_HOUR_UTC = 17;
+const DAY_ONE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const WEEK_ONE_WINDOW_MS = 7 * DAY_ONE_WINDOW_MS;
 
 const EXCLUDED_SPECIAL_PERIODS = [
   {
@@ -224,12 +230,13 @@ export function buildManifestActivityCatalog(
   const mergedBaseActivities = baseActivities.map((activity) => {
     const groupKey = normalizeActivityGroupName(activity.name);
     const bucket = manifestBuckets.get(groupKey);
+    const activityWithDefinitionTags = addActivityTagsFromDefinitions(activity, activityDefinitions);
 
     if (!bucket) {
-      return activity;
+      return activityWithDefinitionTags;
     }
 
-    return mergeManifestBucketIntoActivity(activity, bucket);
+    return mergeManifestBucketIntoActivity(activityWithDefinitionTags, bucket);
   });
   const manifestOnlyActivities = [...manifestBuckets.entries()]
     .filter(([groupKey]) => !baseActivityGroupKeys.has(groupKey))
@@ -888,6 +895,10 @@ function getActivityModeLabel(modeType: number): string {
 function getActivityTags(definition: ActivityDefinitionContext): string[] {
   const tags: string[] = [];
 
+  if (isContestActivityDefinition(definition)) {
+    tags.push("Contest");
+  }
+
   if (definition.isPvP) {
     tags.push("PvP");
   }
@@ -901,6 +912,42 @@ function getActivityTags(definition: ActivityDefinitionContext): string[] {
   }
 
   return tags;
+}
+
+function addActivityTagsFromDefinitions(
+  activity: ActivityDefinition,
+  activityDefinitions: Record<string, ActivityDefinitionContext>
+): ActivityDefinition {
+  const tags = new Set(activity.tags ?? []);
+
+  for (const activityHash of getActivityDefinitionHashes(activity)) {
+    const definition = activityDefinitions[String(activityHash)];
+
+    if (!definition) {
+      continue;
+    }
+
+    for (const tag of getActivityTags(definition)) {
+      tags.add(tag);
+    }
+  }
+
+  return {
+    ...activity,
+    tags: [...tags],
+  };
+}
+
+function getActivityDefinitionHashes(activity: ActivityDefinition): number[] {
+  return uniqueHashes([
+    activity.activityHash,
+    ...(activity.relatedActivityHashes ?? []),
+    ...(activity.contestActivityHashes ?? []),
+  ]);
+}
+
+function isContestActivityDefinition(definition: ActivityDefinitionContext): boolean {
+  return /\bcontest\b/i.test(getActivityNameSearchText(definition));
 }
 
 function uniqueHashes(hashes: number[]): number[] {
@@ -918,6 +965,7 @@ function buildRunSummary(
   const durationSeconds = historyItem.values.activityDurationSeconds?.basic?.value ?? 0;
   const completed = isCompletedRun(historyItem);
   const playerCount = getPlayerCount(historyItem);
+  const specialTags = getSpecialTags(activity, historyItem, completed, durationSeconds, playerCount);
 
   return {
     instanceId: historyItem.activityDetails.instanceId,
@@ -930,7 +978,8 @@ function buildRunSummary(
     assists: historyItem.values.assists?.basic?.value ?? 0,
     playerCount,
     characterId: historyItem.characterId,
-    specialTags: getSpecialTags(activity, historyItem, completed, durationSeconds, playerCount),
+    specialTags,
+    specialTagLabels: getSpecialTagLabels(activity, historyItem, specialTags),
   };
 }
 
@@ -964,6 +1013,7 @@ function getSpecialTags(
   const tags: string[] = [];
   const deaths = historyItem.values.deaths?.basic?.value ?? 0;
   const supportsLowManTags = activity.type === "RAID" || activity.type === "DUNGEON";
+  const clearDate = getRunClearDate(period, durationSeconds);
 
   if (supportsLowManTags && playerCount === 1 && deaths === 0) {
     tags.push("Solo Flawless");
@@ -973,7 +1023,11 @@ function getSpecialTags(
     tags.push("Solo");
   }
 
-  if (activity.type === "RAID" && isWithinDayOneWindow(activity, period)) {
+  if (isContestRun(activity, historyItem)) {
+    tags.push("Contest");
+  }
+
+  if (activity.type === "RAID" && isWithinDayOneWindow(activity, clearDate)) {
     tags.push("Day One");
   }
 
@@ -1038,17 +1092,74 @@ function addUniqueTag(tags: string[], tag: string): void {
   }
 }
 
-function isWithinDayOneWindow(activity: ActivityDefinition, period: Date): boolean {
-  if (!activity.releaseDate) {
+function isContestRun(activity: ActivityDefinition, historyItem: ActivityHistoryItem): boolean {
+  const referenceId = historyItem.activityDetails.referenceId;
+  const contestActivityHashes = new Set(activity.contestActivityHashes ?? []);
+  return contestActivityHashes.has(referenceId);
+}
+
+function getSpecialTagLabels(
+  activity: ActivityDefinition,
+  historyItem: ActivityHistoryItem,
+  specialTags: string[]
+): Record<string, string> {
+  const specialTagLabels: Record<string, string> = {};
+
+  if (specialTags.includes("Contest")) {
+    const contestRank = getContestRunRank(activity, historyItem);
+
+    if (contestRank !== null) {
+      specialTagLabels.Contest = `Contest #${contestRank}`;
+    }
+  }
+
+  return specialTagLabels;
+}
+
+function getContestRunRank(
+  activity: ActivityDefinition,
+  historyItem: ActivityHistoryItem
+): number | null {
+  const rank = activity.contestRankByInstanceId?.[historyItem.activityDetails.instanceId];
+  return typeof rank === "number" && Number.isFinite(rank) ? rank : null;
+}
+
+export function isWithinDayOneWindow(activity: ActivityDefinition, clearDate: Date): boolean {
+  return isWithinActivityReleaseWindow(activity, clearDate, DAY_ONE_WINDOW_MS);
+}
+
+export function isWithinWeekOneWindow(activity: ActivityDefinition, clearDate: Date): boolean {
+  return isWithinActivityReleaseWindow(activity, clearDate, WEEK_ONE_WINDOW_MS);
+}
+
+export function getRunClearDate(period: Date, durationSeconds: number): Date {
+  return new Date(period.getTime() + durationSeconds * 1000);
+}
+
+function isWithinActivityReleaseWindow(
+  activity: ActivityDefinition,
+  clearDate: Date,
+  windowLengthMs: number
+): boolean {
+  const releaseStart = getActivityReleaseStart(activity);
+  if (!releaseStart) {
     return false;
   }
 
-  const [year, month, day] = activity.releaseDate.split("-").map(Number);
-  const releaseStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-  const releaseEnd = new Date(releaseStart);
-  releaseEnd.setUTCHours(releaseEnd.getUTCHours() + 48);
+  const releaseEnd = new Date(releaseStart.getTime() + windowLengthMs);
+  return clearDate >= releaseStart && clearDate <= releaseEnd;
+}
 
-  return period >= releaseStart && period <= releaseEnd;
+function getActivityReleaseStart(activity: ActivityDefinition): Date | null {
+  if (!activity.releaseDate) {
+    return null;
+  }
+
+  const releaseStart = activity.releaseDate.includes("T")
+    ? new Date(activity.releaseDate)
+    : new Date(`${activity.releaseDate}T${String(DEFAULT_ACTIVITY_RELEASE_HOUR_UTC).padStart(2, "0")}:00:00.000Z`);
+
+  return Number.isNaN(releaseStart.getTime()) ? null : releaseStart;
 }
 
 function isExcludedSpecialPeriod(period: Date): boolean {
@@ -1071,11 +1182,19 @@ function countSpecialTags(completedRuns: ActivityRunSummary[]): Record<string, A
   for (const run of completedRuns) {
     for (const specialTag of run.specialTags) {
       if (!tagCounts[specialTag]) {
-        tagCounts[specialTag] = { amount: 0, instanceId: run.instanceId };
+        tagCounts[specialTag] = {
+          amount: 0,
+          instanceId: run.instanceId,
+          label: run.specialTagLabels[specialTag],
+        };
       }
 
       tagCounts[specialTag].amount += 1;
       tagCounts[specialTag].instanceId = run.instanceId;
+
+      if (!tagCounts[specialTag].label && run.specialTagLabels[specialTag]) {
+        tagCounts[specialTag].label = run.specialTagLabels[specialTag];
+      }
     }
   }
 
