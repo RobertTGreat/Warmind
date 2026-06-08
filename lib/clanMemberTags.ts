@@ -15,6 +15,17 @@ export const SPECIAL_CLAN_MEMBER_TAGS: Record<string, ClanMemberTag[]> = {
         "bg-destiny-gold/20 text-destiny-gold border-destiny-gold/50",
     },
   ],
+  "Robert#1516": [
+    {
+      label: "Murder Cave",
+      className: "bg-red-900/40 text-red-200 border-red-500/50",
+    },
+    {
+      label: "Dev",
+      className:
+        "bg-destiny-gold/20 text-destiny-gold border-destiny-gold/50",
+    },
+  ],
   "Cavez#4930": [
     {
       label: "Murder Cave",
@@ -23,6 +34,18 @@ export const SPECIAL_CLAN_MEMBER_TAGS: Record<string, ClanMemberTag[]> = {
     {
       label: "Saltagreppo Glazer",
       className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/50",
+    },
+  ],
+  "Tesco Self Checkout#5687": [
+    {
+      label: "Murder Cave",
+      className: "bg-red-900/40 text-red-200 border-red-500/50",
+    },
+  ],
+  "Scryocat#5270": [
+    {
+      label: "Murder Cave",
+      className: "bg-red-900/40 text-red-200 border-red-500/50",
     },
   ],
 };

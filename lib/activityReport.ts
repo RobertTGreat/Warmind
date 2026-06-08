@@ -1001,7 +1001,7 @@ function getSpecialTags(
   durationSeconds: number,
   playerCount: number | null
 ): string[] {
-  if (!completed || playerCount === null || durationSeconds < MINIMUM_SPECIAL_CLEAR_SECONDS) {
+  if (!completed || durationSeconds < MINIMUM_SPECIAL_CLEAR_SECONDS) {
     return [];
   }
 
@@ -1023,7 +1023,7 @@ function getSpecialTags(
     tags.push("Solo");
   }
 
-  if (isContestRun(activity, historyItem)) {
+  if (isContestRun(activity, historyItem, clearDate)) {
     tags.push("Contest");
   }
 
@@ -1031,11 +1031,11 @@ function getSpecialTags(
     tags.push("Day One");
   }
 
-  if (activity.type === "RAID") {
+  if (activity.type === "RAID" && playerCount !== null) {
     addLowManRaidTags(tags, playerCount, deaths);
   }
 
-  if (activity.type === "DUNGEON") {
+  if (activity.type === "DUNGEON" && playerCount !== null) {
     addLowManDungeonTags(tags, playerCount, deaths);
   }
 
@@ -1092,10 +1092,29 @@ function addUniqueTag(tags: string[], tag: string): void {
   }
 }
 
-function isContestRun(activity: ActivityDefinition, historyItem: ActivityHistoryItem): boolean {
+function isContestRun(
+  activity: ActivityDefinition,
+  historyItem: ActivityHistoryItem,
+  clearDate: Date
+): boolean {
   const referenceId = historyItem.activityDetails.referenceId;
   const contestActivityHashes = new Set(activity.contestActivityHashes ?? []);
-  return contestActivityHashes.has(referenceId);
+  if (contestActivityHashes.has(referenceId)) {
+    return true;
+  }
+
+  const contestWindowMs = getContestWindowMs(activity);
+  return contestWindowMs !== null && isWithinActivityReleaseWindow(activity, clearDate, contestWindowMs);
+}
+
+function getContestWindowMs(activity: ActivityDefinition): number | null {
+  const contestWindowHours = activity.contestWindowHours;
+
+  if (typeof contestWindowHours !== "number" || !Number.isFinite(contestWindowHours)) {
+    return null;
+  }
+
+  return contestWindowHours * 60 * 60 * 1000;
 }
 
 function getSpecialTagLabels(

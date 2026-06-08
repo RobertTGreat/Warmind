@@ -71,6 +71,7 @@ export interface ActivityDefinition {
     trioRecordHash?: number; // For specific trio achievements (usually Raids)
     exoticItemHash?: number; // To check if acquired
     contestActivityHashes?: number[]; // Activity hashes for contest mode variants
+    contestWindowHours?: number; // Hardcap contest window from release when no separate contest hash exists
     contestRankByInstanceId?: Record<string, number>; // Known world placement by PGCR instance ID
     dayOneRecordHash?: number; // Contest mode / Day One record (if available)
     contestRecordHash?: number; // Contest mode specific record
@@ -186,6 +187,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         flawlessRecordHash: RECORDS.SALVATIONS_EDGE_FLAWLESS,
         masterRecordHash: 1728165205, // Master Difficulty "Salvation's Edge"
         exoticItemHash: 267469843, // Euphony
+        contestWindowHours: 48,
         releaseDate: '2024-06-07', // Release date for week one calculation
     },
     {
@@ -197,6 +199,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         metricHash: METRICS.CROTA,
         flawlessRecordHash: RECORDS.CROTA_FLAWLESS,
         exoticItemHash: 1959368027, // Necrochasm
+        contestWindowHours: 24,
         releaseDate: '2023-09-01', // Release date for week one calculation
     },
     {
@@ -209,6 +212,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         flawlessRecordHash: RECORDS.RON_FLAWLESS,
         masterRecordHash: 391307104, // Master Difficulty "Root of Nightmares"
         exoticItemHash: 2817568609, // Conditional Finality
+        contestWindowHours: 48,
         releaseDate: '2023-03-10', // Release date for week one calculation
     },
     {
@@ -221,6 +225,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         flawlessRecordHash: RECORDS.KINGS_FALL_FLAWLESS,
         // Note: King's Fall has Master activity but no Master completion record
         exoticItemHash: 2820464090, // Touch of Malice
+        contestWindowHours: 24,
         releaseDate: '2022-08-26', // Release date for week one calculation
     },
     {
@@ -233,6 +238,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         flawlessRecordHash: RECORDS.VOW_FLAWLESS,
         masterRecordHash: 610864524, // Master Difficulty "Vow of the Disciple"
         exoticItemHash: 2212933383, // Collective Obligation
+        contestWindowHours: 48,
         releaseDate: '2022-03-05', // Release date for week one calculation
     },
     {
@@ -267,6 +273,7 @@ export const ACTIVITIES: ActivityDefinition[] = [
         metricHash: METRICS.GARDEN,
         flawlessRecordHash: RECORDS.GARDEN_FLAWLESS,
         exoticItemHash: 3539486224, // Divinity
+        contestWindowHours: 24,
         releaseDate: '2019-10-05', // Release date for week one calculation
     },
     {

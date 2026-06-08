@@ -96,7 +96,7 @@ export function ActivityReportCard({
     );
     const shouldShowEndgameActivityTags = activity.type === 'RAID' || activity.type === 'DUNGEON';
     const visibleActivityTags = shouldShowEndgameActivityTags
-        ? (activity.tags ?? []).filter((tag) => tag === 'Contest')
+        ? getVisibleActivityHeaderTags(report)
         : [];
     const flexBorderTone = flexModeEnabled ? getFlexBorderTone(profileAchievements, report) : null;
     const flexBorderClass = flexBorderTone ? flexBorderToneClasses[flexBorderTone] : undefined;
@@ -202,12 +202,12 @@ export function ActivityReportCard({
                         <div className="absolute bottom-3 left-4 right-4">
                             {(visibleActivityTags.length > 0 || titleBadges.length > 0) && (
                                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                                    {visibleActivityTags.map((tag) => (
+                                    {visibleActivityTags.map(({ label, tag }) => (
                                         <span
                                             key={`activity-tag-${tag}`}
                                             className={getActivityMetadataTagClasses(tag)}
                                         >
-                                            {tag}
+                                            {label}
                                         </span>
                                     ))}
                                     {titleBadges.slice(0, 6).map((achievement) => (
@@ -602,6 +602,19 @@ function hasAnySpecialTag(
     return tagNames.some((tagName) => Boolean(tagCounts[tagName]));
 }
 
+function getVisibleActivityHeaderTags(report: ActivityReportSummary): Array<{ tag: string; label: string }> {
+    const hasContestTag = Boolean(report.specialTagCounts.Contest) || report.activity.tags?.includes('Contest');
+
+    if (!hasContestTag) {
+        return [];
+    }
+
+    return [{
+        tag: 'Contest',
+        label: report.specialTagCounts.Contest?.label ?? 'Contest',
+    }];
+}
+
 function getSpecialTagBadgeClasses(tag: string): string {
     if (tag === 'Contest') {
         return 'activity-achievement-tag activity-achievement-tag--contest rounded-sm border px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-lg';
@@ -670,14 +683,14 @@ function useProfileAchievements(report: ActivityReportSummary, metrics: any, rec
             achievements.push({ label: 'Flawless', tone: 'flawless' });
         }
 
-        if (isMaster) {
-            achievements.push({ label: 'Master', tone: 'gold' });
-        }
-
         if (isDayOne) {
             achievements.push({ label: 'Day One', tone: 'dayOne' });
         } else if (weekOneRun) {
             achievements.push({ label: 'Week One', tone: 'weekOne' });
+        }
+
+        if (isMaster) {
+            achievements.push({ label: 'Master', tone: 'gold' });
         }
 
         if (isEpicFlawless) {
