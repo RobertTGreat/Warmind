@@ -17,7 +17,7 @@ const LIFETIME_EXPANSION: Expansion = {
   shortName: 'All Time',
   releaseDate: '2017-09-06', // D2 launch
   endDate: '2099-12-31',
-  image: '/destiny-og.webp',
+  image: '/background.jpg',
   color: '#e3ce62',
   tagline: 'Your complete Destiny 2 journey',
 };

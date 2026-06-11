@@ -178,7 +178,7 @@ function LandingPage() {
       {/* Background Image */}
       <div className="fixed inset-0 -z-10">
         <Image
-          src="/Renegades-Background.jpg"
+          src="/background.jpg"
           alt=""
           fill
           className="object-cover blur-md"
