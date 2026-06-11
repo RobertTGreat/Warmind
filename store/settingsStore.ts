@@ -164,7 +164,8 @@ type SettingsStore = SettingsState & SettingsActions;
 
 // ===== Default Values =====
 
-const DEFAULT_CACHE_DURATION_MINUTES = 60;
+const DEFAULT_CACHE_DURATION_MINUTES = 1440;
+const PREVIOUS_DEFAULT_CACHE_DURATION_MINUTES = 60;
 const MIN_CACHE_DURATION_MINUTES = 15;
 const MAX_CACHE_DURATION_MINUTES = 1440;
 
@@ -658,6 +659,22 @@ export const useSettingsStore = create<SettingsStore>()(
         }),
         {
             name: 'warmind-settings',
+            version: 1,
+            migrate: (persistedState, version) => {
+                const state = persistedState as Partial<SettingsState>;
+
+                if (version < 1) {
+                    const shouldUpgradeDefaultCache =
+                        state.cacheDurationMinutes === undefined ||
+                        state.cacheDurationMinutes === PREVIOUS_DEFAULT_CACHE_DURATION_MINUTES;
+
+                    if (shouldUpgradeDefaultCache) {
+                        state.cacheDurationMinutes = DEFAULT_CACHE_DURATION_MINUTES;
+                    }
+                }
+
+                return state as SettingsStore;
+            },
             storage: createJSONStorage(() => safeLocalStorage),
             partialize: (state) => ({
                 // Persist everything except transient sync state

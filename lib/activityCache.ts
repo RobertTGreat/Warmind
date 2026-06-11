@@ -6,7 +6,7 @@ const STORE_NAME = 'activity_history';
 const INVALID_STORE_NAME = 'invalid_instances';
 const PGCR_STORE_NAME = 'pgcr_reports';
 const DB_VERSION = 3; // Increment version
-const DEFAULT_CACHE_DURATION_MINUTES = 60;
+const DEFAULT_CACHE_DURATION_MINUTES = 1440;
 const MILLISECONDS_PER_MINUTE = 60 * 1000;
 
 // Key for storing invalid instance IDs in localStorage (legacy)
