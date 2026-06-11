@@ -5,6 +5,10 @@ on:
     - cron: "0 17 * * 2"
   workflow_dispatch:
 
+concurrency:
+  group: update-destiny-manifest
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -18,9 +22,12 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Sync with remote master
-        run: git pull --ff-only origin master
+      - name: Sync to latest remote master
+        run: |
+          git fetch origin master
+          git checkout -B master origin/master
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,8 +37,10 @@ jobs:
       - name: Download static manifest
         run: node scripts/update-static-manifest.mjs
 
-      - name: Commit manifest changes
+      - name: Commit and push manifest changes
         run: |
+          set -euxo pipefail
+
           if git diff --quiet -- data/destiny-manifest; then
             echo "Manifest is already current."
             exit 0
@@ -42,15 +51,20 @@ jobs:
           git add data/destiny-manifest
           git commit -m "Update Destiny manifest"
 
-          for attempt in 1 2 3; do
-            git pull --rebase origin master
-            if git push origin HEAD:master; then
+          for attempt in 1 2 3 4 5; do
+            echo "Push attempt ${attempt}: fetching and rebasing onto origin/master..."
+            git fetch origin master
+            git rebase origin/master
+
+            echo "Push attempt ${attempt}: pushing to origin/master..."
+            if git push origin master; then
               echo "Push succeeded on attempt ${attempt}."
               exit 0
             fi
-            echo "Push failed on attempt ${attempt}, retrying..."
-            sleep 2
+
+            echo "Push failed on attempt ${attempt}, retrying in 3 seconds..."
+            sleep 3
           done
 
-          echo "Failed to push manifest update after 3 attempts."
+          echo "Failed to push manifest update after 5 attempts."
           exit 1
